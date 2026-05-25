@@ -668,7 +668,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
       const initialPositions: Record<string, { x: number; y: number }> = {};
-      if (!mindMap) return; // この時点では mindMap は非 null だが、型チェックをパスさせるために明示
+      if (!mindMap) return;
       const currentMindMap: MindNode = mindMap;
       selectedNodeIds.forEach((id: string) => { const n = findNodeById(currentMindMap, id); if (n) initialPositions[id] = { x: n.x, y: n.y }; });
       initialGroupDragPositions.current = initialPositions;
@@ -820,8 +820,9 @@ const MindMapApp = ({ user }: { user: any }) => {
       let closest: MindNode | null = null;
       let minDist = Infinity;
       const allNodes = getAllNodes(mindMap);
-      allNodes.forEach((n: MindNode) => {
-        if (n.id === selectedNodeId) return;
+      // ★ for...of ループに変更して型の絞り込みを適切に行う
+      for (const n of allNodes) {
+        if (n.id === selectedNodeId) continue;
         const dx = n.x - current.x;
         const dy = n.y - current.y;
         let valid = false;
@@ -829,8 +830,11 @@ const MindMapApp = ({ user }: { user: any }) => {
         if (e.key === 'ArrowDown' && dy > 20 && Math.abs(dx) < Math.abs(dy)) valid = true;
         if (e.key === 'ArrowLeft' && dx < -20 && Math.abs(dy) < Math.abs(dx)) valid = true;
         if (e.key === 'ArrowRight' && dx > 20 && Math.abs(dy) < Math.abs(dx)) valid = true;
-        if (valid) { const dist = Math.hypot(dx, dy); if (dist < minDist) { minDist = dist; closest = n; } }
-      });
+        if (valid) {
+          const dist = Math.hypot(dx, dy);
+          if (dist < minDist) { minDist = dist; closest = n; }
+        }
+      }
       if (closest) {
         setSelectedNodeId(closest.id);
         setSelectedNodeIds([closest.id]);
@@ -924,7 +928,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const participants: { email: string; color: string; isEditing: boolean; isSelecting: boolean; isSelf: boolean }[] = [
     { email: myEmail, color: myColor, isEditing: editingNodeId !== null, isSelecting: selectedNodeId !== null, isSelf: true },
   ];
-  (Object.entries(awarenessStates) as [string, AwarenessState][]).forEach(([userId, state]: [string, AwarenessState]) => {
+  (Object.entries(awarenessStates) as [string, AwarenessState][]).forEach(([_userId, state]: [string, AwarenessState]) => {
     participants.push({ email: state.email, color: state.color, isEditing: state.editingNodeId !== null, isSelecting: state.selectedNodeId !== null, isSelf: false });
   });
 
