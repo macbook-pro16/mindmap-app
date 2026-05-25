@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef, useEffect, KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
-import { RealtimeChannel } from '@supabase/supabase-js';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // --------------------- 型定義 ---------------------
 interface MindNode {
@@ -426,7 +427,6 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
     const yEdges = yEdgesRef.current; if (!yEdges) return; ydocRef.current?.transact(() => { yEdges.delete(edgeId); }); setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu]);
-
   const updateEdgeEndpoint = useCallback((edgeId: string, endpoint: 'source' | 'target', point: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { if (endpoint === 'source') yEdges.set(edgeId, { ...edge, sourcePoint: point }); else yEdges.set(edgeId, { ...edge, targetPoint: point }); }); }, []);
   const updateEdgeArrow = useCallback((edgeId: string, arrow: 'none' | 'start' | 'end' | 'both') => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, arrow }); }); }, []);
   const reparentNode = useCallback((nodeId: string, newParentId: string) => {
@@ -600,7 +600,11 @@ const MindMapApp = ({ user }: { user: any }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
     if (!nodeUnder) {
-      setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(null); setSelectedImageId(null); closeContextMenu();
+      setSelectedNodeId(null);
+      setSelectedNodeIds([]);
+      setSelectedEdgeId(null);
+      setSelectedImageId(null);
+      closeContextMenu();
       wasDraggingRef.current = true;
       setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
     }
@@ -611,7 +615,9 @@ const MindMapApp = ({ user }: { user: any }) => {
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y); }
+    if (!nodeUnder) {
+      addNodeAtPosition(coords.x, coords.y);
+    }
   }, [mindMap, zoomLevel, isSpacePressed, addNodeAtPosition]);
 
   const handleMouseMove = useCallback((e: MouseEvent | ReactMouseEvent) => {
@@ -859,6 +865,7 @@ const MindMapApp = ({ user }: { user: any }) => {
               <button onClick={() => alignNodes('horizontal')} className="p-1 rounded hover:bg-gray-100" title="水平に整列"><AlignHIcon /></button>
             </div>
           )}
+          
           <div className="w-px h-5 bg-gray-300 mx-1" />
           <div className="flex items-center gap-1 px-1">
             <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm" title="線のスタイル">
@@ -867,16 +874,17 @@ const MindMapApp = ({ user }: { user: any }) => {
               <option value="straight">直線</option>
             </select>
           </div>
+
           <button onClick={scrollToHome} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-sm ml-1" title="ホーム位置に戻る"><HomeIcon /></button>
           <div className="ml-auto mr-2 flex items-center gap-1"><button onClick={() => changeZoom(-0.1)} className="text-xs px-1 rounded hover:bg-gray-200">−</button><span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{Math.round(zoomLevel * 100)}%</span><button onClick={() => changeZoom(0.1)} className="text-xs px-1 rounded hover:bg-gray-200">＋</button></div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${statusColor}`} title={connectionStatus} /></div>
             <div className="relative">
               <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-gray-100 rounded px-2 py-1 transition-colors" title="参加者一覧">
-                <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p, i) => (<div key={i} className={`w-5 h-5 rounded-full border border-white flex items-center justify-center text-[9px] font-bold text-white ${p.isSelf ? 'ring-1 ring-gray-300' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-5 h-5 rounded-full border border-white bg-gray-300 flex items-center justify-center text-[9px] font-bold text-gray-600">+{participants.length - 3}</div>}</div>
+                <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p: any, i: number) => (<div key={i} className={`w-5 h-5 rounded-full border border-white flex items-center justify-center text-[9px] font-bold text-white ${p.isSelf ? 'ring-1 ring-gray-300' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-5 h-5 rounded-full border border-white bg-gray-300 flex items-center justify-center text-[9px] font-bold text-gray-600">+{participants.length - 3}</div>}</div>
                 <span className="text-xs text-gray-500">{participants.length}人</span>
               </button>
-              {showParticipants && (<div className="absolute top-full right-0 mt-1 w-56 bg-white border rounded-lg shadow-lg p-3 z-50"><h3 className="text-xs font-bold text-gray-600 mb-2">参加者 ({participants.length}人)</h3><div className="space-y-1.5 max-h-48 overflow-y-auto">{participants.map((p, i) => (<div key={i} className="flex items-center gap-2 text-xs"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${p.isSelf ? 'ring-2 ring-blue-400' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-gray-800 truncate">{p.email}{p.isSelf ? ' (あなた)' : ''}</div><div className="text-gray-400 text-[10px]">{p.isEditing ? '📝 編集中' : p.isSelecting ? '👆 選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-2 text-[10px] text-gray-500 underline w-full text-center">閉じる</button></div>)}
+              {showParticipants && (<div className="absolute top-full right-0 mt-1 w-56 bg-white border rounded-lg shadow-lg p-3 z-50"><h3 className="text-xs font-bold text-gray-600 mb-2">参加者 ({participants.length}人)</h3><div className="space-y-1.5 max-h-48 overflow-y-auto">{participants.map((p: any, i: number) => (<div key={i} className="flex items-center gap-2 text-xs"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${p.isSelf ? 'ring-2 ring-blue-400' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-gray-800 truncate">{p.email}{p.isSelf ? ' (あなた)' : ''}</div><div className="text-gray-400 text-[10px]">{p.isEditing ? '📝 編集中' : p.isSelecting ? '👆 選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-2 text-[10px] text-gray-500 underline w-full text-center">閉じる</button></div>)}
             </div>
             <div className="flex items-center gap-1.5" title={myEmail}>{user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300" onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} /> : null}<div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${user.user_metadata?.avatar_url ? 'hidden' : ''}`} style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div></div>
             <button onClick={handleLogout} className="bg-red-400 hover:bg-red-500 text-white text-xs px-2 py-1 rounded">ログアウト</button>
