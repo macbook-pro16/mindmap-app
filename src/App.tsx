@@ -229,16 +229,20 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<any>) => {
     independent: root.independent ?? false,
     bgColor: root.bgColor ?? '#f0f9ff',
     textColor: root.textColor ?? '#0369a1',
-    children: root.children.map(c => c.id),
+    children: root.children.map((c: MindNode) => c.id),
   });
-  root.children.forEach(c => treeToYMap(c, nodes));
+  root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
 };
 
 const uint8ArrayToBase64 = (u8: Uint8Array): string => { let binary = ''; for (let i = 0; i < u8.byteLength; i++) binary += String.fromCharCode(u8[i]); return btoa(binary); };
 const base64ToUint8Array = (b64: string): Uint8Array => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const stringToColor = (str: string): string => { let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash); return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`; };
 const getInitial = (email: string): string => email.split('@')[0].substring(0, 2).toUpperCase();
-const findParentId = (nodes: Y.Map<any>, childId: string): string | null => { let result: string | null = null; nodes.forEach((value: any, key: string) => { if (value.children?.includes(childId)) result = key; }); return result; };
+const findParentId = (nodes: Y.Map<any>, childId: string): string | null => {
+  let result: string | null = null;
+  nodes.forEach((value: any, key: string) => { if (value.children?.includes(childId)) result = key; });
+  return result;
+};
 const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: string): MindNode | null => {
   if (excludeId && root.id === excludeId) return null;
   const stack: MindNode[] = [root];
@@ -320,7 +324,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
-  const [dragPositions, setDragPositions] = useRef<Record<string, { x: number; y: number }>>({});
+  const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [dragTargetNodeId, setDragTargetNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [editingEdgeEndpoint, setEditingEdgeEndpoint] = useState<{ edgeId: string; endpoint: 'source' | 'target' } | null>(null);
@@ -499,7 +503,11 @@ const MindMapApp = ({ user }: { user: any }) => {
     const updateUndoRedoState = () => { setCanUndo(undoManager.undoStack.length > 0); setCanRedo(undoManager.redoStack.length > 0); };
     undoManager.on('stack-item-added', updateUndoRedoState); undoManager.on('stack-item-popped', updateUndoRedoState); updateUndoRedoState();
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
-    ydoc.on('update', (update: Uint8Array, origin: any) => { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} setIsDirty(true); if (origin === 'supabase' || origin === 'local') return; channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } }); });
+    ydoc.on('update', (update: Uint8Array, origin: any) => {
+      try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {}
+      setIsDirty(true); if (origin === 'supabase' || origin === 'local') return;
+      channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
+    });
     try { const draft = localStorage.getItem(`mindmap-draft-${room}`); if (draft) { Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local'); addLog('未保存のバックアップを復元'); setIsDirty(true); } } catch(e) {}
     channel.on('broadcast', { event: 'yjs-update' }, (msg: any) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: any) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -558,7 +566,8 @@ const MindMapApp = ({ user }: { user: any }) => {
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
       const initialPositions: Record<string, { x: number; y: number }> = {};
-      selectedNodeIds.forEach((id: string) => { const n = findNodeById(mindMap!, id); if (n) initialPositions[id] = { x: n.x, y: n.y }; });
+      if (!mindMap) return;
+      selectedNodeIds.forEach((id: string) => { const n = findNodeById(mindMap, id); if (n) initialPositions[id] = { x: n.x, y: n.y }; });
       initialGroupDragPositions.current = initialPositions;
       setDragPositions(initialPositions);
       setDraggingNodeId(null); setDragTargetNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null);
@@ -591,11 +600,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
     if (!nodeUnder) {
-      setSelectedNodeId(null);
-      setSelectedNodeIds([]);
-      setSelectedEdgeId(null);
-      setSelectedImageId(null);
-      closeContextMenu();
+      setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(null); setSelectedImageId(null); closeContextMenu();
       wasDraggingRef.current = true;
       setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
     }
@@ -606,9 +611,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) {
-      addNodeAtPosition(coords.x, coords.y);
-    }
+    if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y); }
   }, [mindMap, zoomLevel, isSpacePressed, addNodeAtPosition]);
 
   const handleMouseMove = useCallback((e: MouseEvent | ReactMouseEvent) => {
@@ -790,6 +793,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(edgeId); setSelectedImageId(null); closeContextMenu(); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); }, []);
   const handleEdgeEndpointMouseDown = useCallback((e: ReactMouseEvent, edgeId: string, endpoint: 'source' | 'target') => { e.stopPropagation(); e.preventDefault(); setEditingEdgeEndpoint({ edgeId, endpoint }); }, []);
+
   const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => {
     e.stopPropagation(); e.preventDefault();
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
@@ -826,6 +830,9 @@ const MindMapApp = ({ user }: { user: any }) => {
   const statusColor = connectionStatus === '接続済み' ? 'bg-green-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-red-500' : 'bg-yellow-500');
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
 
+  const canvasScrollClass = `w-full h-full overflow-auto pt-12 relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : ''}`;
+  const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
+
   return (
     <div className="relative h-screen w-screen overflow-hidden" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -852,7 +859,6 @@ const MindMapApp = ({ user }: { user: any }) => {
               <button onClick={() => alignNodes('horizontal')} className="p-1 rounded hover:bg-gray-100" title="水平に整列"><AlignHIcon /></button>
             </div>
           )}
-          
           <div className="w-px h-5 bg-gray-300 mx-1" />
           <div className="flex items-center gap-1 px-1">
             <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm" title="線のスタイル">
@@ -861,7 +867,6 @@ const MindMapApp = ({ user }: { user: any }) => {
               <option value="straight">直線</option>
             </select>
           </div>
-
           <button onClick={scrollToHome} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-sm ml-1" title="ホーム位置に戻る"><HomeIcon /></button>
           <div className="ml-auto mr-2 flex items-center gap-1"><button onClick={() => changeZoom(-0.1)} className="text-xs px-1 rounded hover:bg-gray-200">−</button><span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{Math.round(zoomLevel * 100)}%</span><button onClick={() => changeZoom(0.1)} className="text-xs px-1 rounded hover:bg-gray-200">＋</button></div>
           <div className="flex items-center gap-2">
@@ -990,7 +995,7 @@ const MindMapApp = ({ user }: { user: any }) => {
               ); 
             })}
 
-            {edgeLines.map(el => { 
+            {edgeLines.map((el: any) => { 
               const markerStart = el.arrow === 'start' || el.arrow === 'both' ? 'url(#arrowStart)' : 'none'; 
               const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? 'url(#arrowEnd)' : 'none'; 
               return (
