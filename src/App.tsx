@@ -1,8 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 // --------------------- 型定義 ---------------------
 interface MindNode {
@@ -112,7 +111,6 @@ const findClosestConnectionPoint = (nodeX: number, nodeY: number, targetX: numbe
   return closest;
 };
 
-// ★ ベジェ曲線
 const getBezierPath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint, p2Dir: ConnectionPoint): string => {
   const offset1 = 50;
   const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
@@ -130,7 +128,6 @@ const getBezierPath = (p1: { x: number; y: number }, p2: { x: number; y: number 
   return `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
 };
 
-// ★ 直角の折れ線
 const getStepPath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint): string => {
   if (p1Dir === 'right' || p1Dir === 'left') {
     const midX = (p1.x + p2.x) / 2;
@@ -141,12 +138,10 @@ const getStepPath = (p1: { x: number; y: number }, p2: { x: number; y: number },
   }
 };
 
-// ★ 直線
 const getStraightPath = (p1: { x: number; y: number }, p2: { x: number; y: number }): string => {
   return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
 };
 
-// ★ スタイルごとのパス分岐
 const getEdgePath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint, p2Dir: ConnectionPoint, style: EdgeStyle): string => {
   switch (style) {
     case 'straight': return getStraightPath(p1, p2);
@@ -188,8 +183,10 @@ const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parent
 };
 
 const getAllNodes = (root: MindNode): MindNode[] => {
-  const result: MindNode[] = [root];
-  root.children.forEach((c: MindNode) => result.push(...getAllNodes(c)));
+  let result: MindNode[] = [root];
+  for (const child of root.children) {
+    result = result.concat(getAllNodes(child));
+  }
   return result;
 };
 
@@ -213,7 +210,8 @@ const yMapToTree = (nodes: Y.Map<any>, rootId: string): MindNode | null => {
   const convert = (id: string): MindNode | null => {
     const data = nodes.get(id);
     if (!data) return null;
-    const children = (data.children || []).map((childId: string) => convert(childId)).filter((c: MindNode | null): c is MindNode => c !== null);
+    const childIds = (data.children || []) as string[];
+    const children = childIds.map(convert).filter((c): c is MindNode => c !== null);
     return {
       id, text: data.text, x: data.x, y: data.y,
       independent: data.independent ?? false,
@@ -231,25 +229,19 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<any>) => {
     independent: root.independent ?? false,
     bgColor: root.bgColor ?? '#f0f9ff',
     textColor: root.textColor ?? '#0369a1',
-    children: root.children.map((c: MindNode) => c.id),
+    children: root.children.map(c => c.id),
   });
-  root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
+  root.children.forEach(c => treeToYMap(c, nodes));
 };
 
 const uint8ArrayToBase64 = (u8: Uint8Array): string => { let binary = ''; for (let i = 0; i < u8.byteLength; i++) binary += String.fromCharCode(u8[i]); return btoa(binary); };
 const base64ToUint8Array = (b64: string): Uint8Array => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const stringToColor = (str: string): string => { let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash); return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`; };
 const getInitial = (email: string): string => email.split('@')[0].substring(0, 2).toUpperCase();
-
-const findParentId = (nodes: Y.Map<any>, childId: string): string | null => {
-  let result: string | null = null;
-  nodes.forEach((value: any, key: string) => { if (value.children?.includes(childId)) result = key; });
-  return result;
-};
-
+const findParentId = (nodes: Y.Map<any>, childId: string): string | null => { let result: string | null = null; nodes.forEach((value: any, key: string) => { if (value.children?.includes(childId)) result = key; }); return result; };
 const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: string): MindNode | null => {
   if (excludeId && root.id === excludeId) return null;
-  const stack = [root];
+  const stack: MindNode[] = [root];
   while (stack.length) {
     const node = stack.pop()!;
     const left = node.x - NODE_WIDTH / 2 - 15, top = node.y - NODE_HEIGHT / 2 - 15;
@@ -258,13 +250,7 @@ const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: strin
   }
   return null;
 };
-
-const findNodeById = (root: MindNode, id: string): MindNode | null => {
-  if (root.id === id) return root;
-  for (const c of root.children) { const found = findNodeById(c, id); if (found) return found; }
-  return null;
-};
-
+const findNodeById = (root: MindNode, id: string): MindNode | null => { if (root.id === id) return root; for (const c of root.children) { const found = findNodeById(c, id); if (found) return found; } return null; };
 const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositions: Record<string, { x: number; y: number }>, draggingNodeId: string | null): { x: number; y: number } | null => {
   if (!mindMap) return null;
   const node = findNodeById(mindMap, nodeId);
@@ -272,15 +258,10 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
   if (nodeId === draggingNodeId && dragPositions[nodeId]) return dragPositions[nodeId];
   return { x: node.x, y: node.y };
 };
-
 const getCanvasCoords = (clientX: number, clientY: number, container: HTMLDivElement, zoomLevel: number): { x: number; y: number } => {
   const rect = container.getBoundingClientRect();
-  return {
-    x: (clientX - rect.left + container.scrollLeft) / zoomLevel,
-    y: (clientY - rect.top + container.scrollTop) / zoomLevel,
-  };
+  return { x: (clientX - rect.left + container.scrollLeft) / zoomLevel, y: (clientY - rect.top + container.scrollTop) / zoomLevel };
 };
-
 const isNodeInRect = (node: MindNode, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
   const left = node.x - NODE_WIDTH / 2, right = node.x + NODE_WIDTH / 2, top = node.y - NODE_HEIGHT / 2, bottom = node.y + NODE_HEIGHT / 2;
   const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2), ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
@@ -321,7 +302,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
   const [showLoadMenu, setShowLoadMenu] = useState(false);
-
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -340,7 +320,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
-  const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [dragPositions, setDragPositions] = useRef<Record<string, { x: number; y: number }>>({});
   const [dragTargetNodeId, setDragTargetNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [editingEdgeEndpoint, setEditingEdgeEndpoint] = useState<{ edgeId: string; endpoint: 'source' | 'target' } | null>(null);
@@ -377,14 +357,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [contextMenu, setContextMenu] = useState<ContextMenuInfo>({ visible: false, x: 0, y: 0, type: 'canvas' });
 
   const closeContextMenu = useCallback(() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowColorPalette(null); }, []);
-
-  const scrollToHome = useCallback(() => {
-    const container = scrollContainerRef.current; if (!container) return;
-    const centerX = 5000 * zoomLevel - container.clientWidth / 2;
-    const centerY = 5000 * zoomLevel - container.clientHeight / 2;
-    container.scrollTo({ left: centerX, top: centerY, behavior: 'smooth' });
-  }, [zoomLevel]);
-
+  const scrollToHome = useCallback(() => { const container = scrollContainerRef.current; if (!container) return; const centerX = 5000 * zoomLevel - container.clientWidth / 2; const centerY = 5000 * zoomLevel - container.clientHeight / 2; container.scrollTo({ left: centerX, top: centerY, behavior: 'smooth' }); }, [zoomLevel]);
   const broadcastAwareness = useCallback((channel: RealtimeChannel, userId: string, state: AwarenessState | null) => { if (!channel) return; channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId, state } }); }, []);
 
   const setZoomWithAnchor = useCallback((newZoom: number, clientX: number, clientY: number) => {
@@ -426,7 +399,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   }, [editingNodeId]);
 
   const addEdge = useCallback((sourceNodeId: string, sourcePoint: ConnectionPoint, targetNodeId: string, targetPoint: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges || !ydocRef.current) return; const edgeId = crypto.randomUUID(); ydocRef.current.transact(() => { yEdges.set(edgeId, { sourceNodeId, sourcePoint, targetNodeId, targetPoint, arrow: 'none' }); }); }, []);
-
   const deleteEdge = useCallback((edgeId: string) => {
     if (edgeId.startsWith('parent-edge-')) {
       const childId = edgeId.replace('parent-edge-', '');
@@ -440,26 +412,19 @@ const MindMapApp = ({ user }: { user: any }) => {
         if (childNode && rootNode && parentId) {
           if (parentId !== rootId) {
             const parentNode = nodes.get(parentId);
-            if (parentNode) {
-              nodes.set(parentId, { ...parentNode, children: (parentNode.children as string[]).filter((id: string) => id !== childId) });
-            }
+            if (parentNode) nodes.set(parentId, { ...parentNode, children: (parentNode.children as string[]).filter((id: string) => id !== childId) });
             nodes.set(childId, { ...childNode, independent: true });
             nodes.set(rootId, { ...rootNode, children: [...(rootNode.children as string[]), childId] });
-          } else {
-            nodes.set(childId, { ...childNode, independent: true });
-          }
+          } else { nodes.set(childId, { ...childNode, independent: true }); }
         }
       });
-      setSelectedEdgeId(null);
-      closeContextMenu();
-      return;
+      setSelectedEdgeId(null); closeContextMenu(); return;
     }
     const yEdges = yEdgesRef.current; if (!yEdges) return; ydocRef.current?.transact(() => { yEdges.delete(edgeId); }); setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu]);
 
   const updateEdgeEndpoint = useCallback((edgeId: string, endpoint: 'source' | 'target', point: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { if (endpoint === 'source') yEdges.set(edgeId, { ...edge, sourcePoint: point }); else yEdges.set(edgeId, { ...edge, targetPoint: point }); }); }, []);
   const updateEdgeArrow = useCallback((edgeId: string, arrow: 'none' | 'start' | 'end' | 'both') => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, arrow }); }); }, []);
-
   const reparentNode = useCallback((nodeId: string, newParentId: string) => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current || nodeId === yRootRef.current) return;
     const oldParentId = findParentId(nodes, nodeId); if (!oldParentId || oldParentId === newParentId) return;
@@ -473,14 +438,8 @@ const MindMapApp = ({ user }: { user: any }) => {
 
   const addChildNode = useCallback((parentId: string) => {
     const nodes = yNodesRef.current; if (!nodes) return; const parent = nodes.get(parentId); if (!parent) return;
-    const childId = crypto.randomUUID();
-    const idealX = parent.x + NODE_WIDTH + 40;
-    const idealY = parent.y;
-    const safePos = getUnoccupiedPosition(idealX, idealY, nodes);
-    ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: '新しいトピック', x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' });
-      nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
-    });
+    const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(parent.x + NODE_WIDTH + 40, parent.y, nodes);
+    ydocRef.current?.transact(() => { nodes.set(childId, { text: '新しいトピック', x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] }); });
     setSelectedNodeId(childId); setSelectedNodeIds([childId]);
   }, []);
 
@@ -488,15 +447,9 @@ const MindMapApp = ({ user }: { user: any }) => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return; if (targetId === yRootRef.current) return;
     const parentId = findParentId(nodes, targetId); if (!parentId) return; const parent = nodes.get(parentId); if (!parent) return;
     const siblingId = crypto.randomUUID(); const targetNode = nodes.get(targetId);
-    const idealX = targetNode ? targetNode.x : parent.x + NODE_WIDTH + 40;
-    const idealY = targetNode ? targetNode.y + (position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20)) : parent.y;
-    const safePos = getUnoccupiedPosition(idealX, idealY, nodes);
-    const curChildren: string[] = parent.children ?? []; const targetIndex = curChildren.indexOf(targetId); const newChildren = [...curChildren];
-    newChildren.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, siblingId);
-    ydocRef.current?.transact(() => {
-      nodes.set(siblingId, { text: '新しいトピック', x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' });
-      nodes.set(parentId, { ...parent, children: newChildren });
-    });
+    const safePos = getUnoccupiedPosition(targetNode ? targetNode.x : parent.x + NODE_WIDTH + 40, targetNode ? targetNode.y + (position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20)) : parent.y, nodes);
+    const curChildren: string[] = parent.children ?? []; const targetIndex = curChildren.indexOf(targetId); const newChildren = [...curChildren]; newChildren.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, siblingId);
+    ydocRef.current?.transact(() => { nodes.set(siblingId, { text: '新しいトピック', x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); nodes.set(parentId, { ...parent, children: newChildren }); });
     setSelectedNodeId(siblingId); setSelectedNodeIds([siblingId]);
   }, []);
 
@@ -504,77 +457,27 @@ const MindMapApp = ({ user }: { user: any }) => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return; if (targetId === yRootRef.current) return;
     const oldParentId = findParentId(nodes, targetId); if (!oldParentId) return; const oldParent = nodes.get(oldParentId); if (!oldParent) return;
     const targetNode = nodes.get(targetId); if (!targetNode) return;
-    const newParentId = crypto.randomUUID();
-    const idealX = targetNode.x - NODE_WIDTH - 40;
-    const idealY = targetNode.y;
-    const safePos = getUnoccupiedPosition(idealX, idealY, nodes);
-    ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: '新しいトピック', x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' });
-      const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId);
-      nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
-    });
+    const newParentId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(targetNode.x - NODE_WIDTH - 40, targetNode.y, nodes);
+    ydocRef.current?.transact(() => { nodes.set(newParentId, { text: '新しいトピック', x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren }); });
     setSelectedNodeId(newParentId); setSelectedNodeIds([newParentId]);
   }, []);
 
   const addNodeAtPosition = useCallback((x: number, y: number) => {
     const nodes = yNodesRef.current, rootId = yRootRef.current; if (!nodes || !rootId) return;
-    const childId = crypto.randomUUID();
-    const safePos = getUnoccupiedPosition(x, y, nodes);
-    ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: '独立トピック', x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f0f9ff', textColor: '#0369a1' });
-      const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
-    });
+    const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(x, y, nodes);
+    ydocRef.current?.transact(() => { nodes.set(childId, { text: '独立トピック', x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f0f9ff', textColor: '#0369a1' }); const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] }); });
     setSelectedNodeId(childId); setSelectedNodeIds([childId]);
   }, []);
 
-  const deleteNode = useCallback((nodeId: string) => {
-    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current || nodeId === yRootRef.current) return;
-    ydocRef.current?.transact(() => {
-      nodes.forEach((value: any, key: string) => { if (value.children?.includes(nodeId)) nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) }); });
-      nodes.delete(nodeId);
-    });
-    setSelectedNodeId(null); setSelectedNodeIds([]);
-  }, []);
-
+  const deleteNode = useCallback((nodeId: string) => { const nodes = yNodesRef.current; if (!nodes || !yRootRef.current || nodeId === yRootRef.current) return; ydocRef.current?.transact(() => { nodes.forEach((value: any, key: string) => { if (value.children?.includes(nodeId)) nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) }); }); nodes.delete(nodeId); }); setSelectedNodeId(null); setSelectedNodeIds([]); }, []);
   const updateText = useCallback((nodeId: string, text: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, text }); }, []);
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
   const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
-
-  const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => {
-    const nodes = yNodesRef.current; if (!nodes || selectedNodeIds.length < 2) return;
-    const refNodeId = selectedNodeIds[0]; const refNode = nodes.get(refNodeId); if (!refNode) return;
-    const targetX = axis === 'vertical' ? refNode.x : undefined; const targetY = axis === 'horizontal' ? refNode.y : undefined;
-    const idsToAlign = selectedNodeIds.slice(1);
-    ydocRef.current?.transact(() => { idsToAlign.forEach((id: string) => { const data = nodes.get(id); if (!data) return; const updated = { ...data }; if (targetX !== undefined) updated.x = targetX; if (targetY !== undefined) updated.y = targetY; nodes.set(id, updated); }); });
-  }, [selectedNodeIds]);
-
-  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`;
-    const { data, error } = await supabase.storage.from('images').upload(fileName, file);
-    if (error) { alert('画像のアップロードに失敗しました'); return; }
-    const path = data.path; const img = new Image(); img.src = URL.createObjectURL(file);
-    img.onload = () => {
-      const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return;
-      const imageId = crypto.randomUUID(); const container = scrollContainerRef.current;
-      const centerX = container ? container.scrollLeft + container.clientWidth / 2 : 5000;
-      const centerY = container ? container.scrollTop + container.clientHeight / 2 : 5000;
-      ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: centerX - img.width / 2, y: centerY - img.height / 2, width: img.width, height: img.height }); });
-    };
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }, []);
-
-  const deleteImage = useCallback((imageId: string) => {
-    const yImages = yImagesRef.current; if (!yImages) return;
-    const image = yImages.get(imageId);
-    if (image) { supabase.storage.from('images').remove([image.storagePath]); }
-    ydocRef.current?.transact(() => { yImages.delete(imageId); });
-    setSelectedImageId(null); closeContextMenu();
-  }, [closeContextMenu]);
-
+  const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { const nodes = yNodesRef.current; if (!nodes || selectedNodeIds.length < 2) return; const refNodeId = selectedNodeIds[0]; const refNode = nodes.get(refNodeId); if (!refNode) return; const targetX = axis === 'vertical' ? refNode.x : undefined; const targetY = axis === 'horizontal' ? refNode.y : undefined; const idsToAlign = selectedNodeIds.slice(1); ydocRef.current?.transact(() => { idsToAlign.forEach((id: string) => { const data = nodes.get(id); if (!data) return; const updated = { ...data }; if (targetX !== undefined) updated.x = targetX; if (targetY !== undefined) updated.y = targetY; nodes.set(id, updated); }); }); }, [selectedNodeIds]);
+  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`; const { data, error } = await supabase.storage.from('images').upload(fileName, file); if (error) { alert('画像のアップロードに失敗しました'); return; } const path = data.path; const img = new Image(); img.src = URL.createObjectURL(file); img.onload = () => { const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return; const imageId = crypto.randomUUID(); const container = scrollContainerRef.current; const centerX = container ? container.scrollLeft + container.clientWidth / 2 : 5000; const centerY = container ? container.scrollTop + container.clientHeight / 2 : 5000; ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: centerX - img.width / 2, y: centerY - img.height / 2, width: img.width, height: img.height }); }); }; if (fileInputRef.current) fileInputRef.current.value = ''; }, []);
+  const deleteImage = useCallback((imageId: string) => { const yImages = yImagesRef.current; if (!yImages) return; const image = yImages.get(imageId); if (image) { supabase.storage.from('images').remove([image.storagePath]); } ydocRef.current?.transact(() => { yImages.delete(imageId); }); setSelectedImageId(null); closeContextMenu(); }, [closeContextMenu]);
   const updateImagePosition = useCallback((imageId: string, x: number, y: number) => { const yImages = yImagesRef.current; if (!yImages) return; const data = yImages.get(imageId); if (data) yImages.set(imageId, { ...data, x, y }); }, []);
 
-  // initYjs
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -588,27 +491,15 @@ const MindMapApp = ({ user }: { user: any }) => {
     else { const rootId = crypto.randomUUID(); yNodes.set(rootId, { text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); yRootRef.current = rootId; }
     const updateReact = () => {
       if (yRootRef.current) { const tree = yMapToTree(yNodes, yRootRef.current); if (tree) setMindMap(tree); }
-      const edgeList: EdgeData[] = [];
-      yEdges.forEach((value: any, key: string) => {
-        edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' });
-      });
-      setEdges(edgeList);
-      const imageList: ImageData[] = [];
-      yImages.forEach((value: any, key: string) => {
-        imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height });
-      });
-      setImages(imageList);
+      const edgeList: EdgeData[] = []; yEdges.forEach((value: any, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
+      const imageList: ImageData[] = []; yImages.forEach((value: any, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height }); }); setImages(imageList);
     };
     yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); updateReact();
     const undoManager = new Y.UndoManager([yNodes, yEdges, yImages]); undoManagerRef.current = undoManager;
     const updateUndoRedoState = () => { setCanUndo(undoManager.undoStack.length > 0); setCanRedo(undoManager.redoStack.length > 0); };
     undoManager.on('stack-item-added', updateUndoRedoState); undoManager.on('stack-item-popped', updateUndoRedoState); updateUndoRedoState();
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
-    ydoc.on('update', (update: Uint8Array, origin: any) => {
-      try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {}
-      setIsDirty(true); if (origin === 'supabase' || origin === 'local') return;
-      channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
-    });
+    ydoc.on('update', (update: Uint8Array, origin: any) => { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} setIsDirty(true); if (origin === 'supabase' || origin === 'local') return; channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } }); });
     try { const draft = localStorage.getItem(`mindmap-draft-${room}`); if (draft) { Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local'); addLog('未保存のバックアップを復元'); setIsDirty(true); } } catch(e) {}
     channel.on('broadcast', { event: 'yjs-update' }, (msg: any) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: any) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -658,7 +549,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleNewMap = () => { if (channelRef.current) supabase.removeChannel(channelRef.current); const newRoom = crypto.randomUUID(); window.location.hash = newRoom; initYjs(newRoom); setMapId(null); setMapTitle('無題のマップ'); };
   const handleShare = () => { if (!roomId) return; navigator.clipboard.writeText(`${window.location.origin}#${roomId}`); alert('共有URLをコピーしました！'); };
 
-  // ★ ノードドラッグ開始（複数選択対応）
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -668,9 +558,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
       const initialPositions: Record<string, { x: number; y: number }> = {};
-      if (!mindMap) return;
-      const currentMindMap: MindNode = mindMap;
-      selectedNodeIds.forEach((id: string) => { const n = findNodeById(currentMindMap, id); if (n) initialPositions[id] = { x: n.x, y: n.y }; });
+      selectedNodeIds.forEach((id: string) => { const n = findNodeById(mindMap!, id); if (n) initialPositions[id] = { x: n.x, y: n.y }; });
       initialGroupDragPositions.current = initialPositions;
       setDragPositions(initialPositions);
       setDraggingNodeId(null); setDragTargetNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null);
@@ -718,7 +606,9 @@ const MindMapApp = ({ user }: { user: any }) => {
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y); }
+    if (!nodeUnder) {
+      addNodeAtPosition(coords.x, coords.y);
+    }
   }, [mindMap, zoomLevel, isSpacePressed, addNodeAtPosition]);
 
   const handleMouseMove = useCallback((e: MouseEvent | ReactMouseEvent) => {
@@ -741,7 +631,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       } else {
         setDrawingEdge(prev => prev ? { ...prev, currentX: coords.x, currentY: coords.y, targetNodeId: undefined, targetPoint: undefined } : null);
       }
-      return;
+      return; 
     }
     if (draggingImageId) { updateImagePosition(draggingImageId, coords.x - imageDragOffset.current.x, coords.y - imageDragOffset.current.y); return; }
     if (resizingImageHandle) {
@@ -771,15 +661,18 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
-    if (drawingEdge) {
-      if (!mindMap) return;
+    if (drawingEdge) { 
+      if (!mindMap) return; 
       if (drawingEdge.targetNodeId && drawingEdge.targetPoint) {
         addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, drawingEdge.targetNodeId, drawingEdge.targetPoint);
       } else {
-        const targetNode = findNodeAtPoint(mindMap, drawingEdge.currentX, drawingEdge.currentY, drawingEdge.sourceNodeId);
-        if (targetNode) { const pt = findClosestConnectionPoint(targetNode.x, targetNode.y, drawingEdge.currentX, drawingEdge.currentY); addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, targetNode.id, pt); }
+        const targetNode = findNodeAtPoint(mindMap, drawingEdge.currentX, drawingEdge.currentY, drawingEdge.sourceNodeId); 
+        if (targetNode) { 
+          const pt = findClosestConnectionPoint(targetNode.x, targetNode.y, drawingEdge.currentX, drawingEdge.currentY); 
+          addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, targetNode.id, pt); 
+        }
       }
-      setDrawingEdge(null); return;
+      setDrawingEdge(null); return; 
     }
     if (draggingImageId) { setDraggingImageId(null); return; }
     if (resizingImageHandle) { setResizingImageHandle(null); return; }
@@ -812,7 +705,9 @@ const MindMapApp = ({ user }: { user: any }) => {
     if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) { e.preventDefault(); changeZoom(e.key === '-' ? -0.1 : 0.1); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEdgeId && !selectedNodeId && !selectedImageId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedImageId && !selectedNodeId && !selectedEdgeId) { e.preventDefault(); deleteImage(selectedImageId); return; }
+    
     if (!selectedNodeId) return;
+    
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault();
       const current = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
@@ -820,7 +715,6 @@ const MindMapApp = ({ user }: { user: any }) => {
       let closest: MindNode | null = null;
       let minDist = Infinity;
       const allNodes = getAllNodes(mindMap);
-      // ★ for...of ループに変更して型の絞り込みを適切に行う
       for (const n of allNodes) {
         if (n.id === selectedNodeId) continue;
         const dx = n.x - current.x;
@@ -846,7 +740,7 @@ const MindMapApp = ({ user }: { user: any }) => {
           const viewRight = viewLeft + rect.width / zoomLevel;
           const viewBottom = viewTop + rect.height / zoomLevel;
           if (closest.x < viewLeft + 100 || closest.x > viewRight - 100 || closest.y < viewTop + 100 || closest.y > viewBottom - 100) {
-            container.scrollTo({ left: closest.x * zoomLevel - rect.width / 2, top: closest.y * zoomLevel - rect.height / 2, behavior: 'smooth' });
+             container.scrollTo({ left: closest.x * zoomLevel - rect.width / 2, top: closest.y * zoomLevel - rect.height / 2, behavior: 'smooth' });
           }
         }
       }
@@ -896,7 +790,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(edgeId); setSelectedImageId(null); closeContextMenu(); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); }, []);
   const handleEdgeEndpointMouseDown = useCallback((e: ReactMouseEvent, edgeId: string, endpoint: 'source' | 'target') => { e.stopPropagation(); e.preventDefault(); setEditingEdgeEndpoint({ edgeId, endpoint }); }, []);
-
   const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => {
     e.stopPropagation(); e.preventDefault();
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
@@ -912,7 +805,6 @@ const MindMapApp = ({ user }: { user: any }) => {
 
   const isAnyDragging = draggingNodeId !== null || isMultiDragging || isCanvasPanning;
 
-  // ★ エッジ描画データ
   const edgeLines: { id: string; pathD: string; selected: boolean; arrow: string; sourceX: number; sourceY: number; targetX: number; targetY: number }[] = [];
   for (const edge of edges) {
     const sourcePos = getNodeDisplayPos(edge.sourceNodeId, mindMap, dragPositions, draggingNodeId);
@@ -924,11 +816,10 @@ const MindMapApp = ({ user }: { user: any }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  // ★ participants
   const participants: { email: string; color: string; isEditing: boolean; isSelecting: boolean; isSelf: boolean }[] = [
     { email: myEmail, color: myColor, isEditing: editingNodeId !== null, isSelecting: selectedNodeId !== null, isSelf: true },
   ];
-  (Object.entries(awarenessStates) as [string, AwarenessState][]).forEach(([_userId, state]: [string, AwarenessState]) => {
+  (Object.entries(awarenessStates) as [string, AwarenessState][]).forEach(([_userId, state]) => {
     participants.push({ email: state.email, color: state.color, isEditing: state.editingNodeId !== null, isSelecting: state.selectedNodeId !== null, isSelf: false });
   });
 
@@ -938,6 +829,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   return (
     <div className="relative h-screen w-screen overflow-hidden" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+      
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       {!zenMode && (
         <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
@@ -960,6 +852,7 @@ const MindMapApp = ({ user }: { user: any }) => {
               <button onClick={() => alignNodes('horizontal')} className="p-1 rounded hover:bg-gray-100" title="水平に整列"><AlignHIcon /></button>
             </div>
           )}
+          
           <div className="w-px h-5 bg-gray-300 mx-1" />
           <div className="flex items-center gap-1 px-1">
             <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm" title="線のスタイル">
@@ -968,16 +861,17 @@ const MindMapApp = ({ user }: { user: any }) => {
               <option value="straight">直線</option>
             </select>
           </div>
+
           <button onClick={scrollToHome} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-sm ml-1" title="ホーム位置に戻る"><HomeIcon /></button>
           <div className="ml-auto mr-2 flex items-center gap-1"><button onClick={() => changeZoom(-0.1)} className="text-xs px-1 rounded hover:bg-gray-200">−</button><span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{Math.round(zoomLevel * 100)}%</span><button onClick={() => changeZoom(0.1)} className="text-xs px-1 rounded hover:bg-gray-200">＋</button></div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${statusColor}`} title={connectionStatus} /></div>
             <div className="relative">
               <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-gray-100 rounded px-2 py-1 transition-colors" title="参加者一覧">
-                <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p: { email: string; color: string; isEditing: boolean; isSelecting: boolean; isSelf: boolean }, i: number) => (<div key={i} className={`w-5 h-5 rounded-full border border-white flex items-center justify-center text-[9px] font-bold text-white ${p.isSelf ? 'ring-1 ring-gray-300' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-5 h-5 rounded-full border border-white bg-gray-300 flex items-center justify-center text-[9px] font-bold text-gray-600">+{participants.length - 3}</div>}</div>
+                <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p, i) => (<div key={i} className={`w-5 h-5 rounded-full border border-white flex items-center justify-center text-[9px] font-bold text-white ${p.isSelf ? 'ring-1 ring-gray-300' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-5 h-5 rounded-full border border-white bg-gray-300 flex items-center justify-center text-[9px] font-bold text-gray-600">+{participants.length - 3}</div>}</div>
                 <span className="text-xs text-gray-500">{participants.length}人</span>
               </button>
-              {showParticipants && (<div className="absolute top-full right-0 mt-1 w-56 bg-white border rounded-lg shadow-lg p-3 z-50"><h3 className="text-xs font-bold text-gray-600 mb-2">参加者 ({participants.length}人)</h3><div className="space-y-1.5 max-h-48 overflow-y-auto">{participants.map((p: { email: string; color: string; isEditing: boolean; isSelecting: boolean; isSelf: boolean }, i: number) => (<div key={i} className="flex items-center gap-2 text-xs"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${p.isSelf ? 'ring-2 ring-blue-400' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-gray-800 truncate">{p.email}{p.isSelf ? ' (あなた)' : ''}</div><div className="text-gray-400 text-[10px]">{p.isEditing ? '📝 編集中' : p.isSelecting ? '👆 選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-2 text-[10px] text-gray-500 underline w-full text-center">閉じる</button></div>)}
+              {showParticipants && (<div className="absolute top-full right-0 mt-1 w-56 bg-white border rounded-lg shadow-lg p-3 z-50"><h3 className="text-xs font-bold text-gray-600 mb-2">参加者 ({participants.length}人)</h3><div className="space-y-1.5 max-h-48 overflow-y-auto">{participants.map((p, i) => (<div key={i} className="flex items-center gap-2 text-xs"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${p.isSelf ? 'ring-2 ring-blue-400' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-gray-800 truncate">{p.email}{p.isSelf ? ' (あなた)' : ''}</div><div className="text-gray-400 text-[10px]">{p.isEditing ? '📝 編集中' : p.isSelecting ? '👆 選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-2 text-[10px] text-gray-500 underline w-full text-center">閉じる</button></div>)}
             </div>
             <div className="flex items-center gap-1.5" title={myEmail}>{user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300" onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} /> : null}<div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${user.user_metadata?.avatar_url ? 'hidden' : ''}`} style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div></div>
             <button onClick={handleLogout} className="bg-red-400 hover:bg-red-500 text-white text-xs px-2 py-1 rounded">ログアウト</button>
@@ -988,17 +882,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-2 right-2 z-50 bg-white bg-opacity-90 border rounded-full px-3 py-1 text-xs shadow hover:bg-gray-100">ZEN解除 (Alt+Cmd+F)</button>}
       {contextMenu.visible && !showColorPalette && (
         <div className="fixed z-[100] bg-white border rounded-lg shadow-xl py-1 text-sm min-w-[160px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-          {contextMenu.type === 'node' && contextMenu.nodeId && (<>
-            <button onClick={() => executeContextAction('addChild')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Tab</span> 子トピックを追加</button>
-            <button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Enter</span> 下に追加</button>
-            <button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Shift+Enter</span> 上に追加</button>
-            <button onClick={() => executeContextAction('addParent')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">⌘+Enter</span> 親トピックを追加</button>
-            <hr className="my-1" />
-            <button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">色を変更</button>
-            <hr className="my-1" />
-            {selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">水平に整列</button><hr className="my-1" /></>)}
-            <button onClick={() => executeContextAction('delete')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-red-600"><span className="text-xs">⌫</span> 削除</button>
-          </>)}
+          {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Tab</span> 子トピックを追加</button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Enter</span> 下に追加</button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Shift+Enter</span> 上に追加</button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">⌘+Enter</span> 親トピックを追加</button><hr className="my-1" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">色を変更</button><hr className="my-1" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">水平に整列</button><hr className="my-1" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-red-600"><span className="text-xs">⌫</span> 削除</button></>)}
           {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-red-600"><span className="text-xs">⌫</span> この線を削除</button><hr className="my-1" /><div className="px-3 py-1 text-xs text-gray-500">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">両方 ⇄</button></>)}
           {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-red-600">画像を削除</button></>)}
           {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">独立トピックを追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">画像を添付</button></>)}
@@ -1010,51 +894,142 @@ const MindMapApp = ({ user }: { user: any }) => {
           <button onClick={() => setShowColorPalette(null)} className="mt-2 text-xs text-gray-500 underline w-full text-center">閉じる</button>
         </div>
       )}
-      <div ref={scrollContainerRef} className={`w-full h-full overflow-auto pt-12 relative hide-scrollbar ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : ''}`} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', outline: 'none' } as React.CSSProperties}>
-        <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '24px 24px', backgroundColor: '#f8fafc' }} onContextMenu={handleCanvasContextMenu}>
+      
+      <div 
+        ref={scrollContainerRef} 
+        className={`${canvasScrollClass} hide-scrollbar`} 
+        tabIndex={0} 
+        onKeyDown={handleKeyDown} 
+        onClick={handleCanvasClick} 
+        onContextMenu={handleCanvasContextMenu} 
+        onMouseDown={handleCanvasMouseDown} 
+        onDoubleClick={handleCanvasDoubleClick}
+        style={hideScrollbarStyle as React.CSSProperties}
+      >
+        <div 
+          className="relative" 
+          style={{ 
+            width: '10000px', 
+            height: '10000px', 
+            transform: `scale(${zoomLevel})`, 
+            transformOrigin: '0 0',
+            backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+            backgroundColor: '#f8fafc'
+          }} 
+          onContextMenu={handleCanvasContextMenu}
+        >
           {showFloatingToolbar && floatingToolbarPos && (
-            <div className="absolute z-[60] bg-white rounded-lg shadow-xl border border-gray-200 flex items-center p-1 gap-1" style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y - NODE_HEIGHT / 2 - 40, transform: 'translate(-50%, 0)', animation: 'fadeIn 0.15s ease-out' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+            <div 
+              className="absolute z-[60] bg-white rounded-lg shadow-xl border border-gray-200 flex items-center p-1 gap-1"
+              style={{
+                left: floatingToolbarPos.x,
+                top: floatingToolbarPos.y - NODE_HEIGHT / 2 - 40,
+                transform: 'translate(-50%, 0)',
+                animation: 'fadeIn 0.15s ease-out'
+              }}
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+            >
               <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
-              <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-gray-100 rounded text-gray-600" title="色を変更"><PaletteIcon /></button>
+              <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-gray-100 rounded text-gray-600" title="色を変更"><PaletteIcon /></button>
               <div className="w-px h-4 bg-gray-300 mx-0.5" />
-              <button onClick={() => addChildNode(selectedNodeId)} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-1" title="子を追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">子</span></button>
-              <button onClick={() => addSiblingNode(selectedNodeId, 'after')} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-1" title="兄弟を追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">兄弟</span></button>
+              <button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-1" title="子を追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">子</span></button>
+              <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-1" title="兄弟を追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">兄弟</span></button>
               <div className="w-px h-4 bg-gray-300 mx-0.5" />
-              <button onClick={() => deleteNode(selectedNodeId)} className="p-1.5 hover:bg-red-50 rounded text-red-500" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+              <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-red-50 rounded text-red-500" title="削除 (Delete/Backspace)"><TrashIcon /></button>
             </div>
           )}
+
           {images.map((image: ImageData) => (
-            <div key={image.id} className={`absolute cursor-move border-2 ${selectedImageId === image.id ? 'border-blue-500' : 'border-transparent'}`} style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: 5 }} onMouseDown={(e) => handleMouseDownOnImage(e as any, image.id)} onContextMenu={(e) => handleImageContextMenu(e as any, image.id)} onClick={(e) => e.stopPropagation()}>
+            <div
+              key={image.id}
+              className={`absolute cursor-move border-2 ${selectedImageId === image.id ? 'border-blue-500' : 'border-transparent'}`}
+              style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: 5 }}
+              onMouseDown={(e) => handleMouseDownOnImage(e as any, image.id)}
+              onContextMenu={(e) => handleImageContextMenu(e as any, image.id)}
+              onClick={(e) => e.stopPropagation()}
+            >
               <img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />
-              {selectedImageId === image.id && (<><div className="absolute top-0 left-0 w-3 h-3 bg-white border border-blue-500 cursor-nw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'nw')} /><div className="absolute top-0 right-0 w-3 h-3 bg-white border border-blue-500 cursor-ne-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'ne')} /><div className="absolute bottom-0 left-0 w-3 h-3 bg-white border border-blue-500 cursor-sw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'sw')} /><div className="absolute bottom-0 right-0 w-3 h-3 bg-white border border-blue-500 cursor-se-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'se')} /></>)}
+              {selectedImageId === image.id && (
+                <>
+                  <div className="absolute top-0 left-0 w-3 h-3 bg-white border border-blue-500 cursor-nw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'nw')} />
+                  <div className="absolute top-0 right-0 w-3 h-3 bg-white border border-blue-500 cursor-ne-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'ne')} />
+                  <div className="absolute bottom-0 left-0 w-3 h-3 bg-white border border-blue-500 cursor-sw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'sw')} />
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-white border border-blue-500 cursor-se-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'se')} />
+                </>
+              )}
             </div>
           ))}
           <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
             <defs><marker id="arrowStart" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6b7280" /></marker><marker id="arrowEnd" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6b7280" /></marker></defs>
-            {/* 親子線 */}
-            {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => {
-              const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId);
-              const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId);
-              if (!parentPos || !childPos) return null;
-              const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y;
-              let parentPoint: ConnectionPoint, childPoint: ConnectionPoint;
-              if (Math.abs(dx) > Math.abs(dy)) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; }
-              else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; }
-              const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint);
-              const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint);
+            
+            {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { 
+              const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); 
+              const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); 
+              if (!parentPos || !childPos) return null; 
+              const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; 
+              let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; 
+              if (Math.abs(dx) > Math.abs(dy)) { 
+                parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; 
+              } else { 
+                parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; 
+              } 
+              const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint); 
+              const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint); 
               const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle);
+              
               const edgeId = `parent-edge-${fn.id}`;
               const isSelected = selectedEdgeId === edgeId;
-              return (<g key={edgeId} className="pointer-events-auto"><path d={pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e as any, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#f59e0b' : '#93c5fd'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} /></g>);
+
+              return (
+                <g key={edgeId} className="pointer-events-auto">
+                  <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e as any, edgeId)} />
+                  <path d={pathD} fill="none" stroke={isSelected ? '#f59e0b' : '#93c5fd'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} />
+                </g>
+              ); 
             })}
-            {/* 手動接続線 */}
-            {edgeLines.map((el: { id: string; pathD: string; selected: boolean; arrow: string; sourceX: number; sourceY: number; targetX: number; targetY: number }) => {
-              const markerStart = el.arrow === 'start' || el.arrow === 'both' ? 'url(#arrowStart)' : 'none';
-              const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? 'url(#arrowEnd)' : 'none';
-              return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#f59e0b' : '#93c5fd'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? '' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={6} fill="#3b82f6" stroke="white" strokeWidth={2} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={6} fill="#ef4444" stroke="white" strokeWidth={2} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'target')} /></>)}</g>);
+
+            {edgeLines.map(el => { 
+              const markerStart = el.arrow === 'start' || el.arrow === 'both' ? 'url(#arrowStart)' : 'none'; 
+              const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? 'url(#arrowEnd)' : 'none'; 
+              return (
+                <g key={el.id} className="pointer-events-auto">
+                  <path d={el.pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
+                  <path d={el.pathD} fill="none" stroke={el.selected ? '#f59e0b' : '#93c5fd'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? '' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
+                  {el.selected && (<>
+                    <circle cx={el.sourceX} cy={el.sourceY} r={6} fill="#3b82f6" stroke="white" strokeWidth={2} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'source')} />
+                    <circle cx={el.targetX} cy={el.targetY} r={6} fill="#ef4444" stroke="white" strokeWidth={2} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'target')} />
+                  </>)}
+                </g>
+              ); 
             })}
-            {drawingEdge && mindMap && (<path d={getEdgePath(getConnectionPoint((findNodeById(mindMap, drawingEdge.sourceNodeId)?.x ?? 0), (findNodeById(mindMap, drawingEdge.sourceNodeId)?.y ?? 0), drawingEdge.sourcePoint), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle)} fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="5,5" className="pointer-events-none" />)}
-            {selectionRect && (<rect x={Math.min(selectionRect.x1, selectionRect.x2)} y={Math.min(selectionRect.y1, selectionRect.y2)} width={Math.abs(selectionRect.x2 - selectionRect.x1)} height={Math.abs(selectionRect.y2 - selectionRect.y1)} fill="rgba(59, 130, 246, 0.15)" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 4" />)}
+
+            {drawingEdge && mindMap && (
+              <path 
+                d={getEdgePath(
+                  getConnectionPoint((findNodeById(mindMap, drawingEdge.sourceNodeId)?.x ?? 0), (findNodeById(mindMap, drawingEdge.sourceNodeId)?.y ?? 0), drawingEdge.sourcePoint), 
+                  {x: drawingEdge.currentX, y: drawingEdge.currentY}, 
+                  drawingEdge.sourcePoint, 
+                  drawingEdge.targetPoint || 'left',
+                  edgeStyle
+                )} 
+                fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="5,5" className="pointer-events-none" 
+              />
+            )}
+            
+            {selectionRect && (
+              <rect
+                x={Math.min(selectionRect.x1, selectionRect.x2)}
+                y={Math.min(selectionRect.y1, selectionRect.y2)}
+                width={Math.abs(selectionRect.x2 - selectionRect.x1)}
+                height={Math.abs(selectionRect.y2 - selectionRect.y1)}
+                fill="rgba(59, 130, 246, 0.15)"
+                stroke="#3b82f6"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+              />
+            )}
           </svg>
           <RecursiveNode node={mindMap} selectedNodeId={selectedNodeId} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} draggingNodeId={draggingNodeId} dragPositions={dragPositions} dragTargetNodeId={dragTargetNodeId} isMultiDragging={isMultiDragging} awarenessStates={awarenessStates} myUserId={myUserId} onNodeClick={handleNodeClick} onNodeDoubleClick={handleNodeDoubleClick} onMouseDownOnNode={handleMouseDownOnNode} onTextEditComplete={handleTextEditComplete} onContextMenu={handleNodeContextMenu} onConnectionPointMouseDown={handleConnectionPointMouseDown} depth={0} isAnyDragging={isAnyDragging} />
         </div>
@@ -1103,16 +1078,32 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); } else if (e.key === 'Escape') onTextEditComplete(node.id, node.text); };
   const remoteEditors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.editingNodeId === node.id).map(([, state]: [string, AwarenessState]) => state);
   const remoteSelectors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.selectedNodeId === node.id && state.editingNodeId !== node.id).map(([, state]: [string, AwarenessState]) => state);
+  
   const depthTextClass = depth === 0 ? 'text-base font-bold' : (depth === 1 ? 'text-sm font-semibold' : 'text-xs font-medium');
   const depthShadowClass = depth === 0 ? 'shadow-lg' : (depth === 1 ? 'shadow-md' : 'shadow-sm hover:shadow-md');
   const activeShadowClass = isSelected ? 'shadow-lg shadow-blue-500/20' : depthShadowClass;
+  
   const borderColorClass = isTarget ? 'border-green-400 border-3' : (isSelected ? (isSingleSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-purple-500') : '');
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
 
   return (
     <>
-      <div className={`absolute flex items-center justify-center rounded-xl border-2 px-4 py-2 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'} ${activeShadowClass} ${borderColorClass} ${isEditing ? 'bg-yellow-100 ring-4 ring-yellow-400/30' : ''}`} style={{ left: displayPos.x - NODE_WIDTH/2, top: displayPos.y - NODE_HEIGHT/2, width: NODE_WIDTH, height: NODE_HEIGHT, zIndex: 10 + depth, backgroundColor: node.bgColor || '#ffffff', borderColor: isSelected ? undefined : (node.textColor || '#0369a1'), color: node.textColor || '#0369a1' }} onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}>
-        {isEditing ? (<input ref={inputRef} className={`w-full h-full bg-transparent text-center outline-none border-none ${depthTextClass}`} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />) : (<span className={`${depthTextClass} truncate block max-w-full`} style={{ color: node.textColor || '#0f172a' }}>{node.text}</span>)}
+      <div
+        className={`absolute flex items-center justify-center rounded-xl border-2 px-4 py-2 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'} ${activeShadowClass} ${borderColorClass} ${isEditing ? 'bg-yellow-100 ring-4 ring-yellow-400/30' : ''}`}
+        style={{
+          left: displayPos.x - NODE_WIDTH/2, top: displayPos.y - NODE_HEIGHT/2,
+          width: NODE_WIDTH, height: NODE_HEIGHT, zIndex: 10 + depth,
+          backgroundColor: node.bgColor || '#ffffff',
+          borderColor: isSelected ? undefined : (node.textColor || '#0369a1'),
+          color: node.textColor || '#0369a1',
+        }}
+        onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}
+      >
+        {isEditing ? (
+          <input ref={inputRef} className={`w-full h-full bg-transparent text-center outline-none border-none ${depthTextClass}`} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+        ) : (
+          <span className={`${depthTextClass} truncate block max-w-full`} style={{ color: node.textColor || '#0f172a' }}>{node.text}</span>
+        )}
         {remoteEditors.length > 0 && <div className="absolute -top-2 -right-2 flex -space-x-1">{remoteEditors.map((editor: AwarenessState, i: number) => <div key={i} className="w-3 h-3 rounded-full border border-white" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
         {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2 -right-2 flex -space-x-1">{remoteSelectors.map((selector: AwarenessState, i: number) => <div key={i} className="w-2 h-2 rounded-full border border-white opacity-60" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
       </div>
