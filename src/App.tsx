@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef, useEffect, KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
-import { RealtimeChannel } from '@supabase/supabase-js';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // --------------------- 型定義 ---------------------
 interface MindNode {
@@ -113,12 +114,10 @@ const findClosestConnectionPoint = (nodeX: number, nodeY: number, targetX: numbe
 
 // ★ 修正：ベジェ曲線の「集約的配置（フォーク化）」
 const getBezierPath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint, p2Dir: ConnectionPoint): string => {
-  // 親の出だしを固定し束感を持たせる
-  const offset1 = 50; 
+  const offset1 = 50;
   const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  // 子の入り込みは距離に応じて柔軟に
   const offset2 = Math.min(80, Math.max(30, dist * 0.4));
-  
+
   const getCP = (pt: { x: number; y: number }, dir: ConnectionPoint, offset: number) => {
     switch (dir) {
       case 'top': return { x: pt.x, y: pt.y - offset };
@@ -132,7 +131,7 @@ const getBezierPath = (p1: { x: number; y: number }, p2: { x: number; y: number 
   return `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
 };
 
-// ★ 新規：直角の折れ線（ステップパス）
+// ★ 直角の折れ線（ステップパス）
 const getStepPath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint): string => {
   if (p1Dir === 'right' || p1Dir === 'left') {
     const midX = (p1.x + p2.x) / 2;
@@ -143,12 +142,12 @@ const getStepPath = (p1: { x: number; y: number }, p2: { x: number; y: number },
   }
 };
 
-// ★ 新規：直線
+// ★ 直線
 const getStraightPath = (p1: { x: number; y: number }, p2: { x: number; y: number }): string => {
   return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
 };
 
-// ★ 新規：スタイルごとのパス分岐
+// ★ スタイルごとのパス分岐
 const getEdgePath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint, p2Dir: ConnectionPoint, style: EdgeStyle): string => {
   switch (style) {
     case 'straight': return getStraightPath(p1, p2);
@@ -164,7 +163,7 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<any
   let isOccupied = true;
   while (isOccupied) {
     let collision = false;
-    yNodes.forEach((node) => {
+    yNodes.forEach((node: any) => {
       if (Math.abs(node.x - x) < 15 && Math.abs(node.y - y) < 15) {
         collision = true;
       }
@@ -243,8 +242,11 @@ const base64ToUint8Array = (b64: string): Uint8Array => Uint8Array.from(atob(b64
 const stringToColor = (str: string): string => { let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash); return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`; };
 const getInitial = (email: string): string => email.split('@')[0].substring(0, 2).toUpperCase();
 
-const findParentId = (nodes: Y.Map<any>, childId: string): string | null => { let result: string | null = null; nodes.forEach((value, key) => { if (value.children?.includes(childId)) result = key; }); return result; };
-const isPointInsideNode = (node: MindNode, x: number, y: number): boolean => { const left = node.x - NODE_WIDTH / 2, top = node.y - NODE_HEIGHT / 2; return x >= left && x <= left + NODE_WIDTH && y >= top && y <= top + NODE_HEIGHT; };
+const findParentId = (nodes: Y.Map<any>, childId: string): string | null => {
+  let result: string | null = null;
+  nodes.forEach((value: any, key: string) => { if (value.children?.includes(childId)) result = key; });
+  return result;
+};
 
 const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: string): MindNode | null => {
   if (excludeId && root.id === excludeId) return null;
@@ -321,7 +323,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
   const [showLoadMenu, setShowLoadMenu] = useState(false);
 
-  // ★ 新規追加：エッジ（線）のスタイル状態
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -345,7 +346,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [editingEdgeEndpoint, setEditingEdgeEndpoint] = useState<{ edgeId: string; endpoint: 'source' | 'target' } | null>(null);
   const [drawingEdge, setDrawingEdge] = useState<{ sourceNodeId: string; sourcePoint: ConnectionPoint; currentX: number; currentY: number; targetNodeId?: string; targetPoint?: ConnectionPoint } | null>(null);
-  
+
   const [showColorPalette, setShowColorPalette] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
@@ -426,8 +427,8 @@ const MindMapApp = ({ user }: { user: any }) => {
   }, [editingNodeId]);
 
   const addEdge = useCallback((sourceNodeId: string, sourcePoint: ConnectionPoint, targetNodeId: string, targetPoint: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges || !ydocRef.current) return; const edgeId = crypto.randomUUID(); ydocRef.current.transact(() => { yEdges.set(edgeId, { sourceNodeId, sourcePoint, targetNodeId, targetPoint, arrow: 'none' }); }); }, []);
-  
-  const deleteEdge = useCallback((edgeId: string) => { 
+
+  const deleteEdge = useCallback((edgeId: string) => {
     if (edgeId.startsWith('parent-edge-')) {
       const childId = edgeId.replace('parent-edge-', '');
       const nodes = yNodesRef.current;
@@ -437,7 +438,6 @@ const MindMapApp = ({ user }: { user: any }) => {
         const childNode = nodes.get(childId);
         const parentId = findParentId(nodes, childId);
         const rootNode = nodes.get(rootId);
-        
         if (childNode && rootNode && parentId) {
           if (parentId !== rootId) {
             const parentNode = nodes.get(parentId);
@@ -455,9 +455,9 @@ const MindMapApp = ({ user }: { user: any }) => {
       closeContextMenu();
       return;
     }
-    const yEdges = yEdgesRef.current; if (!yEdges) return; ydocRef.current?.transact(() => { yEdges.delete(edgeId); }); setSelectedEdgeId(null); closeContextMenu(); 
+    const yEdges = yEdgesRef.current; if (!yEdges) return; ydocRef.current?.transact(() => { yEdges.delete(edgeId); }); setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu]);
-  
+
   const updateEdgeEndpoint = useCallback((edgeId: string, endpoint: 'source' | 'target', point: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { if (endpoint === 'source') yEdges.set(edgeId, { ...edge, sourcePoint: point }); else yEdges.set(edgeId, { ...edge, targetPoint: point }); }); }, []);
   const updateEdgeArrow = useCallback((edgeId: string, arrow: 'none' | 'start' | 'end' | 'both') => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, arrow }); }); }, []);
 
@@ -490,7 +490,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return; if (targetId === yRootRef.current) return;
     const parentId = findParentId(nodes, targetId); if (!parentId) return; const parent = nodes.get(parentId); if (!parent) return;
     const siblingId = crypto.randomUUID(); const targetNode = nodes.get(targetId);
-    
+
     const idealX = targetNode ? targetNode.x : parent.x + NODE_WIDTH + 40;
     const idealY = targetNode ? targetNode.y + (position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20)) : parent.y;
     const safePos = getUnoccupiedPosition(idealX, idealY, nodes);
@@ -508,8 +508,8 @@ const MindMapApp = ({ user }: { user: any }) => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return; if (targetId === yRootRef.current) return;
     const oldParentId = findParentId(nodes, targetId); if (!oldParentId) return; const oldParent = nodes.get(oldParentId); if (!oldParent) return;
     const targetNode = nodes.get(targetId); if (!targetNode) return;
-    
-    const newParentId = crypto.randomUUID(); 
+
+    const newParentId = crypto.randomUUID();
     const idealX = targetNode.x - NODE_WIDTH - 40;
     const idealY = targetNode.y;
     const safePos = getUnoccupiedPosition(idealX, idealY, nodes);
@@ -537,7 +537,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const deleteNode = useCallback((nodeId: string) => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current || nodeId === yRootRef.current) return;
     ydocRef.current?.transact(() => {
-      nodes.forEach((value, key) => { if (value.children?.includes(nodeId)) nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) }); });
+      nodes.forEach((value: any, key: string) => { if (value.children?.includes(nodeId)) nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) }); });
       nodes.delete(nodeId);
     });
     setSelectedNodeId(null); setSelectedNodeIds([]);
@@ -595,8 +595,16 @@ const MindMapApp = ({ user }: { user: any }) => {
     else { const rootId = crypto.randomUUID(); yNodes.set(rootId, { text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); yRootRef.current = rootId; }
     const updateReact = () => {
       if (yRootRef.current) { const tree = yMapToTree(yNodes, yRootRef.current); if (tree) setMindMap(tree); }
-      const edgeList: EdgeData[] = []; yEdges.forEach((value, key) => edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' })); setEdges(edgeList);
-      const imageList: ImageData[] = []; yImages.forEach((value, key) => imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height })); setImages(imageList);
+      const edgeList: EdgeData[] = [];
+      yEdges.forEach((value: any, key: string) => {
+        edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' });
+      });
+      setEdges(edgeList);
+      const imageList: ImageData[] = [];
+      yImages.forEach((value: any, key: string) => {
+        imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height });
+      });
+      setImages(imageList);
     };
     yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); updateReact();
     const undoManager = new Y.UndoManager([yNodes, yEdges, yImages]); undoManagerRef.current = undoManager;
@@ -609,12 +617,12 @@ const MindMapApp = ({ user }: { user: any }) => {
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     try { const draft = localStorage.getItem(`mindmap-draft-${room}`); if (draft) { Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local'); addLog('未保存のバックアップを復元'); setIsDirty(true); } } catch(e) {}
-    channel.on('broadcast', { event: 'yjs-update' }, (msg) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
-    channel.on('broadcast', { event: 'sync-step-1' }, (msg) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
-    channel.on('broadcast', { event: 'sync-step-2' }, (msg) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
-    channel.on('broadcast', { event: 'awareness-update' }, (msg) => { const { userId, state } = msg.payload; if (userId === myUserId) return; if (state === null) setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; }); else setAwarenessStates(prev => ({ ...prev, [userId]: state })); });
+    channel.on('broadcast', { event: 'yjs-update' }, (msg: any) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
+    channel.on('broadcast', { event: 'sync-step-1' }, (msg: any) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
+    channel.on('broadcast', { event: 'sync-step-2' }, (msg: any) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
+    channel.on('broadcast', { event: 'awareness-update' }, (msg: any) => { const { userId, state } = msg.payload; if (userId === myUserId) return; if (state === null) setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; }); else setAwarenessStates(prev => ({ ...prev, [userId]: state })); });
     const removeSelf = () => channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId: myUserId, state: null } }); window.addEventListener('beforeunload', removeSelf);
-    channel.subscribe((status, err) => {
+    channel.subscribe((status: string, err: any) => {
       if (status === 'SUBSCRIBED') setConnectionStatus('接続済み'); else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断'); else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト'); else setConnectionStatus('接続中...');
       if (err) console.error('Supabase Error:', err);
       if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'sync-step-1', payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) } }); broadcastAwareness(channel, myUserId, { email: myEmail, color: myColor, selectedNodeId, editingNodeId }); }
@@ -698,7 +706,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    
+
     if (!nodeUnder) {
       setSelectedNodeId(null);
       setSelectedNodeIds([]);
@@ -741,7 +749,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       } else {
         setDrawingEdge(prev => prev ? { ...prev, currentX: coords.x, currentY: coords.y, targetNodeId: undefined, targetPoint: undefined } : null);
       }
-      return; 
+      return;
     }
     if (draggingImageId) { updateImagePosition(draggingImageId, coords.x - imageDragOffset.current.x, coords.y - imageDragOffset.current.y); return; }
     if (resizingImageHandle) {
@@ -771,18 +779,18 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
-    if (drawingEdge) { 
-      if (!mindMap) return; 
+    if (drawingEdge) {
+      if (!mindMap) return;
       if (drawingEdge.targetNodeId && drawingEdge.targetPoint) {
         addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, drawingEdge.targetNodeId, drawingEdge.targetPoint);
       } else {
-        const targetNode = findNodeAtPoint(mindMap, drawingEdge.currentX, drawingEdge.currentY, drawingEdge.sourceNodeId); 
-        if (targetNode) { 
-          const pt = findClosestConnectionPoint(targetNode.x, targetNode.y, drawingEdge.currentX, drawingEdge.currentY); 
-          addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, targetNode.id, pt); 
+        const targetNode = findNodeAtPoint(mindMap, drawingEdge.currentX, drawingEdge.currentY, drawingEdge.sourceNodeId);
+        if (targetNode) {
+          const pt = findClosestConnectionPoint(targetNode.x, targetNode.y, drawingEdge.currentX, drawingEdge.currentY);
+          addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, targetNode.id, pt);
         }
       }
-      setDrawingEdge(null); return; 
+      setDrawingEdge(null); return;
     }
     if (draggingImageId) { setDraggingImageId(null); return; }
     if (resizingImageHandle) { setResizingImageHandle(null); return; }
@@ -818,35 +826,35 @@ const MindMapApp = ({ user }: { user: any }) => {
     if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) { e.preventDefault(); changeZoom(e.key === '-' ? -0.1 : 0.1); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEdgeId && !selectedNodeId && !selectedImageId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedImageId && !selectedNodeId && !selectedEdgeId) { e.preventDefault(); deleteImage(selectedImageId); return; }
-    
+
     if (!selectedNodeId) return;
-    
+
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault();
       const current = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
       if (!current || !mindMap) return;
-      
+
       let closest: MindNode | null = null;
       let minDist = Infinity;
       const allNodes = getAllNodes(mindMap);
-      
+
       allNodes.forEach(n => {
         if (n.id === selectedNodeId) return;
         const dx = n.x - current.x;
         const dy = n.y - current.y;
         let valid = false;
-        
+
         if (e.key === 'ArrowUp' && dy < -20 && Math.abs(dx) < Math.abs(dy)) valid = true;
         if (e.key === 'ArrowDown' && dy > 20 && Math.abs(dx) < Math.abs(dy)) valid = true;
         if (e.key === 'ArrowLeft' && dx < -20 && Math.abs(dy) < Math.abs(dx)) valid = true;
         if (e.key === 'ArrowRight' && dx > 20 && Math.abs(dy) < Math.abs(dx)) valid = true;
-        
+
         if (valid) {
           const dist = Math.hypot(dx, dy);
           if (dist < minDist) { minDist = dist; closest = n; }
         }
       });
-      
+
       if (closest) {
         setSelectedNodeId(closest.id);
         setSelectedNodeIds([closest.id]);
@@ -858,7 +866,7 @@ const MindMapApp = ({ user }: { user: any }) => {
           const viewRight = viewLeft + rect.width / zoomLevel;
           const viewBottom = viewTop + rect.height / zoomLevel;
           if (closest.x < viewLeft + 100 || closest.x > viewRight - 100 || closest.y < viewTop + 100 || closest.y > viewBottom - 100) {
-             container.scrollTo({ left: closest.x * zoomLevel - rect.width / 2, top: closest.y * zoomLevel - rect.height / 2, behavior: 'smooth' });
+            container.scrollTo({ left: closest.x * zoomLevel - rect.width / 2, top: closest.y * zoomLevel - rect.height / 2, behavior: 'smooth' });
           }
         }
       }
@@ -953,19 +961,19 @@ const MindMapApp = ({ user }: { user: any }) => {
 
   const participants = [
     { email: myEmail, color: myColor, isEditing: editingNodeId !== null, isSelecting: selectedNodeId !== null, isSelf: true },
-    ...Object.entries(awarenessStates).map(([userId, state]) => ({ email: state.email, color: state.color, isEditing: state.editingNodeId !== null, isSelecting: state.selectedNodeId !== null, isSelf: false })),
+    ...Object.entries(awarenessStates).map(([, state]) => ({ email: state.email, color: state.color, isEditing: state.editingNodeId !== null, isSelecting: state.selectedNodeId !== null, isSelf: false })),
   ];
 
   const statusColor = connectionStatus === '接続済み' ? 'bg-green-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-red-500' : 'bg-yellow-500');
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
 
   const canvasScrollClass = `w-full h-full overflow-auto pt-12 relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : ''}`;
-  const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
+  const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, outline: 'none' };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-      
+
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       {!zenMode && (
         <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
@@ -988,12 +996,11 @@ const MindMapApp = ({ user }: { user: any }) => {
               <button onClick={() => alignNodes('horizontal')} className="p-1 rounded hover:bg-gray-100" title="水平に整列"><AlignHIcon /></button>
             </div>
           )}
-          
-          {/* ★ 新規：線のスタイル切り替えUI */}
+
           <div className="w-px h-5 bg-gray-300 mx-1" />
           <div className="flex items-center gap-1 px-1">
-            <select 
-              value={edgeStyle} 
+            <select
+              value={edgeStyle}
               onChange={e => setEdgeStyle(e.target.value as EdgeStyle)}
               className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm"
               title="線のスタイル"
@@ -1073,33 +1080,33 @@ const MindMapApp = ({ user }: { user: any }) => {
           <button onClick={() => setShowColorPalette(null)} className="mt-2 text-xs text-gray-500 underline w-full text-center">閉じる</button>
         </div>
       )}
-      
-      <div 
-        ref={scrollContainerRef} 
-        className={`${canvasScrollClass} hide-scrollbar`} 
-        tabIndex={0} 
-        onKeyDown={handleKeyDown} 
-        onClick={handleCanvasClick} 
-        onContextMenu={handleCanvasContextMenu} 
-        onMouseDown={handleCanvasMouseDown} 
+
+      <div
+        ref={scrollContainerRef}
+        className={`${canvasScrollClass} hide-scrollbar`}
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onClick={handleCanvasClick}
+        onContextMenu={handleCanvasContextMenu}
+        onMouseDown={handleCanvasMouseDown}
         onDoubleClick={handleCanvasDoubleClick}
         style={hideScrollbarStyle}
       >
-        <div 
-          className="relative" 
-          style={{ 
-            width: '10000px', 
-            height: '10000px', 
-            transform: `scale(${zoomLevel})`, 
+        <div
+          className="relative"
+          style={{
+            width: '10000px',
+            height: '10000px',
+            transform: `scale(${zoomLevel})`,
             transformOrigin: '0 0',
             backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
             backgroundSize: '24px 24px',
             backgroundColor: '#f8fafc'
-          }} 
+          }}
           onContextMenu={handleCanvasContextMenu}
         >
           {showFloatingToolbar && floatingToolbarPos && (
-            <div 
+            <div
               className="absolute z-[60] bg-white rounded-lg shadow-xl border border-gray-200 flex items-center p-1 gap-1"
               style={{
                 left: floatingToolbarPos.x,
@@ -1142,22 +1149,22 @@ const MindMapApp = ({ user }: { user: any }) => {
           ))}
           <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
             <defs><marker id="arrowStart" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6b7280" /></marker><marker id="arrowEnd" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6b7280" /></marker></defs>
-            
-            {flatNodes.filter(fn => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map(fn => { 
-              const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); 
-              const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); 
-              if (!parentPos || !childPos) return null; 
-              const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; 
-              let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; 
-              if (Math.abs(dx) > Math.abs(dy)) { 
-                parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; 
-              } else { 
-                parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; 
-              } 
-              const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint); 
-              const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint); 
+
+            {flatNodes.filter(fn => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map(fn => {
+              const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId);
+              const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId);
+              if (!parentPos || !childPos) return null;
+              const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y;
+              let parentPoint: ConnectionPoint, childPoint: ConnectionPoint;
+              if (Math.abs(dx) > Math.abs(dy)) {
+                parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right';
+              } else {
+                parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom';
+              }
+              const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint);
+              const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint);
               const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle);
-              
+
               const edgeId = `parent-edge-${fn.id}`;
               const isSelected = selectedEdgeId === edgeId;
 
@@ -1166,12 +1173,12 @@ const MindMapApp = ({ user }: { user: any }) => {
                   <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e as any, edgeId)} />
                   <path d={pathD} fill="none" stroke={isSelected ? '#f59e0b' : '#93c5fd'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} />
                 </g>
-              ); 
+              );
             })}
 
-            {edgeLines.map(el => { 
-              const markerStart = el.arrow === 'start' || el.arrow === 'both' ? 'url(#arrowStart)' : 'none'; 
-              const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? 'url(#arrowEnd)' : 'none'; 
+            {edgeLines.map(el => {
+              const markerStart = el.arrow === 'start' || el.arrow === 'both' ? 'url(#arrowStart)' : 'none';
+              const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? 'url(#arrowEnd)' : 'none';
               return (
                 <g key={el.id} className="pointer-events-auto">
                   <path d={el.pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
@@ -1181,22 +1188,22 @@ const MindMapApp = ({ user }: { user: any }) => {
                     <circle cx={el.targetX} cy={el.targetY} r={6} fill="#ef4444" stroke="white" strokeWidth={2} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'target')} />
                   </>)}
                 </g>
-              ); 
+              );
             })}
 
             {drawingEdge && mindMap && (
-              <path 
+              <path
                 d={getEdgePath(
-                  getConnectionPoint((findNodeById(mindMap, drawingEdge.sourceNodeId)?.x ?? 0), (findNodeById(mindMap, drawingEdge.sourceNodeId)?.y ?? 0), drawingEdge.sourcePoint), 
-                  {x: drawingEdge.currentX, y: drawingEdge.currentY}, 
-                  drawingEdge.sourcePoint, 
+                  getConnectionPoint((findNodeById(mindMap, drawingEdge.sourceNodeId)?.x ?? 0), (findNodeById(mindMap, drawingEdge.sourceNodeId)?.y ?? 0), drawingEdge.sourcePoint),
+                  {x: drawingEdge.currentX, y: drawingEdge.currentY},
+                  drawingEdge.sourcePoint,
                   drawingEdge.targetPoint || 'left',
                   edgeStyle
-                )} 
-                fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="5,5" className="pointer-events-none" 
+                )}
+                fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="5,5" className="pointer-events-none"
               />
             )}
-            
+
             {selectionRect && (
               <rect
                 x={Math.min(selectionRect.x1, selectionRect.x2)}
@@ -1255,13 +1262,13 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   useEffect(() => { if (isEditing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [isEditing]);
   const handleBlur = () => { if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); };
   const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); } else if (e.key === 'Escape') onTextEditComplete(node.id, node.text); };
-  const remoteEditors = Object.entries(awarenessStates).filter(([userId, state]) => userId !== myUserId && state.editingNodeId === node.id).map(([_, state]) => state);
-  const remoteSelectors = Object.entries(awarenessStates).filter(([userId, state]) => userId !== myUserId && state.selectedNodeId === node.id && state.editingNodeId !== node.id).map(([_, state]) => state);
-  
+  const remoteEditors = Object.entries(awarenessStates).filter(([, state]) => state.editingNodeId === node.id).map(([, state]) => state);
+  const remoteSelectors = Object.entries(awarenessStates).filter(([, state]) => state.selectedNodeId === node.id && state.editingNodeId !== node.id).map(([, state]) => state);
+
   const depthTextClass = depth === 0 ? 'text-base font-bold' : (depth === 1 ? 'text-sm font-semibold' : 'text-xs font-medium');
   const depthShadowClass = depth === 0 ? 'shadow-lg' : (depth === 1 ? 'shadow-md' : 'shadow-sm hover:shadow-md');
   const activeShadowClass = isSelected ? 'shadow-lg shadow-blue-500/20' : depthShadowClass;
-  
+
   const borderColorClass = isTarget ? 'border-green-400 border-3' : (isSelected ? (isSingleSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-purple-500') : '');
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
 
