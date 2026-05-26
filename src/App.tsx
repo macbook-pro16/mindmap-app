@@ -562,19 +562,31 @@ const MindMapApp = ({ user }: { user: any }) => {
 
   // ★ 保存処理（成功後に一覧を更新）
   const handleSave = useCallback(async () => {
-    if (!yNodesRef.current || !yRootRef.current || !roomId) return;
-    const tree = yMapToTree(yNodesRef.current, yRootRef.current); if (!tree) return;
+    if (!yNodesRef.current || !yRootRef.current || !roomId) {
+      setSaveMessage('保存に必要なデータが不足しています');
+      return;
+    }
+    const tree = yMapToTree(yNodesRef.current, yRootRef.current);
+    if (!tree) {
+      setSaveMessage('マップデータの変換に失敗しました');
+      return;
+    }
     setSaveMessage('保存中...');
     const payload = { title: mapTitle, data: tree, room_id: roomId, user_id: user.id, updated_at: new Date().toISOString() };
-    const { data, error } = mapId ? await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: payload.updated_at }).eq('id', mapId).select() : await supabase.from('maps').insert([payload]).select();
-    if (error) { setSaveMessage('保存に失敗'); console.error(error); return; }
+    const { data, error } = mapId
+      ? await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: payload.updated_at }).eq('id', mapId).select()
+      : await supabase.from('maps').insert([payload]).select();
+    if (error) {
+      setSaveMessage(`保存に失敗: ${error.message}`);
+      console.error(error);
+      return;
+    }
     if (data && data.length > 0) {
       setMapId(data[0].id);
       setSaveMessage('保存完了');
       setIsDirty(false);
       try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {}
       setTimeout(() => setSaveMessage(''), 2500);
-      // ★ 保存後に一覧を更新
       await fetchMaps();
     }
   }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
@@ -586,13 +598,10 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
   }, [isSidebarOpen, fetchMaps]);
 
-  // ★ 新規マップ作成時の自動保存（マップデータ準備完了後に実行）
+  // 新規マップ作成時の自動保存
   useEffect(() => {
-    if (roomId && mindMap && yNodesRef.current && yRootRef.current) {
-      // 初回マップ読み込み後、mapIdがnull（未保存）の状態なら自動保存
-      if (mapId === null) {
-        handleSave();
-      }
+    if (roomId && mindMap && yNodesRef.current && yRootRef.current && mapId === null) {
+      handleSave();
     }
   }, [roomId, mindMap, mapId, handleSave]);
 
