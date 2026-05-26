@@ -392,6 +392,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yEdgesRef = useRef<Y.Map<YjsEdgeData> | null>(null);
   const yImagesRef = useRef<Y.Map<YjsImageData> | null>(null);
   const yStickiesRef = useRef<Y.Map<YjsStickyData> | null>(null);
+  const ySettingsRef = useRef<Y.Map<any> | null>(null); // ★ 設定共有用
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -688,6 +689,18 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [addSticky, zoomLevel]);
 
+  // ★ edgeStyleをYjsで共有するためのハンドラ
+  const handleEdgeStyleChange = useCallback((newStyle: EdgeStyle) => {
+    if (!ydocRef.current) return;
+    const settings = ySettingsRef.current;
+    if (settings) {
+      ydocRef.current.transact(() => {
+        settings.set('edgeStyle', newStyle);
+      });
+    }
+    setEdgeStyle(newStyle);
+  }, []);
+
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -698,6 +711,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const yEdges = ydoc.getMap<YjsEdgeData>('edges'); yEdgesRef.current = yEdges;
     const yImages = ydoc.getMap<YjsImageData>('images'); yImagesRef.current = yImages;
     const yStickies = ydoc.getMap<YjsStickyData>('stickies'); yStickiesRef.current = yStickies;
+    const ySettings = ydoc.getMap<any>('settings'); ySettingsRef.current = ySettings;
     if (initialTree) { treeToYMap(initialTree, yNodes); yRootRef.current = initialTree.id; }
     else { const rootId = crypto.randomUUID(); yNodes.set(rootId, { text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); yRootRef.current = rootId; }
     const updateReact = () => {
@@ -705,9 +719,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height }); }); setImages(imageList);
       const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
+      // ★ settings の反映
+      const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined;
+      if (currentStyle) setEdgeStyle(currentStyle);
     };
-    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); updateReact();
-    const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies]); undoManagerRef.current = undoManager;
+    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); ySettings.observe(updateReact); updateReact();
+    const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, ySettings]); undoManagerRef.current = undoManager;
     const updateUndoRedoState = () => { setCanUndo(undoManager.undoStack.length > 0); setCanRedo(undoManager.redoStack.length > 0); };
     undoManager.on('stack-item-added', updateUndoRedoState); undoManager.on('stack-item-popped', updateUndoRedoState); updateUndoRedoState();
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
@@ -754,13 +771,20 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
+  // ★ マップ一覧取得（メンバー情報を正しくマッピング）
   const fetchMaps = useCallback(async () => {
     const { data, error } = await supabase
       .from('maps')
       .select('*, map_members(user_id, email)')
       .order('created_at', { ascending: false });
-    if (error) console.error('マップ一覧の取得に失敗しました:', error);
-    if (data) setSavedMaps(data as unknown as MapRecord[]);
+    if (error) { console.error('マップ一覧の取得に失敗しました:', error); return; }
+    if (data) {
+      const mapsWithMembers = data.map((map: any) => ({
+        ...map,
+        members: map.map_members ? map.map_members.filter((m: any) => m.email).map((m: any) => ({ user_id: m.user_id, email: m.email })) : []
+      })) as MapRecord[];
+      setSavedMaps(mapsWithMembers);
+    }
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -895,6 +919,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       } else {
         setInviteMessage('招待しました！');
         setInviteEmail('');
+        await fetchMaps(); // 招待後すぐに一覧更新
       }
     } catch (err: unknown) {
       setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -1473,7 +1498,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
             <div className="flex items-center gap-2">
-              <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 cursor-pointer shadow-sm transition-colors font-medium">
+              <select value={edgeStyle} onChange={e => handleEdgeStyleChange(e.target.value as EdgeStyle)} className="text-xs border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 cursor-pointer shadow-sm transition-colors font-medium">
                 <option value="bezier">曲線スタイル</option>
                 <option value="step">直角スタイル</option>
                 <option value="straight">直線スタイル</option>
