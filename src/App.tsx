@@ -632,6 +632,15 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [selectedNodeId, selectedStickyId, updateNodeColors, updateStickyColors]);
 
+  const handleHeaderAddSticky = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const centerX = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
+      const centerY = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
+      addSticky(centerX - DEFAULT_STICKY_WIDTH / 2, centerY - DEFAULT_STICKY_HEIGHT / 2);
+    }
+  }, [addSticky, zoomLevel]);
+
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1366,6 +1375,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </>
               )}
               <button onClick={() => selectedNodeId && deleteNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-rose-500 transition-all" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+              <div className="w-px h-4 bg-slate-300 mx-1" />
+              <button onClick={handleHeaderAddSticky} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-amber-600 transition-all" title="付箋を追加"><StickyIcon /></button>
             </div>
 
             {/* カラーパレット */}
