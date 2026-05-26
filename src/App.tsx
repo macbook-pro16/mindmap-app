@@ -568,7 +568,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     ydocRef.current.transact(() => {
       yStickies.set(id, {
         x, y, width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
-        text: '付箋', bgColor: '#f0f9ff', textColor: '#0369a1'
+        text: '', bgColor: '#f0f9ff', textColor: '#0369a1'
       });
     });
     setSelectedStickyId(id); setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null);
@@ -585,9 +585,52 @@ const MindMapApp = ({ user }: { user: User }) => {
   const updateStickySize = useCallback((stickyId: string, width: number, height: number) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, width, height }); }, []);
 
   const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { const nodes = yNodesRef.current; if (!nodes || selectedNodeIds.length < 2) return; const refNodeId = selectedNodeIds[0]; const refNode = nodes.get(refNodeId); if (!refNode) return; const targetX = axis === 'vertical' ? refNode.x : undefined; const targetY = axis === 'horizontal' ? refNode.y : undefined; const idsToAlign = selectedNodeIds.slice(1); ydocRef.current?.transact(() => { idsToAlign.forEach((id: string) => { const data = nodes.get(id); if (!data) return; const updated = { ...data }; if (targetX !== undefined) updated.x = targetX; if (targetY !== undefined) updated.y = targetY; nodes.set(id, updated); }); }); }, [selectedNodeIds]);
-  const handleImageUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`; const { data, error } = await supabase.storage.from('images').upload(fileName, file); if (error) { alert('画像のアップロードに失敗しました'); return; } const path = data.path; const img = new Image(); img.src = URL.createObjectURL(file); img.onload = () => { const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return; const imageId = crypto.randomUUID(); const container = scrollContainerRef.current; const centerX = container ? container.scrollLeft + container.clientWidth / 2 : 5000; const centerY = container ? container.scrollTop + container.clientHeight / 2 : 5000; ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: centerX - img.width / 2, y: centerY - img.height / 2, width: img.width, height: img.height }); }); }; if (fileInputRef.current) fileInputRef.current.value = ''; }, []);
+
+  const handleImageUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`;
+    const { data, error } = await supabase.storage.from('images').upload(fileName, file);
+    if (error) { alert('画像のアップロードに失敗しました'); return; }
+    const path = data.path;
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX_DIM = 200;
+      let w = img.width, h = img.height;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      const yImages = yImagesRef.current;
+      if (!yImages || !ydocRef.current) return;
+      const imageId = crypto.randomUUID();
+      const container = scrollContainerRef.current;
+      const centerX = container ? container.scrollLeft + container.clientWidth / 2 : 5000;
+      const centerY = container ? container.scrollTop + container.clientHeight / 2 : 5000;
+      ydocRef.current.transact(() => {
+        yImages.set(imageId, {
+          storagePath: path,
+          x: centerX - w / 2,
+          y: centerY - h / 2,
+          width: w,
+          height: h
+        });
+      });
+    };
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
   const deleteImage = useCallback((imageId: string) => { const yImages = yImagesRef.current; if (!yImages) return; const image = yImages.get(imageId); if (image) { supabase.storage.from('images').remove([image.storagePath]); } ydocRef.current?.transact(() => { yImages.delete(imageId); }); setSelectedImageId(null); closeContextMenu(); }, [closeContextMenu]);
   const updateImagePosition = useCallback((imageId: string, x: number, y: number) => { const yImages = yImagesRef.current; if (!yImages) return; const data = yImages.get(imageId); if (data) yImages.set(imageId, { ...data, x, y }); }, []);
+
+  const handleHeaderColorSelect = useCallback((bgColor: string, textColor: string) => {
+    if (selectedNodeId) {
+      updateNodeColors(selectedNodeId, bgColor, textColor);
+    } else if (selectedStickyId) {
+      updateStickyColors(selectedStickyId, bgColor, textColor);
+    }
+  }, [selectedNodeId, selectedStickyId, updateNodeColors, updateStickyColors]);
 
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
@@ -1315,18 +1358,28 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={() => selectedNodeId && addSiblingNode(selectedNodeId, 'after')} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="兄弟を追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">兄弟</span></button>
               <button onClick={() => selectedNodeId && addParentNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="親を追加 (Ctrl+Enter)"><ParentNodeIcon /><span className="text-[10px] font-bold">親</span></button>
               <div className="w-px h-4 bg-slate-300 mx-1" />
-              <button onClick={() => { if(selectedNodeId) setShowColorPalette({ nodeId: selectedNodeId, x: window.innerWidth / 2, y: 100 }); }} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-slate-600 transition-all" title="色を変更"><PaletteIcon /></button>
-              <button onClick={() => { if(!selectedNodeId && !selectedStickyId) return; if(selectedStickyId) setShowColorPalette({ stickyId: selectedStickyId, x: window.innerWidth / 2, y: 100 }); else if(selectedNodeId) setShowColorPalette({ nodeId: selectedNodeId, x: window.innerWidth / 2, y: 100 }); }} disabled={!selectedNodeId && !selectedStickyId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-slate-600 transition-all" title="付箋を追加 (Ctrl+Shift+S)"><StickyIcon /></button>
-              <div className="w-px h-4 bg-slate-300 mx-1" />
               {selectedNodeIds.length >= 2 && (
                 <>
-                  <div className="w-px h-4 bg-slate-300 mx-1" />
                   <button onClick={() => alignNodes('vertical')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="垂直に整列"><AlignVIcon /></button>
                   <button onClick={() => alignNodes('horizontal')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="水平に整列"><AlignHIcon /></button>
+                  <div className="w-px h-4 bg-slate-300 mx-1" />
                 </>
               )}
-              <div className="w-px h-4 bg-slate-300 mx-1" />
               <button onClick={() => selectedNodeId && deleteNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-rose-500 transition-all" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+            </div>
+
+            {/* カラーパレット */}
+            <div className="flex items-center gap-1 ml-3">
+              {COLOR_PALETTE.map(cp => (
+                <button
+                  key={cp.label}
+                  onClick={() => handleHeaderColorSelect(cp.bg, cp.text)}
+                  disabled={!selectedNodeId && !selectedStickyId}
+                  className="w-6 h-6 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
+                  style={{ backgroundColor: cp.bg }}
+                  title={cp.label}
+                />
+              ))}
             </div>
 
             <div className="w-px h-6 bg-slate-200 mx-3" />
@@ -1438,11 +1491,12 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             )}
 
+            {/* 画像（付箋の上） */}
             {images.map((image: ImageData) => (
               <div
                 key={image.id}
                 className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${selectedImageId === image.id ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-transparent shadow-md hover:shadow-lg'}`}
-                style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: 5 }}
+                style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: 6 }}
                 onMouseDown={(e) => handleMouseDownOnImage(e as any, image.id)}
                 onContextMenu={(e) => handleImageContextMenu(e as any, image.id)}
                 onClick={(e) => e.stopPropagation()}
@@ -1465,7 +1519,7 @@ const MindMapApp = ({ user }: { user: User }) => {
               return (
                 <div
                   key={sticky.id}
-                  className={`absolute cursor-move border rounded-lg shadow-lg overflow-hidden transition-shadow ${selectedStickyId === sticky.id ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-2xl' : 'border-transparent hover:shadow-xl'}`}
+                  className={`absolute cursor-move border rounded-lg shadow-2xl overflow-visible transition-shadow ${selectedStickyId === sticky.id ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-indigo-500/30' : 'border-transparent hover:shadow-black/20'}`}
                   style={{ 
                     left: sticky.x, top: sticky.y, width: sticky.width, height: sticky.height, zIndex: 5,
                     backgroundColor: sticky.bgColor, color: sticky.textColor
@@ -1475,6 +1529,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                   onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }}
                   onClick={(e) => { e.stopPropagation(); if(!draggingStickyId) { setSelectedStickyId(sticky.id); setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null); } }}
                 >
+                  {/* 折り目 */}
+                  <div className="absolute top-0 right-0 w-6 h-6 overflow-hidden">
+                    <div className="absolute top-0 right-0 w-0 h-0 border-l-[12px] border-l-transparent border-b-[12px] border-b-black/10" />
+                  </div>
                   <div className="w-full h-full flex flex-col p-2">
                     <div className="flex-1 flex items-start overflow-hidden">
                       {isEditing ? (
@@ -1482,7 +1540,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                           autoFocus
                           className="w-full h-full resize-none bg-transparent border-none outline-none text-sm font-medium"
                           defaultValue={sticky.text}
-                          onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); if (trimmed) updateStickyText(sticky.id, trimmed); setEditingStickyId(null); }}
+                          onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); if (trimmed) updateStickyText(sticky.id, trimmed); else deleteSticky(sticky.id); setEditingStickyId(null); }}
                           onKeyDown={(e) => { if (e.key === 'Escape') setEditingStickyId(null); }}
                         />
                       ) : (
