@@ -560,15 +560,15 @@ const MindMapApp = ({ user }: { user: any }) => {
     if (data) setSavedMaps(data as MapRecord[]);
   }, []);
 
-  // ★ 保存処理（成功後に一覧を更新）
+  // ★ 保存処理（エラー時はアラート表示）
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) {
-      setSaveMessage('保存に必要なデータが不足しています');
+      alert('保存に必要なデータが不足しています（roomIdが未設定）');
       return;
     }
     const tree = yMapToTree(yNodesRef.current, yRootRef.current);
     if (!tree) {
-      setSaveMessage('マップデータの変換に失敗しました');
+      alert('マップデータの変換に失敗しました');
       return;
     }
     setSaveMessage('保存中...');
@@ -577,8 +577,8 @@ const MindMapApp = ({ user }: { user: any }) => {
       ? await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: payload.updated_at }).eq('id', mapId).select()
       : await supabase.from('maps').insert([payload]).select();
     if (error) {
+      alert(`保存エラー: ${error.message}`);
       setSaveMessage(`保存に失敗: ${error.message}`);
-      console.error(error);
       return;
     }
     if (data && data.length > 0) {
@@ -588,6 +588,8 @@ const MindMapApp = ({ user }: { user: any }) => {
       try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {}
       setTimeout(() => setSaveMessage(''), 2500);
       await fetchMaps();
+    } else {
+      alert('保存に成功しましたが、データが返ってきませんでした');
     }
   }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
 
