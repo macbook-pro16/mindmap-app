@@ -366,6 +366,12 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [zenMode, setZenMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuInfo>({ visible: false, x: 0, y: 0, type: 'canvas' });
 
+  // ★ 招待機能の状態
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteMessage, setInviteMessage] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+
   const closeContextMenu = useCallback(() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowColorPalette(null); }, []);
   const scrollToHome = useCallback(() => { const container = scrollContainerRef.current; if (!container) return; const centerX = 5000 * zoomLevel - container.clientWidth / 2; const centerY = 5000 * zoomLevel - container.clientHeight / 2; container.scrollTo({ left: centerX, top: centerY, behavior: 'smooth' }); }, [zoomLevel]);
   const broadcastAwareness = useCallback((channel: RealtimeChannel, userId: string, state: AwarenessState | null) => { if (!channel) return; channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId, state } }); }, []);
@@ -557,10 +563,11 @@ const MindMapApp = ({ user }: { user: any }) => {
     if (data && data.length > 0) { setMapId(data[0].id); setSaveMessage('保存完了'); setIsDirty(false); try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} setTimeout(() => setSaveMessage(''), 2500); }
   };
 
-  const fetchMaps = useCallback(async () => { 
-    const { data } = await supabase.from('maps').select('*').eq('user_id', user.id).order('created_at', { ascending: false }); 
-    if (data) setSavedMaps(data as MapRecord[]); 
-  }, [user.id]);
+  // ★ 全マップ取得（RLSにより自分がアクセスできるマップのみ返る）
+  const fetchMaps = useCallback(async () => {
+    const { data } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
+    if (data) setSavedMaps(data as MapRecord[]);
+  }, []);
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -570,7 +577,44 @@ const MindMapApp = ({ user }: { user: any }) => {
 
   const handleLoadMap = (map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); initYjs(map.room_id, map.data); setIsSidebarOpen(false); };
   const handleNewMap = () => { if (channelRef.current) supabase.removeChannel(channelRef.current); const newRoom = crypto.randomUUID(); window.location.hash = newRoom; initYjs(newRoom); setMapId(null); setMapTitle('無題のマップ'); setIsSidebarOpen(false); };
-  const handleShare = () => { if (!roomId) return; navigator.clipboard.writeText(`${window.location.origin}#${roomId}`); alert('共有URLをコピーしました！'); };
+  
+  // ★ 共有ボタン → 招待モーダルを開く
+  const handleShare = () => { if (!roomId) return; setShowInviteModal(true); };
+
+  // ★ 招待処理
+  const handleInviteSubmit = async () => {
+    if (!inviteEmail.trim() || !mapId) return;
+    setInviteLoading(true);
+    setInviteMessage('');
+    try {
+      const { data: userIdData, error: rpcError } = await supabase.rpc('get_user_id_by_email', { p_email: inviteEmail.trim() });
+      if (rpcError) throw rpcError;
+      const invitedUserId = userIdData as string;
+      if (!invitedUserId) {
+        setInviteMessage('指定されたメールアドレスのユーザーが見つかりませんでした');
+        return;
+      }
+      const { error: insertError } = await supabase.from('map_members').insert({
+        map_id: mapId,
+        user_id: invitedUserId,
+        role: 'editor'
+      });
+      if (insertError) {
+        if (insertError.code === '23505') {
+          setInviteMessage('このユーザーは既に招待されています');
+        } else {
+          throw insertError;
+        }
+      } else {
+        setInviteMessage('招待メールを送信しました（実際のメール送信は未実装）');
+        setInviteEmail('');
+      }
+    } catch (err: any) {
+      setInviteMessage('エラーが発生しました: ' + err.message);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
@@ -853,7 +897,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
 
-      {/* ★ 新設：左サイドバー */}
+      {/* ★ 左サイドバー */}
       <div 
         className={`absolute top-0 left-0 h-full bg-white border-r shadow-xl z-[100] transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ width: '280px' }}
@@ -880,7 +924,7 @@ const MindMapApp = ({ user }: { user: any }) => {
         <div className="flex-1 overflow-y-auto p-3">
           <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">保存済みマップ</h3>
           {savedMaps.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">まだ保存されたマップがありません</p>
+            <p className="text-sm text-gray-400 text-center py-4">まだマップがありません</p>
           ) : (
             <div className="flex flex-col gap-1">
               {savedMaps.map((map: MapRecord) => (
@@ -905,6 +949,41 @@ const MindMapApp = ({ user }: { user: any }) => {
           <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded transition-colors whitespace-nowrap">ログアウト</button>
         </div>
       </div>
+
+      {/* ★ 招待モーダル */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">ユーザーを招待</h3>
+              <button onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); }} className="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Googleアカウントのメールアドレスを入力してください。</p>
+            <div className="flex gap-2 mb-3">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="example@gmail.com"
+                className="flex-1 border rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-300"
+                disabled={inviteLoading}
+              />
+              <button
+                onClick={handleInviteSubmit}
+                disabled={inviteLoading || !inviteEmail.trim()}
+                className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {inviteLoading ? '招待中...' : '招待'}
+              </button>
+            </div>
+            {inviteMessage && (
+              <p className={`text-sm ${inviteMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>
+                {inviteMessage}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* メイン領域 */}
       <div className="flex-1 relative flex flex-col min-w-0">
@@ -941,7 +1020,6 @@ const MindMapApp = ({ user }: { user: any }) => {
               </select>
             </div>
 
-            {/* 保存状態インジケーター */}
             {isDirty ? (
               <span className="text-[10px] text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full ml-2 border border-yellow-200">未保存の変更</span>
             ) : saveMessage === '保存完了' ? (
