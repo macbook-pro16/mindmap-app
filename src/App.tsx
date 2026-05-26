@@ -196,6 +196,7 @@ const UndoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCol
 const RedoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4" /></svg> );
 const PlusIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg> );
 const SaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v11a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V4m0 3h4m-4 0H8" /></svg> );
+const FolderIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg> );
 const LinkIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828m6.364-6.364a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828" /></svg> );
 const HomeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> );
 const AlignVIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="21" strokeWidth={2} /><path strokeWidth={2} d="M5 7l7-4 7 4M5 17l7 4 7-4" /></svg> );
@@ -270,7 +271,7 @@ const getCanvasCoords = (clientX: number, clientY: number, container: HTMLDivEle
 };
 const isNodeInRect = (node: MindNode, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
   const left = node.x - NODE_WIDTH / 2, right = node.x + NODE_WIDTH / 2, top = node.y - NODE_HEIGHT / 2, bottom = node.y + NODE_HEIGHT / 2;
-  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2), ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
+  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2), ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, ry2);
   return !(right < rx1 || left > rx2 || bottom < ry1 || top > ry2);
 };
 
@@ -308,7 +309,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
   
-  // ★ サイドバー開閉状態
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
@@ -806,6 +806,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(edgeId); setSelectedImageId(null); closeContextMenu(); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); }, []);
   const handleEdgeEndpointMouseDown = useCallback((e: ReactMouseEvent, edgeId: string, endpoint: 'source' | 'target') => { e.stopPropagation(); e.preventDefault(); setEditingEdgeEndpoint({ edgeId, endpoint }); }, []);
+
   const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => {
     e.stopPropagation(); e.preventDefault();
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
@@ -861,14 +862,14 @@ const MindMapApp = ({ user }: { user: any }) => {
         </div>
         
         <div className="p-3 border-b flex flex-col gap-2">
-          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded shadow-sm w-full font-medium">
+          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded shadow-sm w-full font-medium transition-colors">
             <PlusIcon /> 新規マップ作成
           </button>
           <div className="flex gap-2">
-            <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700">
+            <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
               <SaveIcon /> 保存
             </button>
-            <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700">
+            <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
               <LinkIcon /> 共有
             </button>
           </div>
@@ -886,12 +887,20 @@ const MindMapApp = ({ user }: { user: any }) => {
                   onClick={() => handleLoadMap(map)} 
                   className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-gray-100 text-gray-700'}`}
                 >
-                  <FileIcon />
+                  <FolderIcon />
                   <span className="truncate">{map.title}</span>
                 </div>
               ))}
             </div>
           )}
+        </div>
+        
+        <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-2 overflow-hidden">
+             {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300 flex-shrink-0" /> : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div>}
+             <span className="text-xs text-gray-600 truncate" title={myEmail}>{myEmail}</span>
+          </div>
+          <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded transition-colors whitespace-nowrap">ログアウト</button>
         </div>
       </div>
 
@@ -900,38 +909,38 @@ const MindMapApp = ({ user }: { user: any }) => {
         {!zenMode && (
           <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
             {/* ★ メニュー開閉ボタン */}
-            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600" title="メニューを開く">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="メニューを開く">
               <MenuIcon />
             </button>
 
-            <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border-none bg-transparent hover:bg-gray-50 px-2 py-1 text-sm w-48 font-bold outline-none rounded" placeholder="無題のマップ" />
+            <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border-none bg-transparent hover:bg-gray-50 px-2 py-1 text-sm w-48 font-bold outline-none rounded transition-colors" placeholder="無題のマップ" />
             
             <div className="w-px h-5 bg-gray-300 mx-1" />
             <div className="flex items-center gap-0.5">
-              <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
-              <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
+              <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
+              <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
             </div>
             
             {selectedNodeIds.length >= 2 && (
               <>
                 <div className="w-px h-5 bg-gray-300 mx-1" />
                 <div className="flex items-center gap-1">
-                  <button onClick={() => alignNodes('vertical')} className="p-1.5 rounded hover:bg-gray-100 text-gray-600" title="垂直に整列"><AlignVIcon /></button>
-                  <button onClick={() => alignNodes('horizontal')} className="p-1.5 rounded hover:bg-gray-100 text-gray-600" title="水平に整列"><AlignHIcon /></button>
+                  <button onClick={() => alignNodes('vertical')} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors" title="垂直に整列"><AlignVIcon /></button>
+                  <button onClick={() => alignNodes('horizontal')} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors" title="水平に整列"><AlignHIcon /></button>
                 </div>
               </>
             )}
             
             <div className="w-px h-5 bg-gray-300 mx-1" />
             <div className="flex items-center gap-1 px-1">
-              <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm" title="線のスタイル">
+              <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm transition-colors" title="線のスタイル">
                 <option value="bezier">曲線</option>
                 <option value="step">直角</option>
                 <option value="straight">直線</option>
               </select>
             </div>
 
-            {/* ★ 保存状態インジケーター（旧保存ボタンの代わり） */}
+            {/* ★ 保存状態インジケーター */}
             {isDirty ? (
               <span className="text-[10px] text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full ml-2 border border-yellow-200">未保存の変更</span>
             ) : saveMessage === '保存完了' ? (
@@ -939,10 +948,10 @@ const MindMapApp = ({ user }: { user: any }) => {
             ) : null}
 
             <div className="ml-auto flex items-center gap-1">
-              <button onClick={scrollToHome} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 mr-2" title="ホーム位置に戻る"><HomeIcon /></button>
-              <button onClick={() => changeZoom(-0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600">−</button>
+              <button onClick={scrollToHome} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 mr-2 transition-colors" title="ホーム位置に戻る"><HomeIcon /></button>
+              <button onClick={() => changeZoom(-0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600 transition-colors">−</button>
               <span className="text-xs text-gray-500 font-medium px-1 w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
-              <button onClick={() => changeZoom(0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600">＋</button>
+              <button onClick={() => changeZoom(0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600 transition-colors">＋</button>
             </div>
             
             <div className="w-px h-5 bg-gray-300 mx-2" />
@@ -956,6 +965,9 @@ const MindMapApp = ({ user }: { user: any }) => {
                 {showParticipants && (<div className="absolute top-full right-0 mt-2 w-56 bg-white border rounded-lg shadow-xl p-3 z-50"><h3 className="text-xs font-bold text-gray-600 mb-2 border-b pb-2">参加者 ({participants.length}人)</h3><div className="space-y-2 max-h-48 overflow-y-auto">{participants.map((p: any, i: number) => (<div key={i} className="flex items-center gap-2 text-xs"><div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-blue-400' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-gray-800 font-medium truncate">{p.email}{p.isSelf ? ' (あなた)' : ''}</div><div className="text-gray-400 text-[10px]">{p.isEditing ? '📝 編集中' : p.isSelecting ? '👆 選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-3 text-[10px] text-gray-500 hover:text-gray-700 w-full text-center p-1 rounded bg-gray-50 hover:bg-gray-100 transition-colors">閉じる</button></div>)}
               </div>
             </div>
+            
+            {/* ヘッダーにもログアウトボタンを残す場合はここ。今回はサイドバー下部に移動したため省略 */}
+            <button onClick={handleLogout} className="text-xs bg-red-400 hover:bg-red-500 text-white px-2 py-1 rounded ml-2 transition-colors">ログアウト</button>
           </div>
         )}
         
@@ -963,10 +975,10 @@ const MindMapApp = ({ user }: { user: any }) => {
         
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border rounded-lg shadow-xl py-1 text-sm min-w-[180px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>子トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>下に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>上に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>親トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⌘Enter</span></button><hr className="my-1 border-gray-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">色を変更</button><hr className="my-1 border-gray-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2 hover:bg-gray-50">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2 hover:bg-gray-50">水平に整列</button><hr className="my-1 border-gray-100" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group"><span>削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button></>)}
-            {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group"><span>線を削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button><hr className="my-1 border-gray-100" /><div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-gray-50">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-gray-50">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-gray-50">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-gray-50">両方 ⇄</button></>)}
-            {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600">画像を削除</button></>)}
-            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2 hover:bg-gray-50">独立トピックを追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2 hover:bg-gray-50">画像を添付</button></>)}
+            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>子トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>親トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⌘Enter</span></button><hr className="my-1 border-gray-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">色を変更</button><hr className="my-1 border-gray-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">水平に整列</button><hr className="my-1 border-gray-100" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button></>)}
+            {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group transition-colors"><span>線を削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button><hr className="my-1 border-gray-100" /><div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">両方 ⇄</button></>)}
+            {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 transition-colors">画像を削除</button></>)}
+            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">画像を添付</button></>)}
           </div>
         )}
         {showColorPalette && (
