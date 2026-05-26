@@ -28,12 +28,19 @@ interface FlatNode {
   textColor?: string;
 }
 
+interface MapMember {
+  user_id: string;
+  email: string;
+}
+
 interface MapRecord {
   id: number;
   title: string;
   data: MindNode;
   room_id: string;
   created_at: string;
+  updated_at?: string;
+  members?: MapMember[];
 }
 
 interface AwarenessState {
@@ -205,7 +212,6 @@ const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCo
 const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const SiblingNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
 const MenuIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg> );
-const FileIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg> );
 const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
@@ -555,9 +561,12 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
   const fetchMaps = useCallback(async () => {
-    const { data, error } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('maps')
+      .select('*, map_members(user_id, email)')
+      .order('created_at', { ascending: false });
     if (error) console.error('マップ一覧の取得に失敗しました:', error);
-    if (data) setSavedMaps(data as MapRecord[]);
+    if (data) setSavedMaps(data as unknown as MapRecord[]);
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -680,7 +689,8 @@ const MindMapApp = ({ user }: { user: any }) => {
       const { error: insertError } = await supabase.from('map_members').insert({
         map_id: mapId,
         user_id: invitedUserId,
-        role: 'editor'
+        role: 'editor',
+        email: inviteEmail.trim()   // ★ メールアドレスも保存
       });
       if (insertError) {
         if (insertError.code === '23505') {
@@ -1031,7 +1041,7 @@ const MindMapApp = ({ user }: { user: any }) => {
         style={{ width: '280px' }}
       >
         <div className="p-4 border-b flex items-center justify-between bg-gray-50">
-          <h2 className="font-bold text-gray-700">ファイル管理</h2>
+          <h2 className="font-bold text-gray-700">MindMap</h2>
           <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-gray-200 rounded text-gray-500">✕</button>
         </div>
         
@@ -1054,31 +1064,54 @@ const MindMapApp = ({ user }: { user: any }) => {
           {savedMaps.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">まだマップがありません</p>
           ) : (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
               {savedMaps.map((map: MapRecord) => (
-                <div key={map.id} className="group flex items-center gap-1 hover:bg-gray-50 rounded">
-                  <div 
-                    onClick={() => handleLoadMap(map)} 
-                    className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors flex-1 ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
-                  >
-                    <FileIcon />
-                    <span className="truncate flex-1">{map.title}</span>
+                <div key={map.id} className="group flex flex-col hover:bg-gray-50 rounded p-2 gap-1">
+                  <div className="flex items-center gap-2">
+                    <div 
+                      onClick={() => handleLoadMap(map)} 
+                      className={`cursor-pointer flex-1 text-sm transition-colors truncate ${mapId === map.id ? 'text-blue-700 font-medium' : 'text-gray-700'}`}
+                    >
+                      {map.title}
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <button 
+                        onClick={(e) => handleCopyMap(map, e)}
+                        className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                        title="コピー"
+                      >
+                        <CopyIcon />
+                      </button>
+                      <button 
+                        onClick={(e) => handleDeleteMap(map, e)}
+                        className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
+                        title="削除"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-0.5 pr-2">
-                    <button 
-                      onClick={(e) => handleCopyMap(map, e)}
-                      className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
-                      title="コピー"
-                    >
-                      <CopyIcon />
-                    </button>
-                    <button 
-                      onClick={(e) => handleDeleteMap(map, e)}
-                      className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
-                      title="削除"
-                    >
-                      <TrashIcon />
-                    </button>
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <div className="flex -space-x-1">
+                      {map.members && map.members.slice(0, 3).map((member, idx) => (
+                        <div
+                          key={idx}
+                          className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-bold text-white border border-white"
+                          style={{ backgroundColor: stringToColor(member.email) }}
+                          title={member.email}
+                        >
+                          {getInitial(member.email)}
+                        </div>
+                      ))}
+                      {map.members && map.members.length > 3 && (
+                        <div className="w-5 h-5 rounded-full bg-gray-400 flex items-center justify-center text-[10px] font-bold text-white border border-white">
+                          +{map.members.length - 3}
+                        </div>
+                      )}
+                    </div>
+                    <span>
+                      {map.updated_at ? new Date(map.updated_at).toLocaleDateString('ja-JP') : ''}
+                    </span>
                   </div>
                 </div>
               ))}
