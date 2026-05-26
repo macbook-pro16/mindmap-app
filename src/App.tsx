@@ -267,6 +267,7 @@ const MenuIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentCol
 const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
 const ParentNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg> );
 const StickyIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> );
+const ImageIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -1377,6 +1378,7 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={() => selectedNodeId && deleteNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-rose-500 transition-all" title="削除 (Delete/Backspace)"><TrashIcon /></button>
               <div className="w-px h-4 bg-slate-300 mx-1" />
               <button onClick={handleHeaderAddSticky} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-amber-600 transition-all" title="付箋を追加"><StickyIcon /></button>
+              <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-sky-600 transition-all" title="画像を添付"><ImageIcon /></button>
             </div>
 
             {/* カラーパレット */}
@@ -1540,9 +1542,9 @@ const MindMapApp = ({ user }: { user: User }) => {
                   onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }}
                   onClick={(e) => { e.stopPropagation(); if(!draggingStickyId) { setSelectedStickyId(sticky.id); setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null); } }}
                 >
-                  {/* 折り目 */}
-                  <div className="absolute top-0 right-0 w-6 h-6 overflow-hidden">
-                    <div className="absolute top-0 right-0 w-0 h-0 border-l-[12px] border-l-transparent border-b-[12px] border-b-black/10" />
+                  {/* 左上折り目 */}
+                  <div className="absolute top-0 left-0 w-6 h-6 overflow-hidden">
+                    <div className="absolute top-0 left-0 w-0 h-0 border-r-[12px] border-r-transparent border-b-[12px] border-b-black/10" />
                   </div>
                   <div className="w-full h-full flex flex-col p-2">
                     <div className="flex-1 flex items-start overflow-hidden">
@@ -1551,7 +1553,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                           autoFocus
                           className="w-full h-full resize-none bg-transparent border-none outline-none text-sm font-medium"
                           defaultValue={sticky.text}
-                          onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); if (trimmed) updateStickyText(sticky.id, trimmed); else deleteSticky(sticky.id); setEditingStickyId(null); }}
+                          onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateStickyText(sticky.id, trimmed); setEditingStickyId(null); }}
                           onKeyDown={(e) => { if (e.key === 'Escape') setEditingStickyId(null); }}
                         />
                       ) : (
