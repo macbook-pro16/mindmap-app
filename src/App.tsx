@@ -563,6 +563,27 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedNodeId(childId); setSelectedNodeIds([childId]);
   }, []);
 
+  // ★ 独立トピック用の兄弟追加（中心テーマに繋がらない）
+  const addIndependentSibling = useCallback((targetId: string, position: 'before' | 'after') => {
+    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return;
+    const targetNode = nodes.get(targetId); if (!targetNode) return;
+    const newId = crypto.randomUUID();
+    const offsetY = position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20);
+    const safePos = getUnoccupiedPosition(targetNode.x, targetNode.y + offsetY, nodes);
+    const rootId = yRootRef.current;
+    ydocRef.current?.transact(() => {
+      nodes.set(newId, { text: '独立トピック', x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f0f9ff', textColor: '#0369a1' });
+      const root = nodes.get(rootId); if (root) {
+        const curChildren: string[] = root.children ?? [];
+        const targetIndex = curChildren.indexOf(targetId);
+        const newChildren = [...curChildren];
+        newChildren.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, newId);
+        nodes.set(rootId, { ...root, children: newChildren });
+      }
+    });
+    setSelectedNodeId(newId); setSelectedNodeIds([newId]);
+  }, []);
+
   const addSticky = useCallback((x: number, y: number) => {
     const yStickies = yStickiesRef.current; if (!yStickies || !ydocRef.current) return;
     const id = crypto.randomUUID();
@@ -576,9 +597,32 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, []);
 
   const deleteNode = useCallback((nodeId: string) => { const nodes = yNodesRef.current; if (!nodes || !yRootRef.current || nodeId === yRootRef.current) return; ydocRef.current?.transact(() => { nodes.forEach((value: YjsNodeData, key: string) => { if (value.children?.includes(nodeId)) nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) }); }); nodes.delete(nodeId); }); setSelectedNodeId(null); setSelectedNodeIds([]); }, []);
+
+  // ★ 複数ノード一括削除
+  const deleteMultipleNodes = useCallback((nodeIds: string[]) => {
+    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return;
+    ydocRef.current?.transact(() => {
+      nodeIds.forEach((nodeId: string) => {
+        if (nodeId === yRootRef.current) return;
+        nodes.forEach((value: YjsNodeData, key: string) => { if (value.children?.includes(nodeId)) nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) }); });
+        nodes.delete(nodeId);
+      });
+    });
+    setSelectedNodeId(null); setSelectedNodeIds([]);
+  }, []);
+
   const updateText = useCallback((nodeId: string, text: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, text }); }, []);
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
   const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
+
+  // ★ 複数ノード一括色変更
+  const updateMultipleNodeColors = useCallback((nodeIds: string[], bgColor: string, textColor: string) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    ydocRef.current?.transact(() => {
+      nodeIds.forEach((id: string) => { const data = nodes.get(id); if (data) nodes.set(id, { ...data, bgColor, textColor }); });
+    });
+  }, []);
+
   const updateStickyColors = useCallback((stickyId: string, bgColor: string, textColor: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, bgColor, textColor }); }, []);
   const deleteSticky = useCallback((stickyId: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; ydocRef.current?.transact(() => { yStickies.delete(stickyId); }); setSelectedStickyId(null); }, []);
   const updateStickyText = useCallback((stickyId: string, text: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, text }); }, []);
@@ -626,12 +670,14 @@ const MindMapApp = ({ user }: { user: User }) => {
   const updateImagePosition = useCallback((imageId: string, x: number, y: number) => { const yImages = yImagesRef.current; if (!yImages) return; const data = yImages.get(imageId); if (data) yImages.set(imageId, { ...data, x, y }); }, []);
 
   const handleHeaderColorSelect = useCallback((bgColor: string, textColor: string) => {
-    if (selectedNodeId) {
+    if (selectedNodeIds.length > 1) {
+      updateMultipleNodeColors(selectedNodeIds, bgColor, textColor);
+    } else if (selectedNodeId) {
       updateNodeColors(selectedNodeId, bgColor, textColor);
     } else if (selectedStickyId) {
       updateStickyColors(selectedStickyId, bgColor, textColor);
     }
-  }, [selectedNodeId, selectedStickyId, updateNodeColors, updateStickyColors]);
+  }, [selectedNodeId, selectedNodeIds, selectedStickyId, updateNodeColors, updateMultipleNodeColors, updateStickyColors]);
 
   const handleHeaderAddSticky = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -1050,6 +1096,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedImageId && !selectedNodeId && !selectedEdgeId && !selectedStickyId) { e.preventDefault(); deleteImage(selectedImageId); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedStickyId && !selectedNodeId && !selectedEdgeId && !selectedImageId) { e.preventDefault(); deleteSticky(selectedStickyId); return; }
+    // ★ 複数ノード選択時は一括削除
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeIds.length > 1 && !selectedEdgeId && !selectedImageId && !selectedStickyId) { e.preventDefault(); deleteMultipleNodes(selectedNodeIds); return; }
     
     if (!selectedNodeId) return;
     
@@ -1091,12 +1139,31 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); addSiblingNode(selectedNodeId, 'after'); return; }
-    if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); addSiblingNode(selectedNodeId, 'before'); return; }
+    // ★ 独立トピックの場合は addIndependentSibling、それ以外は通常の addSiblingNode
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const node = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
+      if (node?.independent) {
+        addIndependentSibling(selectedNodeId, 'after');
+      } else {
+        addSiblingNode(selectedNodeId, 'after');
+      }
+      return;
+    }
+    if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const node = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
+      if (node?.independent) {
+        addIndependentSibling(selectedNodeId, 'before');
+      } else {
+        addSiblingNode(selectedNodeId, 'before');
+      }
+      return;
+    }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addParentNode(selectedNodeId); return; }
     if (e.key === 'Tab') { e.preventDefault(); addChildNode(selectedNodeId); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteNode(selectedNodeId); return; }
-  }, [editingNodeId, editingStickyId, selectedNodeId, selectedEdgeId, selectedImageId, selectedStickyId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addParentNode, deleteNode, deleteEdge, deleteImage, deleteSticky, changeZoom]);
+  }, [editingNodeId, editingStickyId, selectedNodeId, selectedNodeIds, selectedEdgeId, selectedImageId, selectedStickyId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteMultipleNodes, deleteEdge, deleteImage, deleteSticky, changeZoom]);
 
   const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'node', nodeId }); setShowColorPalette(null); }, []);
   const handleCanvasContextMenu = useCallback((e: ReactMouseEvent) => { e.preventDefault(); const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'canvas', canvasX: coords.x, canvasY: coords.y }); }, [zoomLevel]);
@@ -1107,10 +1174,17 @@ const MindMapApp = ({ user }: { user: User }) => {
     closeContextMenu();
     if (contextMenu.type === 'node' && contextMenu.nodeId) {
       const nodeId = contextMenu.nodeId;
+      const node = mindMap ? findNodeById(mindMap, nodeId) : null;
       switch (action) {
         case 'addChild': addChildNode(nodeId); break;
-        case 'addSiblingAfter': addSiblingNode(nodeId, 'after'); break;
-        case 'addSiblingBefore': addSiblingNode(nodeId, 'before'); break;
+        case 'addSiblingAfter':
+          if (node?.independent) addIndependentSibling(nodeId, 'after');
+          else addSiblingNode(nodeId, 'after');
+          break;
+        case 'addSiblingBefore':
+          if (node?.independent) addIndependentSibling(nodeId, 'before');
+          else addSiblingNode(nodeId, 'before');
+          break;
         case 'addParent': addParentNode(nodeId); break;
         case 'delete': deleteNode(nodeId); break;
         case 'alignVertical': alignNodes('vertical'); break;
@@ -1130,7 +1204,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       else if (action === 'addSticky' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addSticky(contextMenu.canvasX, contextMenu.canvasY); 
       else if (action === 'addImage') fileInputRef.current?.click(); 
     }
-  }, [contextMenu, closeContextMenu, addChildNode, addSiblingNode, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addSticky, alignNodes, deleteImage, deleteSticky]);
+  }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addSticky, alignNodes, deleteImage, deleteSticky]);
 
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => {
     e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
@@ -1364,9 +1438,10 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="w-px h-6 bg-slate-200 mx-3" />
 
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-              <button onClick={() => selectedNodeId && addChildNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="子を追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">子</span></button>
-              <button onClick={() => selectedNodeId && addSiblingNode(selectedNodeId, 'after')} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="兄弟を追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">兄弟</span></button>
-              <button onClick={() => selectedNodeId && addParentNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="親を追加 (Ctrl+Enter)"><ParentNodeIcon /><span className="text-[10px] font-bold">親</span></button>
+              <button onClick={() => selectedNodeId && addChildNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
+              <button onClick={() => { if(!selectedNodeId) return; const n = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if(n?.independent) addIndependentSibling(selectedNodeId, 'after'); else addSiblingNode(selectedNodeId, 'after'); }} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
+              <button onClick={() => { if(!selectedNodeId) return; const n = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if(n?.independent) addIndependentSibling(selectedNodeId, 'before'); else addSiblingNode(selectedNodeId, 'before'); }} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="上に追加 (Shift+Enter)"><SiblingNodeIcon className="rotate-180" /><span className="text-[10px] font-bold">上</span></button>
+              <button onClick={() => selectedNodeId && addParentNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="左に追加 (Ctrl+Enter)"><ParentNodeIcon /><span className="text-[10px] font-bold">左</span></button>
               <div className="w-px h-4 bg-slate-300 mx-1" />
               {selectedNodeIds.length >= 2 && (
                 <>
@@ -1375,7 +1450,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <div className="w-px h-4 bg-slate-300 mx-1" />
                 </>
               )}
-              <button onClick={() => selectedNodeId && deleteNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-rose-500 transition-all" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+              <button onClick={() => { if(selectedNodeIds.length > 1) deleteMultipleNodes(selectedNodeIds); else if(selectedNodeId) deleteNode(selectedNodeId); }} disabled={!selectedNodeId && selectedNodeIds.length === 0} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-rose-500 transition-all" title="削除 (Delete/Backspace)"><TrashIcon /></button>
               <div className="w-px h-4 bg-slate-300 mx-1" />
               <button onClick={handleHeaderAddSticky} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-amber-600 transition-all" title="付箋を追加"><StickyIcon /></button>
               <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-sky-600 transition-all" title="画像を添付"><ImageIcon /></button>
@@ -1387,7 +1462,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <button
                   key={cp.label}
                   onClick={() => handleHeaderColorSelect(cp.bg, cp.text)}
-                  disabled={!selectedNodeId && !selectedStickyId}
+                  disabled={!selectedNodeId && !selectedStickyId && selectedNodeIds.length === 0}
                   className="w-6 h-6 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
                   style={{ backgroundColor: cp.bg }}
                   title={cp.label}
@@ -1439,7 +1514,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>子トピックを追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>親トピックを追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
+            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
             {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>線を削除</span><span className="text-[10px] text-rose-300 border border-rose-100 rounded px-1 group-hover:border-rose-200 group-hover:text-rose-500">⌫</span></button><div className="mx-2 my-1 border-b border-slate-100" /><div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">両方 ⇄</button></>)}
             {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">画像を削除</button></>)}
             {contextMenu.type === 'sticky' && contextMenu.stickyId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteSticky')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">付箋を削除</button></>)}
@@ -1450,7 +1525,8 @@ const MindMapApp = ({ user }: { user: User }) => {
           <div className="fixed z-[110] bg-white border border-slate-200 rounded-xl shadow-2xl p-4 text-sm" style={{ left: showColorPalette.x, top: showColorPalette.y }} onClick={e => e.stopPropagation()}>
             <div className="text-xs font-bold text-slate-500 mb-3 text-center uppercase tracking-wide">カラーパレット</div>
             <div className="grid grid-cols-4 gap-3 mb-4">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-10 h-10 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05), 0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { 
-              if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); 
+              if(showColorPalette.nodeId && selectedNodeIds.length > 1) updateMultipleNodeColors(selectedNodeIds, cp.bg, cp.text);
+              else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); 
               else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); 
               setShowColorPalette(null); closeContextMenu(); 
             }} />))}</div>
@@ -1497,8 +1573,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
                 <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="色を変更"><PaletteIcon /></button>
                 <div className="w-px h-5 bg-slate-600 mx-0.5" />
-                <button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="子を追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">子</span></button>
-                <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="兄弟を追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">兄弟</span></button>
+                <button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
+                <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
                 <div className="w-px h-5 bg-slate-600 mx-0.5" />
                 <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-rose-900/50 rounded-md text-rose-400 hover:text-rose-300 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
               </div>
@@ -1532,38 +1608,41 @@ const MindMapApp = ({ user }: { user: User }) => {
               return (
                 <div
                   key={sticky.id}
-                  className={`absolute cursor-move border rounded-lg shadow-2xl overflow-visible transition-shadow ${selectedStickyId === sticky.id ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-indigo-500/30' : 'border-transparent hover:shadow-black/20'}`}
+                  className={`absolute cursor-move rounded-sm overflow-visible transition-shadow group ${selectedStickyId === sticky.id ? 'ring-4 ring-indigo-500/20 shadow-2xl' : 'shadow-lg hover:shadow-xl'}`}
                   style={{ 
                     left: sticky.x, top: sticky.y, width: sticky.width, height: sticky.height, zIndex: 5,
-                    backgroundColor: sticky.bgColor, color: sticky.textColor
                   }}
                   onMouseDown={(e) => handleMouseDownOnSticky(e as any, sticky.id)}
                   onContextMenu={(e) => handleStickyContextMenu(e as any, sticky.id)}
                   onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }}
                   onClick={(e) => { e.stopPropagation(); if(!draggingStickyId) { setSelectedStickyId(sticky.id); setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null); } }}
                 >
-                  {/* 左上折り目 */}
-                  <div className="absolute top-0 left-0 w-6 h-6 overflow-hidden">
-                    <div className="absolute top-0 left-0 w-0 h-0 border-r-[12px] border-r-transparent border-b-[12px] border-b-black/10" />
-                  </div>
-                  <div className="w-full h-full flex flex-col p-2">
+                  {/* 付箋の影 (::before) */}
+                  <div className="absolute -bottom-1.5 right-2 w-[70%] h-[50%] -z-10 opacity-40" style={{ backgroundColor: 'rgba(0,0,0,0.3)', transform: 'rotate(3deg)', filter: 'blur(6px)' }} />
+                  
+                  {/* 付箋本体 */}
+                  <div className="relative w-full h-full rounded-sm flex flex-col p-3" style={{ backgroundColor: sticky.bgColor, color: sticky.textColor, boxShadow: '1px 2px 4px rgba(0,0,0,0.05)' }}>
+                    {/* 左上折り目 */}
+                    <div className="absolute top-0 left-0 w-0 h-0 border-r-[16px] border-r-transparent border-b-[16px] rounded-br-sm" style={{ borderBottomColor: 'rgba(0,0,0,0.08)' }} />
+                    
                     <div className="flex-1 flex items-start overflow-hidden">
                       {isEditing ? (
                         <textarea
                           autoFocus
-                          className="w-full h-full resize-none bg-transparent border-none outline-none text-sm font-medium"
+                          className="w-full h-full resize-none bg-transparent border-none outline-none text-sm font-medium pointer-events-auto"
                           defaultValue={sticky.text}
                           onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateStickyText(sticky.id, trimmed); setEditingStickyId(null); }}
                           onKeyDown={(e) => { if (e.key === 'Escape') setEditingStickyId(null); }}
+                          onMouseDown={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        <div className="w-full h-full whitespace-pre-wrap overflow-auto text-sm font-medium cursor-text" onClick={() => setEditingStickyId(sticky.id)}>
+                        <div className="w-full h-full whitespace-pre-wrap overflow-auto text-sm font-medium cursor-text select-none pointer-events-none">
                           {sticky.text}
                         </div>
                       )}
                     </div>
                     {selectedStickyId === sticky.id && !isEditing && (
-                      <div className="flex justify-end gap-1 mt-1">
+                      <div className="flex justify-end gap-1 mt-1 pointer-events-auto">
                         <button onClick={(e) => { e.stopPropagation(); setShowColorPalette({ stickyId: sticky.id, x: window.innerWidth / 2, y: window.innerHeight / 2 }); }} className="p-1 hover:bg-black/10 rounded">
                           <PaletteIcon />
                         </button>
@@ -1573,6 +1652,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                       </div>
                     )}
                   </div>
+                  
                   {selectedStickyId === sticky.id && (
                     <>
                       <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as any, sticky.id, 'nw')} />
