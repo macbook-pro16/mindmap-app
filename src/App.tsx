@@ -554,14 +554,12 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
-  // ★ 招待されたマップも取得できるようにRLSに任せる
   const fetchMaps = useCallback(async () => {
     const { data, error } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
     if (error) console.error('マップ一覧の取得に失敗しました:', error);
     if (data) setSavedMaps(data as MapRecord[]);
   }, []);
 
-  // ★ 共有されたマップを上書き保存する際、作成者のユーザーIDを上書きしないようにする
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) {
       alert('保存に必要なデータが不足しています（roomIdが未設定）');
@@ -578,7 +576,6 @@ const MindMapApp = ({ user }: { user: any }) => {
     let resultError;
 
     if (mapId) {
-      // 既存マップの更新（共有されたマップの所有者を上書きしないよう user_id は含めない）
       const { data, error } = await supabase.from('maps').update({ 
         title: mapTitle, 
         data: tree, 
@@ -587,7 +584,6 @@ const MindMapApp = ({ user }: { user: any }) => {
       resultData = data;
       resultError = error;
     } else {
-      // 新規作成
       const { data, error } = await supabase.from('maps').insert([{ 
         title: mapTitle, 
         data: tree, 
@@ -622,7 +618,6 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
   }, [isSidebarOpen, fetchMaps]);
 
-  // ★ サイドバーを手動で閉じるために setIsSidebarOpen(false) を削除
   const handleLoadMap = useCallback((map: MapRecord) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     window.location.hash = map.room_id;
