@@ -373,9 +373,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [inviteMessage, setInviteMessage] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
 
-  // ★ 新規マップ自動保存フラグ
-  const [pendingAutoSave, setPendingAutoSave] = useState(false);
-
   const closeContextMenu = useCallback(() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowColorPalette(null); }, []);
   const scrollToHome = useCallback(() => { const container = scrollContainerRef.current; if (!container) return; const centerX = 5000 * zoomLevel - container.clientWidth / 2; const centerY = 5000 * zoomLevel - container.clientHeight / 2; container.scrollTo({ left: centerX, top: centerY, behavior: 'smooth' }); }, [zoomLevel]);
   const broadcastAwareness = useCallback((channel: RealtimeChannel, userId: string, state: AwarenessState | null) => { if (!channel) return; channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId, state } }); }, []);
@@ -567,7 +564,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) return;
     const tree = yMapToTree(yNodesRef.current, yRootRef.current); if (!tree) return;
-    setSaveMessage('');
+    setSaveMessage('保存中...');
     const payload = { title: mapTitle, data: tree, room_id: roomId, user_id: user.id, updated_at: new Date().toISOString() };
     const { data, error } = mapId ? await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: payload.updated_at }).eq('id', mapId).select() : await supabase.from('maps').insert([payload]).select();
     if (error) { setSaveMessage('保存に失敗'); console.error(error); return; }
@@ -578,7 +575,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {}
       setTimeout(() => setSaveMessage(''), 2500);
       // ★ 保存後に一覧を更新
-      fetchMaps();
+      await fetchMaps();
     }
   }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
 
@@ -589,13 +586,15 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
   }, [isSidebarOpen, fetchMaps]);
 
-  // ★ 新規マップ作成時の自動保存
+  // ★ 新規マップ作成時の自動保存（マップデータ準備完了後に実行）
   useEffect(() => {
-    if (pendingAutoSave && roomId && mindMap && yNodesRef.current && yRootRef.current) {
-      setPendingAutoSave(false);
-      handleSave();
+    if (roomId && mindMap && yNodesRef.current && yRootRef.current) {
+      // 初回マップ読み込み後、mapIdがnull（未保存）の状態なら自動保存
+      if (mapId === null) {
+        handleSave();
+      }
     }
-  }, [pendingAutoSave, roomId, mindMap, handleSave]);
+  }, [roomId, mindMap, mapId, handleSave]);
 
   const handleNewMap = useCallback(() => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
@@ -604,8 +603,6 @@ const MindMapApp = ({ user }: { user: any }) => {
     initYjs(newRoom);
     setMapId(null);
     setMapTitle('無題のマップ');
-    setIsSidebarOpen(false);
-    setPendingAutoSave(true); // 自動保存を予約
   }, []);
 
   const handleLoadMap = useCallback((map: MapRecord) => {
@@ -614,7 +611,6 @@ const MindMapApp = ({ user }: { user: any }) => {
     setMapId(map.id);
     setMapTitle(map.title);
     initYjs(map.room_id, map.data);
-    setIsSidebarOpen(false);
   }, []);
 
   const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
@@ -628,7 +624,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       updated_at: new Date().toISOString()
     });
     if (insertError) { alert('コピーに失敗しました'); return; }
-    fetchMaps();
+    await fetchMaps();
   }, [user.id, fetchMaps]);
 
   const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
@@ -639,7 +635,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     if (mapId === map.id) {
       handleNewMap();
     }
-    fetchMaps();
+    await fetchMaps();
   }, [mapId, handleNewMap, fetchMaps]);
 
   const handleShare = () => { if (!roomId) return; setShowInviteModal(true); };
@@ -962,7 +958,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
 
-      {/* ★ 左サイドバー */}
+      {/* ★ 左サイドバー（手動開閉のみ） */}
       <div 
         className={`absolute top-0 left-0 h-full bg-white border-r shadow-xl z-[100] transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ width: '280px' }}
@@ -993,25 +989,25 @@ const MindMapApp = ({ user }: { user: any }) => {
           ) : (
             <div className="flex flex-col gap-1">
               {savedMaps.map((map: MapRecord) => (
-                <div key={map.id} className="group relative">
+                <div key={map.id} className="group flex items-center gap-1 hover:bg-gray-50 rounded">
                   <div 
                     onClick={() => handleLoadMap(map)} 
-                    className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-gray-100 text-gray-700'}`}
+                    className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors flex-1 ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
                   >
                     <FileIcon />
                     <span className="truncate flex-1">{map.title}</span>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 items-center gap-0.5 pr-1 hidden group-hover:flex bg-white/80">
+                  <div className="flex items-center gap-0.5 pr-2">
                     <button 
                       onClick={(e) => handleCopyMap(map, e)}
-                      className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+                      className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
                       title="コピー"
                     >
                       <CopyIcon />
                     </button>
                     <button 
                       onClick={(e) => handleDeleteMap(map, e)}
-                      className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"
+                      className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
                       title="削除"
                     >
                       <TrashIcon />
@@ -1074,7 +1070,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       <div className="flex-1 relative flex flex-col min-w-0">
         {!zenMode && (
           <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
-            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="メニューを開く">
+            <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="メニューを開く">
               <MenuIcon />
             </button>
 
