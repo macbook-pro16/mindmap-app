@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ChangeEvent, SyntheticEvent } from 'react';
 import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -490,7 +490,7 @@ const MindMapApp = ({ user }: { user: any }) => {
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
   const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
   const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { const nodes = yNodesRef.current; if (!nodes || selectedNodeIds.length < 2) return; const refNodeId = selectedNodeIds[0]; const refNode = nodes.get(refNodeId); if (!refNode) return; const targetX = axis === 'vertical' ? refNode.x : undefined; const targetY = axis === 'horizontal' ? refNode.y : undefined; const idsToAlign = selectedNodeIds.slice(1); ydocRef.current?.transact(() => { idsToAlign.forEach((id: string) => { const data = nodes.get(id); if (!data) return; const updated = { ...data }; if (targetX !== undefined) updated.x = targetX; if (targetY !== undefined) updated.y = targetY; nodes.set(id, updated); }); }); }, [selectedNodeIds]);
-  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`; const { data, error } = await supabase.storage.from('images').upload(fileName, file); if (error) { alert('画像のアップロードに失敗しました'); return; } const path = data.path; const img = new Image(); img.src = URL.createObjectURL(file); img.onload = () => { const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return; const imageId = crypto.randomUUID(); const container = scrollContainerRef.current; const centerX = container ? container.scrollLeft + container.clientWidth / 2 : 5000; const centerY = container ? container.scrollTop + container.clientHeight / 2 : 5000; ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: centerX - img.width / 2, y: centerY - img.height / 2, width: img.width, height: img.height }); }); }; if (fileInputRef.current) fileInputRef.current.value = ''; }, []);
+  const handleImageUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`; const { data, error } = await supabase.storage.from('images').upload(fileName, file); if (error) { alert('画像のアップロードに失敗しました'); return; } const path = data.path; const img = new Image(); img.src = URL.createObjectURL(file); img.onload = () => { const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return; const imageId = crypto.randomUUID(); const container = scrollContainerRef.current; const centerX = container ? container.scrollLeft + container.clientWidth / 2 : 5000; const centerY = container ? container.scrollTop + container.clientHeight / 2 : 5000; ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: centerX - img.width / 2, y: centerY - img.height / 2, width: img.width, height: img.height }); }); }; if (fileInputRef.current) fileInputRef.current.value = ''; }, []);
   const deleteImage = useCallback((imageId: string) => { const yImages = yImagesRef.current; if (!yImages) return; const image = yImages.get(imageId); if (image) { supabase.storage.from('images').remove([image.storagePath]); } ydocRef.current?.transact(() => { yImages.delete(imageId); }); setSelectedImageId(null); closeContextMenu(); }, [closeContextMenu]);
   const updateImagePosition = useCallback((imageId: string, x: number, y: number) => { const yImages = yImagesRef.current; if (!yImages) return; const data = yImages.get(imageId); if (data) yImages.set(imageId, { ...data, x, y }); }, []);
 
@@ -554,13 +554,14 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
-  // ★ 全マップ取得
+  // ★ 修正箇所：招待されたマップも取得できるようにユーザーIDのフィルタリングを削除し、SupabaseのRLSポリシーに任せる
   const fetchMaps = useCallback(async () => {
-    const { data } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
+    if (error) console.error('マップ一覧の取得に失敗しました:', error);
     if (data) setSavedMaps(data as MapRecord[]);
   }, []);
 
-  // ★ 保存処理（エラー時はアラート表示）
+  // ★ 修正箇所：共有されたマップを上書き保存する際、作成者のユーザーIDを上書きしないようにする
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) {
       alert('保存に必要なデータが不足しています（roomIdが未設定）');
@@ -572,17 +573,39 @@ const MindMapApp = ({ user }: { user: any }) => {
       return;
     }
     setSaveMessage('保存中...');
-    const payload = { title: mapTitle, data: tree, room_id: roomId, user_id: user.id, updated_at: new Date().toISOString() };
-    const { data, error } = mapId
-      ? await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: payload.updated_at }).eq('id', mapId).select()
-      : await supabase.from('maps').insert([payload]).select();
-    if (error) {
-      alert(`保存エラー: ${error.message}`);
-      setSaveMessage(`保存に失敗: ${error.message}`);
+    
+    let resultData;
+    let resultError;
+
+    if (mapId) {
+      // 既存マップの更新（共有されたマップの所有者を上書きしないよう user_id は含めない）
+      const { data, error } = await supabase.from('maps').update({ 
+        title: mapTitle, 
+        data: tree, 
+        updated_at: new Date().toISOString() 
+      }).eq('id', mapId).select();
+      resultData = data;
+      resultError = error;
+    } else {
+      // 新規作成
+      const { data, error } = await supabase.from('maps').insert([{ 
+        title: mapTitle, 
+        data: tree, 
+        room_id: roomId, 
+        user_id: user.id, 
+        updated_at: new Date().toISOString() 
+      }]).select();
+      resultData = data;
+      resultError = error;
+    }
+
+    if (resultError) {
+      alert(`保存エラー: ${resultError.message}`);
+      setSaveMessage(`保存に失敗: ${resultError.message}`);
       return;
     }
-    if (data && data.length > 0) {
-      setMapId(data[0].id);
+    if (resultData && resultData.length > 0) {
+      setMapId(resultData[0].id);
       setSaveMessage('保存完了');
       setIsDirty(false);
       try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {}
@@ -593,19 +616,20 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
   }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
 
-  // サイドバーが開いたら一覧取得
   useEffect(() => {
     if (isSidebarOpen) {
       fetchMaps();
     }
   }, [isSidebarOpen, fetchMaps]);
 
-  // 新規マップ作成時の自動保存
-  useEffect(() => {
-    if (roomId && mindMap && yNodesRef.current && yRootRef.current && mapId === null) {
-      handleSave();
-    }
-  }, [roomId, mindMap, mapId, handleSave]);
+  const handleLoadMap = useCallback((map: MapRecord) => {
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    window.location.hash = map.room_id;
+    setMapId(map.id);
+    setMapTitle(map.title);
+    initYjs(map.room_id, map.data);
+    setIsSidebarOpen(false);
+  }, []);
 
   const handleNewMap = useCallback(() => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
@@ -614,14 +638,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     initYjs(newRoom);
     setMapId(null);
     setMapTitle('無題のマップ');
-  }, []);
-
-  const handleLoadMap = useCallback((map: MapRecord) => {
-    if (channelRef.current) supabase.removeChannel(channelRef.current);
-    window.location.hash = map.room_id;
-    setMapId(map.id);
-    setMapTitle(map.title);
-    initYjs(map.room_id, map.data);
+    setIsSidebarOpen(false);
   }, []);
 
   const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
@@ -731,7 +748,11 @@ const MindMapApp = ({ user }: { user: any }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
     if (!nodeUnder) {
-      setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(null); setSelectedImageId(null); closeContextMenu();
+      setSelectedNodeId(null);
+      setSelectedNodeIds([]);
+      setSelectedEdgeId(null);
+      setSelectedImageId(null);
+      closeContextMenu();
       wasDraggingRef.current = true;
       setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
     }
@@ -742,7 +763,9 @@ const MindMapApp = ({ user }: { user: any }) => {
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y); }
+    if (!nodeUnder) {
+      addNodeAtPosition(coords.x, coords.y);
+    }
   }, [mindMap, zoomLevel, isSpacePressed, addNodeAtPosition]);
 
   const handleMouseMove = useCallback((e: MouseEvent | ReactMouseEvent) => {
@@ -967,79 +990,10 @@ const MindMapApp = ({ user }: { user: any }) => {
   return (
     <div className="relative h-screen w-screen overflow-hidden flex" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+      
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
-
-      {/* ★ 左サイドバー（手動開閉のみ） */}
-      <div 
-        className={`absolute top-0 left-0 h-full bg-white border-r shadow-xl z-[100] transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ width: '280px' }}
-      >
-        <div className="p-4 border-b flex items-center justify-between bg-gray-50">
-          <h2 className="font-bold text-gray-700">ファイル管理</h2>
-          <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-gray-200 rounded text-gray-500">✕</button>
-        </div>
-        
-        <div className="p-3 border-b flex flex-col gap-2">
-          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded shadow-sm w-full font-medium transition-colors">
-            <PlusIcon /> 新規マップ作成
-          </button>
-          <div className="flex gap-2">
-            <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
-              <SaveIcon /> 保存
-            </button>
-            <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
-              <LinkIcon /> 共有
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">保存済みマップ</h3>
-          {savedMaps.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">まだマップがありません</p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {savedMaps.map((map: MapRecord) => (
-                <div key={map.id} className="group flex items-center gap-1 hover:bg-gray-50 rounded">
-                  <div 
-                    onClick={() => handleLoadMap(map)} 
-                    className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors flex-1 ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
-                  >
-                    <FileIcon />
-                    <span className="truncate flex-1">{map.title}</span>
-                  </div>
-                  <div className="flex items-center gap-0.5 pr-2">
-                    <button 
-                      onClick={(e) => handleCopyMap(map, e)}
-                      className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
-                      title="コピー"
-                    >
-                      <CopyIcon />
-                    </button>
-                    <button 
-                      onClick={(e) => handleDeleteMap(map, e)}
-                      className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
-                      title="削除"
-                    >
-                      <TrashIcon />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-hidden">
-             {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300 flex-shrink-0" /> : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div>}
-             <span className="text-xs text-gray-600 truncate" title={myEmail}>{myEmail}</span>
-          </div>
-          <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded transition-colors whitespace-nowrap">ログアウト</button>
-        </div>
-      </div>
-
-      {/* ★ 招待モーダル */}
+      
+      {/* 招待モーダル */}
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
@@ -1077,22 +1031,88 @@ const MindMapApp = ({ user }: { user: any }) => {
         </div>
       )}
 
-      {/* メイン領域 */}
+      {/* サイドバー */}
+      <div 
+        className={`absolute top-0 left-0 h-full bg-white border-r shadow-xl z-[100] transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ width: '280px' }}
+      >
+        <div className="p-4 border-b flex items-center justify-between bg-gray-50">
+          <h2 className="font-bold text-gray-700">ファイル管理</h2>
+          <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-gray-200 rounded text-gray-500">✕</button>
+        </div>
+        
+        <div className="p-3 border-b flex flex-col gap-2">
+          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded shadow-sm w-full font-medium transition-colors">
+            <PlusIcon /> 新規マップ作成
+          </button>
+          <div className="flex gap-2">
+            <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
+              <SaveIcon /> 保存
+            </button>
+            <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
+              <LinkIcon /> 共有
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">保存済みマップ</h3>
+          {savedMaps.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">まだマップがありません</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {savedMaps.map((map: MapRecord) => (
+                <div key={map.id} className="group flex items-center gap-1 hover:bg-gray-50 rounded">
+                  <div 
+                    onClick={() => handleLoadMap(map)} 
+                    className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors flex-1 ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
+                  >
+                    <FolderIcon />
+                    <span className="truncate flex-1">{map.title}</span>
+                  </div>
+                  <div className="flex items-center gap-0.5 pr-2">
+                    <button 
+                      onClick={(e) => handleCopyMap(map, e)}
+                      className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                      title="コピー"
+                    >
+                      <CopyIcon />
+                    </button>
+                    <button 
+                      onClick={(e) => handleDeleteMap(map, e)}
+                      className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
+                      title="削除"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-2 overflow-hidden">
+             {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300 flex-shrink-0" /> : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div>}
+             <span className="text-xs text-gray-600 truncate" title={myEmail}>{myEmail}</span>
+          </div>
+          <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded transition-colors whitespace-nowrap">ログアウト</button>
+        </div>
+      </div>
+
       <div className="flex-1 relative flex flex-col min-w-0">
         {!zenMode && (
           <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
-            <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="メニューを開く">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="メニューを開く">
               <MenuIcon />
             </button>
-
             <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border-none bg-transparent hover:bg-gray-50 px-2 py-1 text-sm w-48 font-bold outline-none rounded transition-colors" placeholder="無題のマップ" />
-            
             <div className="w-px h-5 bg-gray-300 mx-1" />
             <div className="flex items-center gap-0.5">
               <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
               <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
             </div>
-            
             {selectedNodeIds.length >= 2 && (
               <>
                 <div className="w-px h-5 bg-gray-300 mx-1" />
@@ -1102,7 +1122,6 @@ const MindMapApp = ({ user }: { user: any }) => {
                 </div>
               </>
             )}
-            
             <div className="w-px h-5 bg-gray-300 mx-1" />
             <div className="flex items-center gap-1 px-1">
               <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm transition-colors" title="線のスタイル">
@@ -1111,22 +1130,15 @@ const MindMapApp = ({ user }: { user: any }) => {
                 <option value="straight">直線</option>
               </select>
             </div>
-
-            {isDirty ? (
-              <span className="text-[10px] text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full ml-2 border border-yellow-200">未保存の変更</span>
-            ) : saveMessage === '保存完了' ? (
-              <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full ml-2 border border-green-200">✓ 保存済み</span>
-            ) : null}
-
+            {isDirty && <span className="text-[10px] text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full ml-2 border border-yellow-200">未保存の変更</span>}
+            {saveMessage === '保存完了' && <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full ml-2 border border-green-200">✓ 保存済み</span>}
             <div className="ml-auto flex items-center gap-1">
               <button onClick={scrollToHome} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 mr-2 transition-colors" title="ホーム位置に戻る"><HomeIcon /></button>
               <button onClick={() => changeZoom(-0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600 transition-colors">−</button>
               <span className="text-xs text-gray-500 font-medium px-1 w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
               <button onClick={() => changeZoom(0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600 transition-colors">＋</button>
             </div>
-            
             <div className="w-px h-5 bg-gray-300 mx-2" />
-            
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm`} title={connectionStatus} /></div>
               <div className="relative">
@@ -1143,10 +1155,10 @@ const MindMapApp = ({ user }: { user: any }) => {
         
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border rounded-lg shadow-xl py-1 text-sm min-w-[180px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>子トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>下に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>上に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>親トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⌘Enter</span></button><hr className="my-1 border-gray-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">色を変更</button><hr className="my-1 border-gray-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2 hover:bg-gray-50">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2 hover:bg-gray-50">水平に整列</button><hr className="my-1 border-gray-100" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group"><span>削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button></>)}
-            {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group"><span>線を削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button><hr className="my-1 border-gray-100" /><div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-gray-50">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-gray-50">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-gray-50">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-gray-50">両方 ⇄</button></>)}
-            {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600">画像を削除</button></>)}
-            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2 hover:bg-gray-50">独立トピックを追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2 hover:bg-gray-50">画像を添付</button></>)}
+            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>子トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group transition-colors"><span>親トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⌘Enter</span></button><hr className="my-1 border-gray-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">色を変更</button><hr className="my-1 border-gray-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">水平に整列</button><hr className="my-1 border-gray-100" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button></>)}
+            {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group transition-colors"><span>線を削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button><hr className="my-1 border-gray-100" /><div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">両方 ⇄</button></>)}
+            {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 transition-colors">画像を削除</button></>)}
+            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors">画像を添付</button></>)}
           </div>
         )}
         {showColorPalette && (
