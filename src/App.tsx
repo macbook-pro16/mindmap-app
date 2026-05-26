@@ -317,8 +317,8 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
-  
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -690,7 +690,7 @@ const MindMapApp = ({ user }: { user: any }) => {
         map_id: mapId,
         user_id: invitedUserId,
         role: 'editor',
-        email: inviteEmail.trim()   // ★ メールアドレスも保存
+        email: inviteEmail.trim()
       });
       if (insertError) {
         if (insertError.code === '23505') {
@@ -699,7 +699,7 @@ const MindMapApp = ({ user }: { user: any }) => {
           throw insertError;
         }
       } else {
-        setInviteMessage('招待メールを送信しました（実際のメール送信は未実装）');
+        setInviteMessage('招待しました！');
         setInviteEmail('');
       }
     } catch (err: any) {
@@ -1037,94 +1037,94 @@ const MindMapApp = ({ user }: { user: any }) => {
 
       {/* サイドバー */}
       <div 
-        className={`absolute top-0 left-0 h-full bg-white border-r shadow-xl z-[100] transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ width: '280px' }}
+        className={`absolute top-0 left-0 h-full bg-white border-r shadow-xl z-[100] transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-[280px]' : 'w-0 overflow-hidden'}`}
       >
-        <div className="p-4 border-b flex items-center justify-between bg-gray-50">
-          <h2 className="font-bold text-gray-700">MindMap</h2>
-          <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-gray-200 rounded text-gray-500">✕</button>
-        </div>
-        
-        <div className="p-3 border-b flex flex-col gap-2">
-          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded shadow-sm w-full font-medium transition-colors">
-            <PlusIcon /> 新規マップ作成
-          </button>
-          <div className="flex gap-2">
-            <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
-              <SaveIcon /> 保存
-            </button>
-            <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
-              <LinkIcon /> 共有
-            </button>
+        <div style={{ minWidth: '280px' }}>
+          <div className="p-4 border-b flex items-center justify-between bg-gray-50">
+            <h2 className="font-bold text-gray-700">MindMap</h2>
+            <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-gray-200 rounded text-gray-500">✕</button>
           </div>
-        </div>
+          
+          <div className="p-3 border-b flex flex-col gap-2">
+            <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded shadow-sm w-full font-medium transition-colors">
+              <PlusIcon /> 新規マップ作成
+            </button>
+            <div className="flex gap-2">
+              <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
+                <SaveIcon /> 保存
+              </button>
+              <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700 transition-colors">
+                <LinkIcon /> 共有
+              </button>
+            </div>
+          </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">保存済みマップ</h3>
-          {savedMaps.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">まだマップがありません</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {savedMaps.map((map: MapRecord) => (
-                <div key={map.id} className="group flex flex-col hover:bg-gray-50 rounded p-2 gap-1">
-                  <div className="flex items-center gap-2">
-                    <div 
+          <div className="flex-1 overflow-y-auto p-3">
+            {savedMaps.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">まだマップがありません</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {savedMaps.map((map: MapRecord) => (
+                  <div key={map.id} className="group flex flex-col hover:bg-gray-50 rounded">
+                    <button 
                       onClick={() => handleLoadMap(map)} 
-                      className={`cursor-pointer flex-1 text-sm transition-colors truncate ${mapId === map.id ? 'text-blue-700 font-medium' : 'text-gray-700'}`}
+                      className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
                     >
                       {map.title}
-                    </div>
-                    <div className="flex items-center gap-0.5">
-                      <button 
-                        onClick={(e) => handleCopyMap(map, e)}
-                        className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
-                        title="コピー"
-                      >
-                        <CopyIcon />
-                      </button>
-                      <button 
-                        onClick={(e) => handleDeleteMap(map, e)}
-                        className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
-                        title="削除"
-                      >
-                        <TrashIcon />
-                      </button>
+                    </button>
+                    <div className="flex items-center justify-between px-3 pb-2 text-xs text-gray-400">
+                      <div className="flex items-center gap-2">
+                        <div className="flex -space-x-1">
+                          {map.members && map.members.slice(0, 3).map((member, idx) => (
+                            <div
+                              key={idx}
+                              className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-bold text-white border border-white"
+                              style={{ backgroundColor: stringToColor(member.email) }}
+                              title={member.email}
+                            >
+                              {getInitial(member.email)}
+                            </div>
+                          ))}
+                          {map.members && map.members.length > 3 && (
+                            <div className="w-5 h-5 rounded-full bg-gray-400 flex items-center justify-center text-[10px] font-bold text-white border border-white">
+                              +{map.members.length - 3}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          <button 
+                            onClick={(e) => handleCopyMap(map, e)}
+                            className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                            title="コピー"
+                          >
+                            <CopyIcon />
+                          </button>
+                          <button 
+                            onClick={(e) => handleDeleteMap(map, e)}
+                            className="p-1 hover:bg-red-100 rounded text-gray-400 hover:text-red-500"
+                            title="削除"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </div>
+                      <span>
+                        {map.updated_at ? new Date(map.updated_at).toLocaleString('ja-JP') : ''}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-400">
-                    <div className="flex -space-x-1">
-                      {map.members && map.members.slice(0, 3).map((member, idx) => (
-                        <div
-                          key={idx}
-                          className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-bold text-white border border-white"
-                          style={{ backgroundColor: stringToColor(member.email) }}
-                          title={member.email}
-                        >
-                          {getInitial(member.email)}
-                        </div>
-                      ))}
-                      {map.members && map.members.length > 3 && (
-                        <div className="w-5 h-5 rounded-full bg-gray-400 flex items-center justify-center text-[10px] font-bold text-white border border-white">
-                          +{map.members.length - 3}
-                        </div>
-                      )}
-                    </div>
-                    <span>
-                      {map.updated_at ? new Date(map.updated_at).toLocaleDateString('ja-JP') : ''}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-hidden">
-             {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300 flex-shrink-0" /> : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div>}
-             <span className="text-xs text-gray-600 truncate" title={myEmail}>{myEmail}</span>
+                ))}
+              </div>
+            )}
           </div>
-          <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded transition-colors whitespace-nowrap">ログアウト</button>
+          
+          <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
+            <div className="flex items-center gap-2 overflow-hidden">
+               {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300 flex-shrink-0" /> : <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div>}
+               <span className="text-xs text-gray-600 truncate" title={myEmail}>{myEmail}</span>
+            </div>
+            <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded transition-colors whitespace-nowrap">ログアウト</button>
+          </div>
         </div>
       </div>
 
