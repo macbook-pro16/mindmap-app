@@ -196,7 +196,6 @@ const UndoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCol
 const RedoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4" /></svg> );
 const PlusIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg> );
 const SaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v11a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V4m0 3h4m-4 0H8" /></svg> );
-const FolderIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg> );
 const LinkIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828m6.364-6.364a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828" /></svg> );
 const HomeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> );
 const AlignVIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="21" strokeWidth={2} /><path strokeWidth={2} d="M5 7l7-4 7 4M5 17l7 4 7-4" /></svg> );
@@ -205,6 +204,8 @@ const PaletteIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="current
 const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
 const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const SiblingNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
+const MenuIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg> );
+const FileIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<any>, rootId: string): MindNode | null => {
@@ -306,7 +307,9 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
-  const [showLoadMenu, setShowLoadMenu] = useState(false);
+  
+  // ★ サイドバー開閉状態
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -552,9 +555,19 @@ const MindMapApp = ({ user }: { user: any }) => {
     if (data && data.length > 0) { setMapId(data[0].id); setSaveMessage('保存完了'); setIsDirty(false); try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} setTimeout(() => setSaveMessage(''), 2500); }
   };
 
-  const fetchMaps = async () => { const { data } = await supabase.from('maps').select('*').eq('user_id', user.id).order('created_at', { ascending: false }); if (data) setSavedMaps(data as MapRecord[]); };
-  const handleLoadMap = (map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); initYjs(map.room_id, map.data); setShowLoadMenu(false); };
-  const handleNewMap = () => { if (channelRef.current) supabase.removeChannel(channelRef.current); const newRoom = crypto.randomUUID(); window.location.hash = newRoom; initYjs(newRoom); setMapId(null); setMapTitle('無題のマップ'); };
+  const fetchMaps = useCallback(async () => { 
+    const { data } = await supabase.from('maps').select('*').eq('user_id', user.id).order('created_at', { ascending: false }); 
+    if (data) setSavedMaps(data as MapRecord[]); 
+  }, [user.id]);
+
+  useEffect(() => {
+    if (isSidebarOpen) {
+      fetchMaps();
+    }
+  }, [isSidebarOpen, fetchMaps]);
+
+  const handleLoadMap = (map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); initYjs(map.room_id, map.data); setIsSidebarOpen(false); };
+  const handleNewMap = () => { if (channelRef.current) supabase.removeChannel(channelRef.current); const newRoom = crypto.randomUUID(); window.location.hash = newRoom; initYjs(newRoom); setMapId(null); setMapTitle('無題のマップ'); setIsSidebarOpen(false); };
   const handleShare = () => { if (!roomId) return; navigator.clipboard.writeText(`${window.location.origin}#${roomId}`); alert('共有URLをコピーしました！'); };
 
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
@@ -600,11 +613,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
     if (!nodeUnder) {
-      setSelectedNodeId(null);
-      setSelectedNodeIds([]);
-      setSelectedEdgeId(null);
-      setSelectedImageId(null);
-      closeContextMenu();
+      setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(null); setSelectedImageId(null); closeContextMenu();
       wasDraggingRef.current = true;
       setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
     }
@@ -615,9 +624,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) {
-      addNodeAtPosition(coords.x, coords.y);
-    }
+    if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y); }
   }, [mindMap, zoomLevel, isSpacePressed, addNodeAtPosition]);
 
   const handleMouseMove = useCallback((e: MouseEvent | ReactMouseEvent) => {
@@ -799,7 +806,6 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeId(null); setSelectedNodeIds([]); setSelectedEdgeId(edgeId); setSelectedImageId(null); closeContextMenu(); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); }, []);
   const handleEdgeEndpointMouseDown = useCallback((e: ReactMouseEvent, edgeId: string, endpoint: 'source' | 'target') => { e.stopPropagation(); e.preventDefault(); setEditingEdgeEndpoint({ edgeId, endpoint }); }, []);
-
   const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => {
     e.stopPropagation(); e.preventDefault();
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
@@ -840,211 +846,275 @@ const MindMapApp = ({ user }: { user: any }) => {
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
+    <div className="relative h-screen w-screen overflow-hidden flex" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-      
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
-      {!zenMode && (
-        <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
-          <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border rounded px-2 py-1 text-sm w-40 font-medium" />
-          <div className="flex items-center gap-0.5">
-            <button onClick={handleUndo} disabled={!canUndo} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
-            <button onClick={handleRedo} disabled={!canRedo} className="p-1 rounded hover:bg-gray-100 disabled:opacity-30" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
-          </div>
-          <div className="w-px h-5 bg-gray-300 mx-1" />
-          <div className="flex items-center gap-1">
-            <button onClick={handleNewMap} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-sm" title="新規マップ"><PlusIcon /><span>新規</span></button>
-            <button onClick={handleSave} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 text-sm relative" title="保存 (Ctrl+S)"><SaveIcon /><span>保存</span>{isDirty && !saveMessage && <span className="absolute top-0 right-0 w-2 h-2 bg-yellow-400 rounded-full border border-white" />}{saveMessage === '保存完了' && <span className="text-green-600 text-xs ml-1">✓</span>}{saveMessage === '保存に失敗' && <span className="text-red-500 text-xs ml-1">✕</span>}</button>
-            <button onClick={() => { fetchMaps(); setShowLoadMenu(!showLoadMenu); }} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-sm" title="読み込む"><FolderIcon /><span>開く</span></button>
-          </div>
-          <div className="w-px h-5 bg-gray-300 mx-1" />
-          <button onClick={handleShare} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-sm" title="共有URLをコピー"><LinkIcon /><span>共有</span></button>
-          {selectedNodeIds.length >= 2 && (
-            <div className="flex items-center gap-1 ml-2">
-              <button onClick={() => alignNodes('vertical')} className="p-1 rounded hover:bg-gray-100" title="垂直に整列"><AlignVIcon /></button>
-              <button onClick={() => alignNodes('horizontal')} className="p-1 rounded hover:bg-gray-100" title="水平に整列"><AlignHIcon /></button>
-            </div>
-          )}
-          
-          <div className="w-px h-5 bg-gray-300 mx-1" />
-          <div className="flex items-center gap-1 px-1">
-            <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm" title="線のスタイル">
-              <option value="bezier">曲線</option>
-              <option value="step">直角</option>
-              <option value="straight">直線</option>
-            </select>
-          </div>
 
-          <button onClick={scrollToHome} className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-sm ml-1" title="ホーム位置に戻る"><HomeIcon /></button>
-          <div className="ml-auto mr-2 flex items-center gap-1"><button onClick={() => changeZoom(-0.1)} className="text-xs px-1 rounded hover:bg-gray-200">−</button><span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{Math.round(zoomLevel * 100)}%</span><button onClick={() => changeZoom(0.1)} className="text-xs px-1 rounded hover:bg-gray-200">＋</button></div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${statusColor}`} title={connectionStatus} /></div>
-            <div className="relative">
-              <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-gray-100 rounded px-2 py-1 transition-colors" title="参加者一覧">
-                <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p: any, i: number) => (<div key={i} className={`w-5 h-5 rounded-full border border-white flex items-center justify-center text-[9px] font-bold text-white ${p.isSelf ? 'ring-1 ring-gray-300' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-5 h-5 rounded-full border border-white bg-gray-300 flex items-center justify-center text-[9px] font-bold text-gray-600">+{participants.length - 3}</div>}</div>
-                <span className="text-xs text-gray-500">{participants.length}人</span>
-              </button>
-              {showParticipants && (<div className="absolute top-full right-0 mt-1 w-56 bg-white border rounded-lg shadow-lg p-3 z-50"><h3 className="text-xs font-bold text-gray-600 mb-2">参加者 ({participants.length}人)</h3><div className="space-y-1.5 max-h-48 overflow-y-auto">{participants.map((p: any, i: number) => (<div key={i} className="flex items-center gap-2 text-xs"><div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${p.isSelf ? 'ring-2 ring-blue-400' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-gray-800 truncate">{p.email}{p.isSelf ? ' (あなた)' : ''}</div><div className="text-gray-400 text-[10px]">{p.isEditing ? '📝 編集中' : p.isSelecting ? '👆 選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-2 text-[10px] text-gray-500 underline w-full text-center">閉じる</button></div>)}
-            </div>
-            <div className="flex items-center gap-1.5" title={myEmail}>{user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-gray-300" onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} /> : null}<div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${user.user_metadata?.avatar_url ? 'hidden' : ''}`} style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div></div>
-            <button onClick={handleLogout} className="bg-red-400 hover:bg-red-500 text-white text-xs px-2 py-1 rounded">ログアウト</button>
-          </div>
-        </div>
-      )}
-      {showLoadMenu && !zenMode && (<div className="absolute top-12 left-2 z-50 bg-white border rounded shadow-lg p-3 w-64 max-h-80 overflow-auto"><h3 className="font-bold text-sm mb-2">保存済みマップ</h3>{savedMaps.length === 0 && <p className="text-xs text-gray-500">まだ保存がありません</p>}{savedMaps.map((map: MapRecord) => <div key={map.id} onClick={() => handleLoadMap(map)} className="cursor-pointer hover:bg-gray-100 p-1 rounded text-sm mb-1">{map.title}</div>)}<button onClick={() => setShowLoadMenu(false)} className="mt-2 text-xs text-gray-500 underline">閉じる</button></div>)}
-      {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-2 right-2 z-50 bg-white bg-opacity-90 border rounded-full px-3 py-1 text-xs shadow hover:bg-gray-100">ZEN解除 (Alt+Cmd+F)</button>}
-      {contextMenu.visible && !showColorPalette && (
-        <div className="fixed z-[100] bg-white border rounded-lg shadow-xl py-1 text-sm min-w-[160px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-          {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Tab</span> 子トピックを追加</button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Enter</span> 下に追加</button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">Shift+Enter</span> 上に追加</button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"><span className="text-xs">⌘+Enter</span> 親トピックを追加</button><hr className="my-1" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">色を変更</button><hr className="my-1" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">水平に整列</button><hr className="my-1" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-red-600"><span className="text-xs">⌫</span> 削除</button></>)}
-          {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-red-600"><span className="text-xs">⌫</span> この線を削除</button><hr className="my-1" /><div className="px-3 py-1 text-xs text-gray-500">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">両方 ⇄</button></>)}
-          {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-red-600">画像を削除</button></>)}
-          {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">独立トピックを追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-3 py-1.5 hover:bg-gray-100">画像を添付</button></>)}
-        </div>
-      )}
-      {showColorPalette && (
-        <div className="fixed z-[110] bg-white border rounded-lg shadow-xl p-2 text-sm" style={{ left: showColorPalette.x, top: showColorPalette.y }} onClick={e => e.stopPropagation()}>
-          <div className="flex flex-wrap gap-1">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-8 h-8 rounded-full border border-gray-300 hover:scale-110 transition-transform" style={{ backgroundColor: cp.bg, boxShadow: `0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); setShowColorPalette(null); closeContextMenu(); }} />))}</div>
-          <button onClick={() => setShowColorPalette(null)} className="mt-2 text-xs text-gray-500 underline w-full text-center">閉じる</button>
-        </div>
-      )}
-      
+      {/* ★ 新設：左サイドバー */}
       <div 
-        ref={scrollContainerRef} 
-        className={`${canvasScrollClass} hide-scrollbar`} 
-        tabIndex={0} 
-        onKeyDown={handleKeyDown} 
-        onClick={handleCanvasClick} 
-        onContextMenu={handleCanvasContextMenu} 
-        onMouseDown={handleCanvasMouseDown} 
-        onDoubleClick={handleCanvasDoubleClick}
-        style={hideScrollbarStyle as React.CSSProperties}
+        className={`absolute top-0 left-0 h-full bg-white border-r shadow-xl z-[100] transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ width: '280px' }}
       >
-        <div 
-          className="relative" 
-          style={{ 
-            width: '10000px', 
-            height: '10000px', 
-            transform: `scale(${zoomLevel})`, 
-            transformOrigin: '0 0',
-            backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
-            backgroundSize: '24px 24px',
-            backgroundColor: '#f8fafc'
-          }} 
-          onContextMenu={handleCanvasContextMenu}
-        >
-          {showFloatingToolbar && floatingToolbarPos && (
-            <div 
-              className="absolute z-[60] bg-white rounded-lg shadow-xl border border-gray-200 flex items-center p-1 gap-1"
-              style={{
-                left: floatingToolbarPos.x,
-                top: floatingToolbarPos.y - NODE_HEIGHT / 2 - 40,
-                transform: 'translate(-50%, 0)',
-                animation: 'fadeIn 0.15s ease-out'
-              }}
-              onClick={e => e.stopPropagation()}
-              onMouseDown={e => e.stopPropagation()}
-            >
-              <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
-              <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-gray-100 rounded text-gray-600" title="色を変更"><PaletteIcon /></button>
-              <div className="w-px h-4 bg-gray-300 mx-0.5" />
-              <button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-1" title="子を追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">子</span></button>
-              <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 flex items-center gap-1" title="兄弟を追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">兄弟</span></button>
-              <div className="w-px h-4 bg-gray-300 mx-0.5" />
-              <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-red-50 rounded text-red-500" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+        <div className="p-4 border-b flex items-center justify-between bg-gray-50">
+          <h2 className="font-bold text-gray-700">ファイル管理</h2>
+          <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-gray-200 rounded text-gray-500">✕</button>
+        </div>
+        
+        <div className="p-3 border-b flex flex-col gap-2">
+          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded shadow-sm w-full font-medium">
+            <PlusIcon /> 新規マップ作成
+          </button>
+          <div className="flex gap-2">
+            <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700">
+              <SaveIcon /> 保存
+            </button>
+            <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1 bg-white border hover:bg-gray-50 py-1.5 rounded text-sm text-gray-700">
+              <LinkIcon /> 共有
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">保存済みマップ</h3>
+          {savedMaps.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">まだ保存されたマップがありません</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {savedMaps.map((map: MapRecord) => (
+                <div 
+                  key={map.id} 
+                  onClick={() => handleLoadMap(map)} 
+                  className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-gray-100 text-gray-700'}`}
+                >
+                  <FileIcon />
+                  <span className="truncate">{map.title}</span>
+                </div>
+              ))}
             </div>
           )}
+        </div>
+      </div>
 
-          {images.map((image: ImageData) => (
-            <div
-              key={image.id}
-              className={`absolute cursor-move border-2 ${selectedImageId === image.id ? 'border-blue-500' : 'border-transparent'}`}
-              style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: 5 }}
-              onMouseDown={(e) => handleMouseDownOnImage(e as any, image.id)}
-              onContextMenu={(e) => handleImageContextMenu(e as any, image.id)}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />
-              {selectedImageId === image.id && (
-                <>
-                  <div className="absolute top-0 left-0 w-3 h-3 bg-white border border-blue-500 cursor-nw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'nw')} />
-                  <div className="absolute top-0 right-0 w-3 h-3 bg-white border border-blue-500 cursor-ne-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'ne')} />
-                  <div className="absolute bottom-0 left-0 w-3 h-3 bg-white border border-blue-500 cursor-sw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'sw')} />
-                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-white border border-blue-500 cursor-se-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'se')} />
-                </>
-              )}
+      {/* メイン領域 */}
+      <div className="flex-1 relative flex flex-col min-w-0">
+        {!zenMode && (
+          <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
+            {/* ★ メニュー開閉ボタン */}
+            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600" title="メニューを開く">
+              <MenuIcon />
+            </button>
+
+            <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border-none bg-transparent hover:bg-gray-50 px-2 py-1 text-sm w-48 font-bold outline-none rounded" placeholder="無題のマップ" />
+            
+            <div className="w-px h-5 bg-gray-300 mx-1" />
+            <div className="flex items-center gap-0.5">
+              <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
+              <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-30" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
             </div>
-          ))}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
-            <defs><marker id="arrowStart" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6b7280" /></marker><marker id="arrowEnd" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6b7280" /></marker></defs>
             
-            {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { 
-              const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); 
-              const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); 
-              if (!parentPos || !childPos) return null; 
-              const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; 
-              let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; 
-              if (Math.abs(dx) > Math.abs(dy)) { 
-                parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; 
-              } else { 
-                parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; 
-              } 
-              const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint); 
-              const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint); 
-              const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle);
+            {selectedNodeIds.length >= 2 && (
+              <>
+                <div className="w-px h-5 bg-gray-300 mx-1" />
+                <div className="flex items-center gap-1">
+                  <button onClick={() => alignNodes('vertical')} className="p-1.5 rounded hover:bg-gray-100 text-gray-600" title="垂直に整列"><AlignVIcon /></button>
+                  <button onClick={() => alignNodes('horizontal')} className="p-1.5 rounded hover:bg-gray-100 text-gray-600" title="水平に整列"><AlignHIcon /></button>
+                </div>
+              </>
+            )}
+            
+            <div className="w-px h-5 bg-gray-300 mx-1" />
+            <div className="flex items-center gap-1 px-1">
+              <select value={edgeStyle} onChange={e => setEdgeStyle(e.target.value as EdgeStyle)} className="text-xs border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded px-2 py-1 outline-none text-gray-700 cursor-pointer shadow-sm" title="線のスタイル">
+                <option value="bezier">曲線</option>
+                <option value="step">直角</option>
+                <option value="straight">直線</option>
+              </select>
+            </div>
+
+            {/* ★ 保存状態インジケーター（旧保存ボタンの代わり） */}
+            {isDirty ? (
+              <span className="text-[10px] text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full ml-2 border border-yellow-200">未保存の変更</span>
+            ) : saveMessage === '保存完了' ? (
+              <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full ml-2 border border-green-200">✓ 保存済み</span>
+            ) : null}
+
+            <div className="ml-auto flex items-center gap-1">
+              <button onClick={scrollToHome} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 mr-2" title="ホーム位置に戻る"><HomeIcon /></button>
+              <button onClick={() => changeZoom(-0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600">−</button>
+              <span className="text-xs text-gray-500 font-medium px-1 w-12 text-center">{Math.round(zoomLevel * 100)}%</span>
+              <button onClick={() => changeZoom(0.1)} className="text-xs px-1.5 py-1 rounded hover:bg-gray-200 text-gray-600">＋</button>
+            </div>
+            
+            <div className="w-px h-5 bg-gray-300 mx-2" />
+            
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm`} title={connectionStatus} /></div>
+              <div className="relative">
+                <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-gray-100 rounded px-2 py-1 transition-colors" title="参加者一覧">
+                  <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p: any, i: number) => (<div key={i} className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-1 ring-blue-300' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-6 h-6 rounded-full border-2 border-white bg-gray-300 flex items-center justify-center text-[9px] font-bold text-gray-600 shadow-sm">+{participants.length - 3}</div>}</div>
+                </button>
+                {showParticipants && (<div className="absolute top-full right-0 mt-2 w-56 bg-white border rounded-lg shadow-xl p-3 z-50"><h3 className="text-xs font-bold text-gray-600 mb-2 border-b pb-2">参加者 ({participants.length}人)</h3><div className="space-y-2 max-h-48 overflow-y-auto">{participants.map((p: any, i: number) => (<div key={i} className="flex items-center gap-2 text-xs"><div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-blue-400' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-gray-800 font-medium truncate">{p.email}{p.isSelf ? ' (あなた)' : ''}</div><div className="text-gray-400 text-[10px]">{p.isEditing ? '📝 編集中' : p.isSelecting ? '👆 選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-3 text-[10px] text-gray-500 hover:text-gray-700 w-full text-center p-1 rounded bg-gray-50 hover:bg-gray-100 transition-colors">閉じる</button></div>)}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-2 right-2 z-50 bg-white bg-opacity-90 border rounded-full px-4 py-1.5 text-xs font-medium shadow-md hover:bg-gray-50 transition-colors">ZEN解除 (Alt+Cmd+F)</button>}
+        
+        {contextMenu.visible && !showColorPalette && (
+          <div className="fixed z-[100] bg-white border rounded-lg shadow-xl py-1 text-sm min-w-[180px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
+            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>子トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>下に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>上に追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between group"><span>親トピックを追加</span><span className="text-[10px] text-gray-400 group-hover:text-blue-400">⌘Enter</span></button><hr className="my-1 border-gray-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">色を変更</button><hr className="my-1 border-gray-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2 hover:bg-gray-50">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2 hover:bg-gray-50">水平に整列</button><hr className="my-1 border-gray-100" /></>)}<button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group"><span>削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button></>)}
+            {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center justify-between group"><span>線を削除</span><span className="text-[10px] text-red-300 group-hover:text-red-400">⌫</span></button><hr className="my-1 border-gray-100" /><div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-gray-50">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-gray-50">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-gray-50">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-gray-50">両方 ⇄</button></>)}
+            {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600">画像を削除</button></>)}
+            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2 hover:bg-gray-50">独立トピックを追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2 hover:bg-gray-50">画像を添付</button></>)}
+          </div>
+        )}
+        {showColorPalette && (
+          <div className="fixed z-[110] bg-white border rounded-lg shadow-xl p-3 text-sm" style={{ left: showColorPalette.x, top: showColorPalette.y }} onClick={e => e.stopPropagation()}>
+            <div className="grid grid-cols-4 gap-2 mb-2">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-8 h-8 rounded-full border border-gray-200 hover:scale-110 transition-transform shadow-sm" style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05), 0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); setShowColorPalette(null); closeContextMenu(); }} />))}</div>
+            <button onClick={() => setShowColorPalette(null)} className="w-full py-1 text-xs text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 rounded transition-colors">キャンセル</button>
+          </div>
+        )}
+        
+        <div 
+          ref={scrollContainerRef} 
+          className={`${canvasScrollClass} hide-scrollbar`} 
+          tabIndex={0} 
+          onKeyDown={handleKeyDown} 
+          onClick={handleCanvasClick} 
+          onContextMenu={handleCanvasContextMenu} 
+          onMouseDown={handleCanvasMouseDown} 
+          onDoubleClick={handleCanvasDoubleClick}
+          style={hideScrollbarStyle as React.CSSProperties}
+        >
+          <div 
+            className="relative" 
+            style={{ 
+              width: '10000px', 
+              height: '10000px', 
+              transform: `scale(${zoomLevel})`, 
+              transformOrigin: '0 0',
+              backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+              backgroundColor: '#f8fafc'
+            }} 
+            onContextMenu={handleCanvasContextMenu}
+          >
+            {showFloatingToolbar && floatingToolbarPos && (
+              <div 
+                className="absolute z-[60] bg-white rounded-lg shadow-xl border border-gray-200 flex items-center p-1 gap-1"
+                style={{
+                  left: floatingToolbarPos.x,
+                  top: floatingToolbarPos.y - NODE_HEIGHT / 2 - 40,
+                  transform: 'translate(-50%, 0)',
+                  animation: 'fadeIn 0.15s ease-out'
+                }}
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+              >
+                <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
+                <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="色を変更"><PaletteIcon /></button>
+                <div className="w-px h-4 bg-gray-200 mx-0.5" />
+                <button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-blue-50 rounded text-blue-600 flex items-center gap-1 transition-colors" title="子を追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">子</span></button>
+                <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-blue-50 rounded text-blue-600 flex items-center gap-1 transition-colors" title="兄弟を追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">兄弟</span></button>
+                <div className="w-px h-4 bg-gray-200 mx-0.5" />
+                <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-red-50 rounded text-red-500 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+              </div>
+            )}
+
+            {images.map((image: ImageData) => (
+              <div
+                key={image.id}
+                className={`absolute cursor-move border-2 ${selectedImageId === image.id ? 'border-blue-500 shadow-lg' : 'border-transparent shadow-sm'}`}
+                style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: 5 }}
+                onMouseDown={(e) => handleMouseDownOnImage(e as any, image.id)}
+                onContextMenu={(e) => handleImageContextMenu(e as any, image.id)}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />
+                {selectedImageId === image.id && (
+                  <>
+                    <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-sm cursor-nw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'nw')} />
+                    <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-sm cursor-ne-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'ne')} />
+                    <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-sm cursor-sw-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'sw')} />
+                    <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-sm cursor-se-resize" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'se')} />
+                  </>
+                )}
+              </div>
+            ))}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+              <defs>
+                <marker id="arrowStart" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#94a3b8" /></marker>
+                <marker id="arrowEnd" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#94a3b8" /></marker>
+                <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#f59e0b" /></marker>
+                <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#f59e0b" /></marker>
+              </defs>
               
-              const edgeId = `parent-edge-${fn.id}`;
-              const isSelected = selectedEdgeId === edgeId;
+              {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { 
+                const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); 
+                const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); 
+                if (!parentPos || !childPos) return null; 
+                const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; 
+                let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; 
+                if (Math.abs(dx) > Math.abs(dy)) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; } 
+                else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; } 
+                const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint); 
+                const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint); 
+                const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle);
+                const edgeId = `parent-edge-${fn.id}`;
+                const isSelected = selectedEdgeId === edgeId;
 
-              return (
-                <g key={edgeId} className="pointer-events-auto">
-                  <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e as any, edgeId)} />
-                  <path d={pathD} fill="none" stroke={isSelected ? '#f59e0b' : '#93c5fd'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} />
-                </g>
-              ); 
-            })}
+                return (
+                  <g key={edgeId} className="pointer-events-auto">
+                    <path d={pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e as any, edgeId)} />
+                    <path d={pathD} fill="none" stroke={isSelected ? '#f59e0b' : '#93c5fd'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} />
+                  </g>
+                ); 
+              })}
 
-            {edgeLines.map((el: any) => { 
-              const markerStart = el.arrow === 'start' || el.arrow === 'both' ? 'url(#arrowStart)' : 'none'; 
-              const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? 'url(#arrowEnd)' : 'none'; 
-              return (
-                <g key={el.id} className="pointer-events-auto">
-                  <path d={el.pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
-                  <path d={el.pathD} fill="none" stroke={el.selected ? '#f59e0b' : '#93c5fd'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? '' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
-                  {el.selected && (<>
-                    <circle cx={el.sourceX} cy={el.sourceY} r={6} fill="#3b82f6" stroke="white" strokeWidth={2} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'source')} />
-                    <circle cx={el.targetX} cy={el.targetY} r={6} fill="#ef4444" stroke="white" strokeWidth={2} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'target')} />
-                  </>)}
-                </g>
-              ); 
-            })}
+              {edgeLines.map((el: any) => { 
+                const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; 
+                const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; 
+                return (
+                  <g key={el.id} className="pointer-events-auto">
+                    <path d={el.pathD} fill="none" stroke="transparent" strokeWidth={16} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
+                    <path d={el.pathD} fill="none" stroke={el.selected ? '#f59e0b' : '#94a3b8'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? '' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
+                    {el.selected && (<>
+                      <circle cx={el.sourceX} cy={el.sourceY} r={6} fill="#ffffff" stroke="#f59e0b" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'source')} />
+                      <circle cx={el.targetX} cy={el.targetY} r={6} fill="#ffffff" stroke="#f59e0b" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'target')} />
+                    </>)}
+                  </g>
+                ); 
+              })}
 
-            {drawingEdge && mindMap && (
-              <path 
-                d={getEdgePath(
-                  getConnectionPoint((findNodeById(mindMap, drawingEdge.sourceNodeId)?.x ?? 0), (findNodeById(mindMap, drawingEdge.sourceNodeId)?.y ?? 0), drawingEdge.sourcePoint), 
-                  {x: drawingEdge.currentX, y: drawingEdge.currentY}, 
-                  drawingEdge.sourcePoint, 
-                  drawingEdge.targetPoint || 'left',
-                  edgeStyle
-                )} 
-                fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="5,5" className="pointer-events-none" 
-              />
-            )}
-            
-            {selectionRect && (
-              <rect
-                x={Math.min(selectionRect.x1, selectionRect.x2)}
-                y={Math.min(selectionRect.y1, selectionRect.y2)}
-                width={Math.abs(selectionRect.x2 - selectionRect.x1)}
-                height={Math.abs(selectionRect.y2 - selectionRect.y1)}
-                fill="rgba(59, 130, 246, 0.15)"
-                stroke="#3b82f6"
-                strokeWidth={1}
-                strokeDasharray="4 4"
-              />
-            )}
-          </svg>
-          <RecursiveNode node={mindMap} selectedNodeId={selectedNodeId} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} draggingNodeId={draggingNodeId} dragPositions={dragPositions} dragTargetNodeId={dragTargetNodeId} isMultiDragging={isMultiDragging} awarenessStates={awarenessStates} myUserId={myUserId} onNodeClick={handleNodeClick} onNodeDoubleClick={handleNodeDoubleClick} onMouseDownOnNode={handleMouseDownOnNode} onTextEditComplete={handleTextEditComplete} onContextMenu={handleNodeContextMenu} onConnectionPointMouseDown={handleConnectionPointMouseDown} depth={0} isAnyDragging={isAnyDragging} />
+              {drawingEdge && mindMap && (
+                <path 
+                  d={getEdgePath(
+                    getConnectionPoint((findNodeById(mindMap, drawingEdge.sourceNodeId)?.x ?? 0), (findNodeById(mindMap, drawingEdge.sourceNodeId)?.y ?? 0), drawingEdge.sourcePoint), 
+                    {x: drawingEdge.currentX, y: drawingEdge.currentY}, 
+                    drawingEdge.sourcePoint, 
+                    drawingEdge.targetPoint || 'left',
+                    edgeStyle
+                  )} 
+                  fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="6,6" className="pointer-events-none" 
+                />
+              )}
+              
+              {selectionRect && (
+                <rect
+                  x={Math.min(selectionRect.x1, selectionRect.x2)}
+                  y={Math.min(selectionRect.y1, selectionRect.y2)}
+                  width={Math.abs(selectionRect.x2 - selectionRect.x1)}
+                  height={Math.abs(selectionRect.y2 - selectionRect.y1)}
+                  fill="rgba(59, 130, 246, 0.1)"
+                  stroke="#3b82f6"
+                  strokeWidth={1}
+                  strokeDasharray="4 4"
+                />
+              )}
+            </svg>
+            <RecursiveNode node={mindMap} selectedNodeId={selectedNodeId} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} draggingNodeId={draggingNodeId} dragPositions={dragPositions} dragTargetNodeId={dragTargetNodeId} isMultiDragging={isMultiDragging} awarenessStates={awarenessStates} myUserId={myUserId} onNodeClick={handleNodeClick} onNodeDoubleClick={handleNodeDoubleClick} onMouseDownOnNode={handleMouseDownOnNode} onTextEditComplete={handleTextEditComplete} onContextMenu={handleNodeContextMenu} onConnectionPointMouseDown={handleConnectionPointMouseDown} depth={0} isAnyDragging={isAnyDragging} />
+          </div>
         </div>
       </div>
     </div>
@@ -1096,18 +1166,18 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const depthShadowClass = depth === 0 ? 'shadow-lg' : (depth === 1 ? 'shadow-md' : 'shadow-sm hover:shadow-md');
   const activeShadowClass = isSelected ? 'shadow-lg shadow-blue-500/20' : depthShadowClass;
   
-  const borderColorClass = isTarget ? 'border-green-400 border-3' : (isSelected ? (isSingleSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-purple-500') : '');
+  const borderColorClass = isTarget ? 'border-green-400 border-4 ring-4 ring-green-100' : (isSelected ? (isSingleSelected ? 'border-blue-500 ring-4 ring-blue-100' : 'border-purple-500 ring-4 ring-purple-100') : 'border-transparent');
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
 
   return (
     <>
       <div
-        className={`absolute flex items-center justify-center rounded-xl border-2 px-4 py-2 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'} ${activeShadowClass} ${borderColorClass} ${isEditing ? 'bg-yellow-100 ring-4 ring-yellow-400/30' : ''}`}
+        className={`absolute flex items-center justify-center rounded-xl border-2 px-4 py-2 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'} ${activeShadowClass} ${borderColorClass} ${isEditing ? 'bg-yellow-50 ring-4 ring-yellow-400/30 border-yellow-400' : ''}`}
         style={{
           left: displayPos.x - NODE_WIDTH/2, top: displayPos.y - NODE_HEIGHT/2,
           width: NODE_WIDTH, height: NODE_HEIGHT, zIndex: 10 + depth,
           backgroundColor: node.bgColor || '#ffffff',
-          borderColor: isSelected ? undefined : (node.textColor || '#0369a1'),
+          borderColor: isSelected || isEditing || isTarget ? undefined : (node.textColor || '#0369a1'),
           color: node.textColor || '#0369a1',
         }}
         onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}
@@ -1117,10 +1187,10 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         ) : (
           <span className={`${depthTextClass} truncate block max-w-full`} style={{ color: node.textColor || '#0f172a' }}>{node.text}</span>
         )}
-        {remoteEditors.length > 0 && <div className="absolute -top-2 -right-2 flex -space-x-1">{remoteEditors.map((editor: AwarenessState, i: number) => <div key={i} className="w-3 h-3 rounded-full border border-white" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
-        {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2 -right-2 flex -space-x-1">{remoteSelectors.map((selector: AwarenessState, i: number) => <div key={i} className="w-2 h-2 rounded-full border border-white opacity-60" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
+        {remoteEditors.length > 0 && <div className="absolute -top-2 -right-2 flex -space-x-1">{remoteEditors.map((editor: AwarenessState, i: number) => <div key={i} className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
+        {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2 -right-2 flex -space-x-1">{remoteSelectors.map((selector: AwarenessState, i: number) => <div key={i} className="w-3 h-3 rounded-full border-2 border-white opacity-60 shadow-sm" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
       </div>
-      {isSingleSelected && !isMultiDragging && connectionPoints.map((point: ConnectionPoint) => { const pt = getConnectionPoint(displayPos.x, displayPos.y, point); return <div key={point} className={`absolute w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-crosshair hover:scale-150 shadow-sm ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} style={{ left: pt.x-6, top: pt.y-6, zIndex: 20 + depth }} onMouseDown={e => onConnectionPointMouseDown(e, node.id, point)} />; })}
+      {isSingleSelected && !isMultiDragging && connectionPoints.map((point: ConnectionPoint) => { const pt = getConnectionPoint(displayPos.x, displayPos.y, point); return <div key={point} className={`absolute w-3 h-3 bg-white border-2 border-blue-500 rounded-full cursor-crosshair hover:scale-150 hover:bg-blue-50 shadow-sm ${isAnyDragging ? '' : 'transition-all duration-200 ease-out'}`} style={{ left: pt.x-6, top: pt.y-6, zIndex: 20 + depth }} onMouseDown={e => onConnectionPointMouseDown(e, node.id, point)} />; })}
       {node.children.map((child: MindNode) => (<RecursiveNode key={child.id} node={child} selectedNodeId={selectedNodeId} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} draggingNodeId={draggingNodeId} dragPositions={dragPositions} dragTargetNodeId={dragTargetNodeId} isMultiDragging={isMultiDragging} awarenessStates={awarenessStates} myUserId={myUserId} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick} onMouseDownOnNode={onMouseDownOnNode} onTextEditComplete={onTextEditComplete} onContextMenu={onContextMenu} onConnectionPointMouseDown={onConnectionPointMouseDown} depth={depth+1} isAnyDragging={isAnyDragging} />))}
     </>
   );
