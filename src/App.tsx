@@ -557,6 +557,13 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
+  // ★ 全マップ取得
+  const fetchMaps = useCallback(async () => {
+    const { data } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
+    if (data) setSavedMaps(data as MapRecord[]);
+  }, []);
+
+  // ★ 保存処理（成功後に一覧を更新）
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) return;
     const tree = yMapToTree(yNodesRef.current, yRootRef.current); if (!tree) return;
@@ -564,24 +571,27 @@ const MindMapApp = ({ user }: { user: any }) => {
     const payload = { title: mapTitle, data: tree, room_id: roomId, user_id: user.id, updated_at: new Date().toISOString() };
     const { data, error } = mapId ? await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: payload.updated_at }).eq('id', mapId).select() : await supabase.from('maps').insert([payload]).select();
     if (error) { setSaveMessage('保存に失敗'); console.error(error); return; }
-    if (data && data.length > 0) { setMapId(data[0].id); setSaveMessage('保存完了'); setIsDirty(false); try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} setTimeout(() => setSaveMessage(''), 2500); }
-  }, [mapId, mapTitle, roomId, user.id]);
+    if (data && data.length > 0) {
+      setMapId(data[0].id);
+      setSaveMessage('保存完了');
+      setIsDirty(false);
+      try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {}
+      setTimeout(() => setSaveMessage(''), 2500);
+      // ★ 保存後に一覧を更新
+      fetchMaps();
+    }
+  }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
 
-  // ★ 全マップ取得
-  const fetchMaps = useCallback(async () => {
-    const { data } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
-    if (data) setSavedMaps(data as MapRecord[]);
-  }, []);
-
+  // サイドバーが開いたら一覧取得
   useEffect(() => {
     if (isSidebarOpen) {
       fetchMaps();
     }
   }, [isSidebarOpen, fetchMaps]);
 
-  // ★ 新規マップ作成時に自動保存
+  // ★ 新規マップ作成時の自動保存
   useEffect(() => {
-    if (pendingAutoSave && roomId && yNodesRef.current && yRootRef.current && mindMap) {
+    if (pendingAutoSave && roomId && mindMap && yNodesRef.current && yRootRef.current) {
       setPendingAutoSave(false);
       handleSave();
     }
@@ -595,7 +605,7 @@ const MindMapApp = ({ user }: { user: any }) => {
     setMapId(null);
     setMapTitle('無題のマップ');
     setIsSidebarOpen(false);
-    setPendingAutoSave(true); // 初期化後、自動保存を予約
+    setPendingAutoSave(true); // 自動保存を予約
   }, []);
 
   const handleLoadMap = useCallback((map: MapRecord) => {
@@ -607,7 +617,6 @@ const MindMapApp = ({ user }: { user: any }) => {
     setIsSidebarOpen(false);
   }, []);
 
-  // ★ マップのコピー
   const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
     const newRoom = crypto.randomUUID();
@@ -622,14 +631,12 @@ const MindMapApp = ({ user }: { user: any }) => {
     fetchMaps();
   }, [user.id, fetchMaps]);
 
-  // ★ マップの削除
   const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
     if (!window.confirm('マップを削除してもよろしいですか？')) return;
     const { error } = await supabase.from('maps').delete().eq('id', map.id);
     if (error) { alert('削除に失敗しました'); return; }
     if (mapId === map.id) {
-      // 現在表示中のマップを削除した場合は新規マップに移動
       handleNewMap();
     }
     fetchMaps();
