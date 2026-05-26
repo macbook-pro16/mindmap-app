@@ -206,6 +206,7 @@ const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="current
 const SiblingNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
 const MenuIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg> );
 const FileIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg> );
+const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<any>, rootId: string): MindNode | null => {
@@ -371,6 +372,9 @@ const MindMapApp = ({ user }: { user: any }) => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
+
+  // ★ 新規マップ自動保存フラグ
+  const [pendingAutoSave, setPendingAutoSave] = useState(false);
 
   const closeContextMenu = useCallback(() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowColorPalette(null); }, []);
   const scrollToHome = useCallback(() => { const container = scrollContainerRef.current; if (!container) return; const centerX = 5000 * zoomLevel - container.clientWidth / 2; const centerY = 5000 * zoomLevel - container.clientHeight / 2; container.scrollTo({ left: centerX, top: centerY, behavior: 'smooth' }); }, [zoomLevel]);
@@ -553,17 +557,17 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) return;
     const tree = yMapToTree(yNodesRef.current, yRootRef.current); if (!tree) return;
     setSaveMessage('');
     const payload = { title: mapTitle, data: tree, room_id: roomId, user_id: user.id, updated_at: new Date().toISOString() };
     const { data, error } = mapId ? await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: payload.updated_at }).eq('id', mapId).select() : await supabase.from('maps').insert([payload]).select();
-    if (error) { setSaveMessage('保存に失敗'); return; }
+    if (error) { setSaveMessage('保存に失敗'); console.error(error); return; }
     if (data && data.length > 0) { setMapId(data[0].id); setSaveMessage('保存完了'); setIsDirty(false); try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} setTimeout(() => setSaveMessage(''), 2500); }
-  };
+  }, [mapId, mapTitle, roomId, user.id]);
 
-  // ★ 全マップ取得（RLSにより自分がアクセスできるマップのみ返る）
+  // ★ 全マップ取得
   const fetchMaps = useCallback(async () => {
     const { data } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
     if (data) setSavedMaps(data as MapRecord[]);
@@ -575,13 +579,64 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
   }, [isSidebarOpen, fetchMaps]);
 
-  const handleLoadMap = (map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); initYjs(map.room_id, map.data); setIsSidebarOpen(false); };
-  const handleNewMap = () => { if (channelRef.current) supabase.removeChannel(channelRef.current); const newRoom = crypto.randomUUID(); window.location.hash = newRoom; initYjs(newRoom); setMapId(null); setMapTitle('無題のマップ'); setIsSidebarOpen(false); };
-  
-  // ★ 共有ボタン → 招待モーダルを開く
+  // ★ 新規マップ作成時に自動保存
+  useEffect(() => {
+    if (pendingAutoSave && roomId && yNodesRef.current && yRootRef.current && mindMap) {
+      setPendingAutoSave(false);
+      handleSave();
+    }
+  }, [pendingAutoSave, roomId, mindMap, handleSave]);
+
+  const handleNewMap = useCallback(() => {
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    const newRoom = crypto.randomUUID();
+    window.location.hash = newRoom;
+    initYjs(newRoom);
+    setMapId(null);
+    setMapTitle('無題のマップ');
+    setIsSidebarOpen(false);
+    setPendingAutoSave(true); // 初期化後、自動保存を予約
+  }, []);
+
+  const handleLoadMap = useCallback((map: MapRecord) => {
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    window.location.hash = map.room_id;
+    setMapId(map.id);
+    setMapTitle(map.title);
+    initYjs(map.room_id, map.data);
+    setIsSidebarOpen(false);
+  }, []);
+
+  // ★ マップのコピー
+  const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    const newRoom = crypto.randomUUID();
+    const { error: insertError } = await supabase.from('maps').insert({
+      title: `${map.title} のコピー`,
+      data: map.data,
+      room_id: newRoom,
+      user_id: user.id,
+      updated_at: new Date().toISOString()
+    });
+    if (insertError) { alert('コピーに失敗しました'); return; }
+    fetchMaps();
+  }, [user.id, fetchMaps]);
+
+  // ★ マップの削除
+  const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('マップを削除してもよろしいですか？')) return;
+    const { error } = await supabase.from('maps').delete().eq('id', map.id);
+    if (error) { alert('削除に失敗しました'); return; }
+    if (mapId === map.id) {
+      // 現在表示中のマップを削除した場合は新規マップに移動
+      handleNewMap();
+    }
+    fetchMaps();
+  }, [mapId, handleNewMap, fetchMaps]);
+
   const handleShare = () => { if (!roomId) return; setShowInviteModal(true); };
 
-  // ★ 招待処理
   const handleInviteSubmit = async () => {
     if (!inviteEmail.trim() || !mapId) {
       if (!mapId) setInviteMessage('マップを保存してから招待してください');
@@ -931,13 +986,30 @@ const MindMapApp = ({ user }: { user: any }) => {
           ) : (
             <div className="flex flex-col gap-1">
               {savedMaps.map((map: MapRecord) => (
-                <div 
-                  key={map.id} 
-                  onClick={() => handleLoadMap(map)} 
-                  className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-gray-100 text-gray-700'}`}
-                >
-                  <FileIcon />
-                  <span className="truncate">{map.title}</span>
+                <div key={map.id} className="group relative">
+                  <div 
+                    onClick={() => handleLoadMap(map)} 
+                    className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-gray-100 text-gray-700'}`}
+                  >
+                    <FileIcon />
+                    <span className="truncate flex-1">{map.title}</span>
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 items-center gap-0.5 pr-1 hidden group-hover:flex bg-white/80">
+                    <button 
+                      onClick={(e) => handleCopyMap(map, e)}
+                      className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+                      title="コピー"
+                    >
+                      <CopyIcon />
+                    </button>
+                    <button 
+                      onClick={(e) => handleDeleteMap(map, e)}
+                      className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"
+                      title="削除"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
