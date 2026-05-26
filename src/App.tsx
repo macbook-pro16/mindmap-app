@@ -399,7 +399,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  const addLog = (msg: string) => { if (process.env.NODE_ENV !== 'production') console.log(`[MindMap] ${msg}`); };
+  // FIX 1: process.env.NODE_ENV → import.meta.env.MODE
+  const addLog = (msg: string) => { if (import.meta.env.MODE !== 'production') console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -575,7 +576,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { const { userId, state } = msg.payload; if (userId === myUserId) return; if (state === null) setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; }); else setAwarenessStates(prev => ({ ...prev, [userId]: state })); });
     const removeSelf = () => channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId: myUserId, state: null } }); 
     if(typeof window !== 'undefined') { window.addEventListener('beforeunload', removeSelf); }
-    channel.subscribe((status: string, err: Error | null) => {
+    // FIX 2: err: Error | null → err?: Error  (REALTIME_SUBSCRIBE_STATES の型に合わせる)
+    channel.subscribe((status: string, err?: Error) => {
       if (status === 'SUBSCRIBED') setConnectionStatus('接続済み'); else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断'); else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト'); else setConnectionStatus('接続中...');
       if (err) console.error('Supabase Error:', err);
       if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'sync-step-1', payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) } }); broadcastAwareness(channel, myUserId, { email: myEmail, color: myColor, selectedNodeId, editingNodeId }); }
@@ -1014,8 +1016,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setDrawingEdge({ sourceNodeId: nodeId, sourcePoint: point, currentX: pt.x, currentY: pt.y });
   }, [mindMap]);
 
-  // モダンスタイル用：ノードが選択されていない場合でも、常にコマンドが使えるようにヘッダーに配置しました
-  // そのため、floatingToolbarはオプショナルなカラーパレット等のみに利用するか、非表示でも機能します。
   const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
   const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId, mindMap, dragPositions, draggingNodeId) : null;
 
@@ -1035,11 +1035,29 @@ const MindMapApp = ({ user }: { user: User }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  const participants: { email: string; color: string; isEditing: boolean; isSelecting: boolean; isSelf: boolean }[] = [
-    { email: myEmail, color: myColor, isEditing: editingNodeId !== null, isSelecting: selectedNodeId !== null, isSelf: true },
+  // FIX 3 & 4: participants配列の型アノテーションをAwarenessStateの必須フィールドに合わせる
+  // selectedNodeId/editingNodeId を含む完全な AwarenessState 互換型として定義
+  const participants: (AwarenessState & { isSelf: boolean; isEditing: boolean; isSelecting: boolean })[] = [
+    {
+      email: myEmail,
+      color: myColor,
+      selectedNodeId: selectedNodeId,
+      editingNodeId: editingNodeId,
+      isEditing: editingNodeId !== null,
+      isSelecting: selectedNodeId !== null,
+      isSelf: true,
+    },
   ];
   (Object.entries(awarenessStates) as [string, AwarenessState][]).forEach(([_userId, state]) => {
-    participants.push({ email: state.email, color: state.color, isEditing: state.editingNodeId !== null, isSelecting: state.selectedNodeId !== null, isSelf: false });
+    participants.push({
+      email: state.email,
+      color: state.color,
+      selectedNodeId: state.selectedNodeId,
+      editingNodeId: state.editingNodeId,
+      isEditing: state.editingNodeId !== null,
+      isSelecting: state.selectedNodeId !== null,
+      isSelf: false,
+    });
   });
 
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
@@ -1261,9 +1279,9 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
               <div className="relative">
                 <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1.5 transition-colors border border-transparent hover:border-slate-200" title="参加者一覧">
-                  <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p: AwarenessState & { isSelf: boolean }, i: number) => (<div key={i} className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm">+{participants.length - 3}</div>}</div>
+                  <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p, i) => (<div key={i} className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm">+{participants.length - 3}</div>}</div>
                 </button>
-                {showParticipants && (<div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50"><h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">コラボレーター ({participants.length})</h3><div className="space-y-3 max-h-64 overflow-y-auto">{participants.map((p: AwarenessState & { isSelf: boolean; isEditing: boolean; isSelecting: boolean; }, i: number) => (<div key={i} className="flex items-center gap-3 text-sm"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-slate-800 font-medium truncate leading-tight">{p.email}{p.isSelf ? ' (You)' : ''}</div><div className="text-slate-400 text-[10px] mt-0.5">{p.isEditing ? '📝 編集中...' : p.isSelecting ? '👆 ノード選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button></div>)}
+                {showParticipants && (<div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50"><h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">コラボレーター ({participants.length})</h3><div className="space-y-3 max-h-64 overflow-y-auto">{participants.map((p, i) => (<div key={i} className="flex items-center gap-3 text-sm"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-slate-800 font-medium truncate leading-tight">{p.email}{p.isSelf ? ' (You)' : ''}</div><div className="text-slate-400 text-[10px] mt-0.5">{p.isEditing ? '📝 編集中...' : p.isSelecting ? '👆 ノード選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button></div>)}
               </div>
             </div>
           </div>
