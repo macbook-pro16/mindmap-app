@@ -622,13 +622,13 @@ const MindMapApp = ({ user }: { user: any }) => {
     }
   }, [isSidebarOpen, fetchMaps]);
 
+  // ★ サイドバーを手動で閉じるために setIsSidebarOpen(false) を削除
   const handleLoadMap = useCallback((map: MapRecord) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     window.location.hash = map.room_id;
     setMapId(map.id);
     setMapTitle(map.title);
     initYjs(map.room_id, map.data);
-    setIsSidebarOpen(false);
   }, []);
 
   const handleNewMap = useCallback(() => {
@@ -638,7 +638,6 @@ const MindMapApp = ({ user }: { user: any }) => {
     initYjs(newRoom);
     setMapId(null);
     setMapTitle('無題のマップ');
-    setIsSidebarOpen(false);
   }, []);
 
   const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
@@ -1104,7 +1103,7 @@ const MindMapApp = ({ user }: { user: any }) => {
       <div className="flex-1 relative flex flex-col min-w-0">
         {!zenMode && (
           <div className="absolute top-0 left-0 right-0 z-50 flex items-center gap-1 bg-white border-b px-3 py-1.5 shadow-sm">
-            <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="メニューを開く">
+            <button onClick={() => setIsSidebarOpen(prev => !prev)} className="p-1.5 mr-1 hover:bg-gray-100 rounded text-gray-600 transition-colors" title="メニューを開く">
               <MenuIcon />
             </button>
             <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border-none bg-transparent hover:bg-gray-50 px-2 py-1 text-sm w-48 font-bold outline-none rounded transition-colors" placeholder="無題のマップ" />
