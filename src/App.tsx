@@ -583,7 +583,10 @@ const MindMapApp = ({ user }: { user: any }) => {
 
   // ★ 招待処理
   const handleInviteSubmit = async () => {
-    if (!inviteEmail.trim() || !mapId) return;
+    if (!inviteEmail.trim() || !mapId) {
+      if (!mapId) setInviteMessage('マップを保存してから招待してください');
+      return;
+    }
     setInviteLoading(true);
     setInviteMessage('');
     try {
@@ -970,14 +973,17 @@ const MindMapApp = ({ user }: { user: any }) => {
               />
               <button
                 onClick={handleInviteSubmit}
-                disabled={inviteLoading || !inviteEmail.trim()}
+                disabled={inviteLoading || !inviteEmail.trim() || !mapId}
                 className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
               >
                 {inviteLoading ? '招待中...' : '招待'}
               </button>
             </div>
+            {!mapId && (
+              <p className="text-sm text-amber-600 mb-2">マップを保存してから招待してください。</p>
+            )}
             {inviteMessage && (
-              <p className={`text-sm ${inviteMessage.includes('エラー') ? 'text-red-500' : 'text-green-600'}`}>
+              <p className={`text-sm ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-red-500' : 'text-green-600'}`}>
                 {inviteMessage}
               </p>
             )}
