@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ChangeEvent, SyntheticEvent } from 'react';
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ChangeEvent } from 'react';
 import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -554,14 +554,14 @@ const MindMapApp = ({ user }: { user: any }) => {
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
-  // ★ 修正箇所：招待されたマップも取得できるようにユーザーIDのフィルタリングを削除し、SupabaseのRLSポリシーに任せる
+  // ★ 招待されたマップも取得できるようにRLSに任せる
   const fetchMaps = useCallback(async () => {
     const { data, error } = await supabase.from('maps').select('*').order('created_at', { ascending: false });
     if (error) console.error('マップ一覧の取得に失敗しました:', error);
     if (data) setSavedMaps(data as MapRecord[]);
   }, []);
 
-  // ★ 修正箇所：共有されたマップを上書き保存する際、作成者のユーザーIDを上書きしないようにする
+  // ★ 共有されたマップを上書き保存する際、作成者のユーザーIDを上書きしないようにする
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) {
       alert('保存に必要なデータが不足しています（roomIdが未設定）');
@@ -1067,7 +1067,7 @@ const MindMapApp = ({ user }: { user: any }) => {
                     onClick={() => handleLoadMap(map)} 
                     className={`cursor-pointer flex items-center gap-2 p-2 rounded text-sm transition-colors flex-1 ${mapId === map.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
                   >
-                    <FolderIcon />
+                    <FileIcon />
                     <span className="truncate flex-1">{map.title}</span>
                   </div>
                   <div className="flex items-center gap-0.5 pr-2">
