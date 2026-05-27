@@ -365,6 +365,14 @@ const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: strin
   }
   return null;
 };
+const findNodeById = (root: MindNode, id: string): MindNode | null => {
+  if (root.id === id) return root;
+  for (const c of root.children) {
+    const found = findNodeById(c, id);
+    if (found) return found;
+  }
+  return null;
+};
 const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositions: Record<string, { x: number; y: number }>, draggingNodeId: string | null): { x: number; y: number } | null => {
   if (!mindMap) return null;
   const node = findNodeById(mindMap, nodeId);
@@ -673,7 +681,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       yOutlines.set(id, {
         type, x, y, width, height,
         text: type === 'text' ? 'テキスト' : '',
-        color: '#334155' // default color
+        color: '#334155'
       });
     });
     setSelectedOutlineId(id); 
