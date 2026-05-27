@@ -409,10 +409,20 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
   if (nodeId === draggingNodeId && dragPositions[nodeId]) return dragPositions[nodeId];
   return { x: node.x, y: node.y };
 };
+
+// ★ 修正：パディングとボーダーを考慮したキャンバス座標変換
 const getCanvasCoords = (clientX: number, clientY: number, container: HTMLDivElement, zoomLevel: number): { x: number; y: number } => {
   const rect = container.getBoundingClientRect();
-  return { x: (clientX - rect.left + container.scrollLeft) / zoomLevel, y: (clientY - rect.top + container.scrollTop) / zoomLevel };
+  const style = window.getComputedStyle(container);
+  const padLeft = parseFloat(style.paddingLeft) || 0;
+  const padTop = parseFloat(style.paddingTop) || 0;
+  const borderLeft = container.clientLeft;
+  const borderTop = container.clientTop;
+  const x = (clientX - rect.left - borderLeft - padLeft + container.scrollLeft) / zoomLevel;
+  const y = (clientY - rect.top - borderTop - padTop + container.scrollTop) / zoomLevel;
+  return { x, y };
 };
+
 const isNodeInRect = (node: MindNode, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
   const left = node.x - NODE_WIDTH / 2, right = node.x + NODE_WIDTH / 2, top = node.y - NODE_HEIGHT / 2, bottom = node.y + NODE_HEIGHT / 2;
   const rx1 = Math.min(rect.x1, rect.x2);
@@ -800,17 +810,15 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedStickyIds([id]);
   }, []);
 
-  // ★ 修正：図形の中心がクリック位置になるように x, y を調整
+  // 図形追加（元の動作に戻す）
   const addOutline = useCallback((type: 'rectangle' | 'circle' | 'triangle' | 'text', x: number, y: number) => {
     const yOutlines = yOutlinesRef.current; if (!yOutlines || !ydocRef.current) return;
     const id = crypto.randomUUID();
     const width = type === 'text' ? 150 : 100;
     const height = type === 'text' ? 50 : 100;
-    const adjustedX = x - width / 2;
-    const adjustedY = y - height / 2;
     ydocRef.current.transact(() => {
       yOutlines.set(id, {
-        type, x: adjustedX, y: adjustedY, width, height,
+        type, x, y, width, height,
         text: type === 'text' ? 'テキスト' : '',
         color: '#475569'
       });
