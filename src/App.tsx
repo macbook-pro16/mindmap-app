@@ -82,6 +82,7 @@ export interface MapRecord {
   user_id: string;
   created_at: string;
   updated_at?: string;
+  members?: MapMember[];
 }
 
 export interface AwarenessState {
@@ -277,7 +278,6 @@ const PaletteIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="current
 const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
 const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const SiblingNodeIcon = ({ className = '' }: { className?: string }) => ( <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
-const MenuIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg> );
 const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
 const ParentNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg> );
 const StickyIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> );
@@ -393,13 +393,12 @@ const MindMapApp = ({ user }: { user: User }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mapId, setMapId] = useState<number | null>(null);
-  const [mapTitle, setMapTitle] = useState('無題のマップ');
+  const [mapTitle, setMapTitle] = useState('NEW');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
   const [mapMembers, setMapMembers] = useState<MapMember[]>([]);
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -712,7 +711,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     setEdgeStyle(newStyle);
   }, []);
 
-  // サイドバー用の一覧取得（ここでの map_members の JOIN は不要なので外して軽量化）
+  // サイドバー用の一覧取得
   const fetchMaps = useCallback(async () => {
     const { data, error } = await supabase
       .from('maps')
@@ -759,7 +758,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const yStickies = ydoc.getMap<YjsStickyData>('stickies'); yStickiesRef.current = yStickies;
     const ySettings = ydoc.getMap<string>('settings'); ySettingsRef.current = ySettings;
     
-    // ★ 激重バグの修正：初期データの展開をトランザクション内で実行する
+    // 初期データの展開をトランザクション内で実行する
     ydoc.transact(() => {
       if (initialTree) { 
         treeToYMap(initialTree, yNodes); 
@@ -814,40 +813,73 @@ const MindMapApp = ({ user }: { user: User }) => {
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
+  // ★ 新規マップ作成とDB保存のロジック（ハッシュ無し・エラー時のリカバリー・新規ボタン押下時に共通利用）
+  const handleNewMap = useCallback(async () => {
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    const newRoom = crypto.randomUUID();
+    if(typeof window !== 'undefined') window.history.replaceState(null, '', `#${newRoom}`);
+    
+    const newTitle = 'NEW';
+    const rootId = crypto.randomUUID();
+    const initialTree: MindNode = { id: rootId, text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' };
+    
+    initYjs(newRoom, initialTree);
+    
+    setMapId(null);
+    setMapTitle(newTitle);
+    setMapMembers([]);
+    setSaveMessage('保存中...');
+    
+    const { data, error } = await supabase.from('maps').insert([{ 
+      title: newTitle, 
+      data: initialTree, 
+      room_id: newRoom, 
+      user_id: user.id, 
+      updated_at: new Date().toISOString() 
+    }]).select();
+
+    if (error) {
+      alert(`新規作成エラー: ${error.message}`);
+      setSaveMessage(`作成に失敗: ${error.message}`);
+      return;
+    }
+    if (data && data.length > 0) {
+      setMapId(data[0].id);
+      setSaveMessage('保存完了');
+      setIsDirty(false);
+      setTimeout(() => setSaveMessage(''), 2500);
+      await fetchMaps();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id, fetchMaps]);
+
   useEffect(() => {
     let isMounted = true; let localChannel: RealtimeChannel | null = null;
     const setup = async () => {
-      // ★ クラッシュ対策: AuthエラーがURLハッシュに含まれる場合は弾いて安全に処理する
+      // AuthエラーがURLハッシュに含まれる場合は弾いて安全に処理する
       const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''; 
       const hash = rawHash.includes('error=') ? '' : rawHash;
-      
-      let roomToJoin = hash;
-      if (!hash) { 
-        roomToJoin = crypto.randomUUID(); 
-        if(typeof window !== 'undefined') window.history.replaceState(null, '', `#${roomToJoin}`); 
-      }
       
       if (hash) { 
         const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single(); 
         if (!isMounted) return; 
         if (error || !data) { 
-          localChannel = initYjs(roomToJoin); 
-          setMapId(null); 
-          setMapTitle('無題のマップ'); 
+          // 存在しないハッシュの場合は新規作成（保存）扱いにする
+          handleNewMap();
         } else { 
           setMapId(data.id); 
           setMapTitle(data.title); 
-          localChannel = initYjs(roomToJoin, data.data as MindNode); 
+          localChannel = initYjs(hash, data.data as MindNode); 
         } 
       } else { 
         if (!isMounted) return; 
-        localChannel = initYjs(roomToJoin); 
-        setMapId(null); 
-        setMapTitle('無題のマップ'); 
+        // ハッシュがない場合（ルートアクセス時）も新規作成して保存する
+        handleNewMap();
       }
     };
     setup();
     return () => { isMounted = false; if (localChannel) supabase.removeChannel(localChannel); else if (channelRef.current) supabase.removeChannel(channelRef.current); if (channelRef.current) broadcastAwareness(channelRef.current, myUserId, null); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const initialScrollDone = useRef(false);
@@ -916,15 +948,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setMapId(map.id);
     setMapTitle(map.title);
     initYjs(map.room_id, map.data);
-  }, []);
-
-  const handleNewMap = useCallback(() => {
-    if (channelRef.current) supabase.removeChannel(channelRef.current);
-    const newRoom = crypto.randomUUID();
-    if(typeof window !== 'undefined') window.location.hash = newRoom;
-    initYjs(newRoom);
-    setMapId(null);
-    setMapTitle('無題のマップ');
   }, []);
 
   const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
@@ -1335,11 +1358,11 @@ const MindMapApp = ({ user }: { user: User }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  // ★ 統合された参加者リストの生成
+  // 統合された参加者リストの生成
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
 
-  // 1. 自分自身をマップに登録
+  // 自分自身を登録
   participantsMap.set(myUserId, {
     user_id: myUserId,
     email: myEmail,
@@ -1350,14 +1373,14 @@ const MindMapApp = ({ user }: { user: User }) => {
     editingNodeId: ownAwareness?.editingNodeId ?? null,
   });
 
-  // 2. DBから取得した招待メンバーを登録（初期状態はオフラインとして扱う）
+  // DBのオンラインメンバー
   mapMembers.forEach((member) => {
     if (member.user_id !== myUserId) {
       participantsMap.set(member.user_id, {
         user_id: member.user_id,
         email: member.email,
         color: stringToColor(member.email),
-        isOnline: false, // 後でオンラインなら上書きする
+        isOnline: false,
         isSelf: false,
         selectedNodeId: null,
         editingNodeId: null,
@@ -1365,14 +1388,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   });
 
-  // 3. リアルタイムにオンラインのユーザーで上書き (招待されていないゲスト参加者もここで追加される)
+  // オンラインメンバーで上書き
   Object.entries(awarenessStates).forEach(([userId, state]) => {
     if (userId === myUserId) return;
-    // 既存のユーザーがいればオンライン状態を更新、いなければ新規追加
     participantsMap.set(userId, {
       user_id: userId,
       email: state.email,
-      color: state.color, // リアルタイムで共有された色を優先
+      color: state.color,
       isOnline: true,
       isSelf: false,
       selectedNodeId: state.selectedNodeId,
@@ -1432,103 +1454,101 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
-      {/* モダナイズされたサイドバー */}
-      <div 
-        className={`absolute top-0 left-0 h-full bg-white border-r border-slate-200 shadow-xl z-[100] transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-[280px]' : 'w-0 overflow-hidden'}`}
-      >
-        <div style={{ minWidth: '280px' }} className="flex flex-col h-full">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
-            <h2 className="font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-              MindMap Pro
-            </h2>
-            <button onClick={() => setIsSidebarOpen(false)} className="p-1.5 hover:bg-slate-100 rounded-md text-slate-400 transition-colors">✕</button>
-          </div>
-          
-          <div className="p-4 border-b border-slate-100 flex flex-col gap-3">
-            <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg shadow-sm w-full font-medium transition-colors">
-              <PlusIcon /> 新規マップ作成
+      {/* サイドバー（固定式） */}
+      <div className="w-[280px] flex-shrink-0 h-full bg-white border-r border-slate-200 shadow-sm z-[100] flex flex-col relative">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
+          <h2 className="font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+            {/* ★ おしゃれなデザインに変更されたアイコン */}
+            <svg className="w-6 h-6 text-indigo-600 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="3" strokeWidth="2.5" fill="#e0e7ff"/>
+              <circle cx="6" cy="6" r="2" strokeWidth="2.5"/>
+              <circle cx="18" cy="6" r="2" strokeWidth="2.5"/>
+              <circle cx="6" cy="18" r="2" strokeWidth="2.5"/>
+              <circle cx="18" cy="18" r="2" strokeWidth="2.5"/>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.5 8.5L10.5 10.5M15.5 8.5L13.5 10.5M8.5 15.5L10.5 13.5M15.5 15.5L13.5 13.5"/>
+            </svg>
+            MindMap Pro
+          </h2>
+        </div>
+        
+        <div className="p-4 border-b border-slate-100 flex flex-col gap-3">
+          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg shadow-sm w-full font-medium transition-colors">
+            <PlusIcon /> 新規マップ作成
+          </button>
+          <div className="flex gap-2">
+            <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm">
+              <SaveIcon /> 保存
             </button>
-            <div className="flex gap-2">
-              <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm">
-                <SaveIcon /> 保存
-              </button>
-              <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm">
-                <LinkIcon /> 共有
-              </button>
-            </div>
+            <button onClick={handleShare} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm">
+              <LinkIcon /> 共有
+            </button>
           </div>
+        </div>
 
-          <div className="flex-1 overflow-y-auto p-3 bg-slate-50/50">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Recent Maps</h3>
-            {savedMaps.length === 0 ? (
-              <div className="text-sm text-slate-400 text-center py-8 bg-white border border-slate-100 rounded-lg border-dashed">まだマップがありません</div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {savedMaps.map((map: MapRecord) => (
-                  <div key={map.id} className={`group flex flex-col rounded-lg border transition-all ${mapId === map.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:border-slate-200 hover:shadow-sm'}`}>
-                    <button 
-                      onClick={() => handleLoadMap(map)} 
-                      className={`w-full text-left px-3 py-2.5 rounded-t-lg text-sm transition-colors ${mapId === map.id ? 'text-indigo-900 font-semibold' : 'text-slate-700 font-medium'}`}
-                    >
-                      {map.title}
-                    </button>
-                    <div className="flex flex-col px-3 pb-2.5 pt-1">
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-2">
-                          {/* ★ 修正：共有ユーザーアイコン一覧を廃止し、マップのステータスだけを表示して軽量化 */}
-                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
-                            {map.user_id === user.id ? '👑 オーナー' : '🤝 共有マップ'}
-                          </span>
-                          <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
-                            <button 
-                              onClick={(e) => handleCopyMap(map, e)}
-                              className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors"
-                              title="コピー"
-                            >
-                              <CopyIcon />
-                            </button>
-                            <button 
-                              onClick={(e) => handleDeleteMap(map, e)}
-                              className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors"
-                              title="削除"
-                            >
-                              <TrashIcon />
-                            </button>
-                          </div>
-                        </div>
-                        {/* ★ 時間を復活 */}
-                        <span className="text-[10px] text-slate-400">
-                          {map.updated_at ? new Date(map.updated_at).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+        <div className="flex-1 overflow-y-auto p-3 bg-slate-50/50">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Recent Maps</h3>
+          {savedMaps.length === 0 ? (
+            <div className="text-sm text-slate-400 text-center py-8 bg-white border border-slate-100 rounded-lg border-dashed">まだマップがありません</div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {savedMaps.map((map: MapRecord) => (
+                <div key={map.id} className={`group flex flex-col rounded-lg border transition-all ${mapId === map.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:border-slate-200 hover:shadow-sm'}`}>
+                  <button 
+                    onClick={() => handleLoadMap(map)} 
+                    className={`w-full text-left px-3 py-2.5 rounded-t-lg text-sm transition-colors ${mapId === map.id ? 'text-indigo-900 font-semibold' : 'text-slate-700 font-medium'}`}
+                  >
+                    {map.title}
+                  </button>
+                  <div className="flex flex-col px-3 pb-2.5 pt-1">
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
+                          {map.user_id === user.id ? '👑 オーナー' : '🤝 共有マップ'}
                         </span>
+                        <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
+                          <button 
+                            onClick={(e) => handleCopyMap(map, e)}
+                            className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors"
+                            title="コピー"
+                          >
+                            <CopyIcon />
+                          </button>
+                          <button 
+                            onClick={(e) => handleDeleteMap(map, e)}
+                            className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors"
+                            title="削除"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
                       </div>
+                      <span className="text-[10px] text-slate-400">
+                        {map.updated_at ? new Date(map.updated_at).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-          
-          <div className="p-4 border-t border-slate-100 bg-white flex items-center justify-between">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-               {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-8 h-8 rounded-full border border-slate-200 flex-shrink-0" /> : <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-sm" style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div>}
-               <div className="flex flex-col min-w-0">
-                 <span className="text-xs font-semibold text-slate-700 truncate" title={myEmail}>{myEmail.split('@')[0]}</span>
-                 <span className="text-[10px] text-slate-400 truncate" title={myEmail}>{myEmail}</span>
-               </div>
+                </div>
+              ))}
             </div>
-            <button onClick={handleLogout} className="text-[10px] font-medium text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 px-2.5 py-1.5 rounded-md transition-colors border border-slate-100 hover:border-rose-100 whitespace-nowrap">Logout</button>
+          )}
+        </div>
+        
+        <div className="p-4 border-t border-slate-100 bg-white flex items-center justify-between">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+             {user.user_metadata?.avatar_url ? <img src={user.user_metadata.avatar_url} alt="avatar" className="w-8 h-8 rounded-full border border-slate-200 flex-shrink-0" /> : <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-sm" style={{ backgroundColor: myColor }}>{getInitial(myEmail)}</div>}
+             <div className="flex flex-col min-w-0">
+               <span className="text-xs font-semibold text-slate-700 truncate" title={myEmail}>{myEmail.split('@')[0]}</span>
+               <span className="text-[10px] text-slate-400 truncate" title={myEmail}>{myEmail}</span>
+             </div>
           </div>
+          <button onClick={handleLogout} className="text-[10px] font-medium text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 px-2.5 py-1.5 rounded-md transition-colors border border-slate-100 hover:border-rose-100 whitespace-nowrap">Logout</button>
         </div>
       </div>
 
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50">
         {!zenMode && (
           <div className="absolute top-0 left-0 right-0 z-50 flex items-center bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-2 shadow-sm">
-            <button onClick={() => setIsSidebarOpen(prev => !prev)} className={`p-2 mr-3 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors ${isSidebarOpen ? 'bg-slate-100 text-indigo-600' : ''}`} title="サイドバーを開閉">
-              <MenuIcon />
-            </button>
-            <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-56 font-bold outline-none rounded-md transition-all text-slate-800" placeholder="無題のマップ" />
+            <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-56 font-bold outline-none rounded-md transition-all text-slate-800 ml-2" placeholder="NEW" />
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
@@ -1596,7 +1616,6 @@ const MindMapApp = ({ user }: { user: User }) => {
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
-            {/* ★ ヘッダー参加者表示 */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
                 <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
