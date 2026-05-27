@@ -79,9 +79,9 @@ export interface MapRecord {
   title: string;
   data: MindNode;
   room_id: string;
+  user_id: string;
   created_at: string;
   updated_at?: string;
-  members?: MapMember[];
 }
 
 export interface AwarenessState {
@@ -712,6 +712,19 @@ const MindMapApp = ({ user }: { user: User }) => {
     setEdgeStyle(newStyle);
   }, []);
 
+  // サイドバー用の一覧取得（ここでの map_members の JOIN は不要なので外して軽量化）
+  const fetchMaps = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('maps')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) { console.error('マップ一覧の取得に失敗しました:', error); return; }
+    if (data) {
+      setSavedMaps(data as MapRecord[]);
+    }
+  }, []);
+
+  // 選択中マップの共有メンバーを取得
   const fetchMapMembers = useCallback(async () => {
     if (!mapId) { setMapMembers([]); return; }
     const { data, error } = await supabase
@@ -726,6 +739,10 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [mapId]);
 
   useEffect(() => {
+    fetchMaps();
+  }, [fetchMaps]);
+
+  useEffect(() => {
     fetchMapMembers();
   }, [fetchMapMembers, mapId]);
 
@@ -734,14 +751,26 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
     ydocRef.current?.destroy(); if (undoManagerRef.current) { undoManagerRef.current.destroy(); undoManagerRef.current = null; }
     setConnectionStatus('接続中...'); setCanUndo(false); setCanRedo(false); setIsDirty(false);
+    
     const ydoc = new Y.Doc(); ydocRef.current = ydoc;
     const yNodes = ydoc.getMap<YjsNodeData>('nodes'); yNodesRef.current = yNodes;
     const yEdges = ydoc.getMap<YjsEdgeData>('edges'); yEdgesRef.current = yEdges;
     const yImages = ydoc.getMap<YjsImageData>('images'); yImagesRef.current = yImages;
     const yStickies = ydoc.getMap<YjsStickyData>('stickies'); yStickiesRef.current = yStickies;
     const ySettings = ydoc.getMap<string>('settings'); ySettingsRef.current = ySettings;
-    if (initialTree) { treeToYMap(initialTree, yNodes); yRootRef.current = initialTree.id; }
-    else { const rootId = crypto.randomUUID(); yNodes.set(rootId, { text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); yRootRef.current = rootId; }
+    
+    // ★ 激重バグの修正：初期データの展開をトランザクション内で実行する
+    ydoc.transact(() => {
+      if (initialTree) { 
+        treeToYMap(initialTree, yNodes); 
+        yRootRef.current = initialTree.id; 
+      } else { 
+        const rootId = crypto.randomUUID(); 
+        yNodes.set(rootId, { text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); 
+        yRootRef.current = rootId; 
+      }
+    });
+
     const updateReact = () => {
       if (yRootRef.current) { const tree = yMapToTree(yNodes, yRootRef.current); if (tree) setMindMap(tree); }
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
@@ -750,41 +779,72 @@ const MindMapApp = ({ user }: { user: User }) => {
       const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined;
       if (currentStyle) setEdgeStyle(currentStyle);
     };
+    
     yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); ySettings.observe(updateReact); updateReact();
+    
     const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, ySettings]); undoManagerRef.current = undoManager;
     const updateUndoRedoState = () => { setCanUndo(undoManager.undoStack.length > 0); setCanRedo(undoManager.redoStack.length > 0); };
     undoManager.on('stack-item-added', updateUndoRedoState); undoManager.on('stack-item-popped', updateUndoRedoState); updateUndoRedoState();
+    
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
     ydoc.on('update', (update: Uint8Array, origin: string) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
       setIsDirty(true); if (origin === 'supabase' || origin === 'local') return;
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
+    
     if(typeof window !== 'undefined') {
         try { const draft = localStorage.getItem(`mindmap-draft-${room}`); if (draft) { Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local'); addLog('未保存のバックアップを復元'); setIsDirty(true); } } catch(e) {}
     }
+    
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
     channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { const { userId, state } = msg.payload; if (userId === myUserId) return; if (state === null) setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; }); else setAwarenessStates(prev => ({ ...prev, [userId]: state })); });
+    
     const removeSelf = () => channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId: myUserId, state: null } }); 
     if(typeof window !== 'undefined') { window.addEventListener('beforeunload', removeSelf); }
+    
     channel.subscribe((status: string, err?: Error) => {
       if (status === 'SUBSCRIBED') setConnectionStatus('接続済み'); else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断'); else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト'); else setConnectionStatus('接続中...');
       if (err) console.error('Supabase Error:', err);
       if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'sync-step-1', payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) } }); broadcastAwareness(channel, myUserId, { email: myEmail, color: myColor, selectedNodeId, editingNodeId }); }
     });
+    
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
   useEffect(() => {
     let isMounted = true; let localChannel: RealtimeChannel | null = null;
     const setup = async () => {
-      const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''; 
+      // ★ クラッシュ対策: AuthエラーがURLハッシュに含まれる場合は弾いて安全に処理する
+      const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''; 
+      const hash = rawHash.includes('error=') ? '' : rawHash;
+      
       let roomToJoin = hash;
-      if (!hash) { roomToJoin = crypto.randomUUID(); if(typeof window !== 'undefined') window.history.replaceState(null, '', `#${roomToJoin}`); }
-      if (hash) { const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single(); if (!isMounted) return; if (error || !data) { localChannel = initYjs(roomToJoin); setMapId(null); setMapTitle('無題のマップ'); } else { setMapId(data.id); setMapTitle(data.title); localChannel = initYjs(roomToJoin, data.data as MindNode); } }
-      else { if (!isMounted) return; localChannel = initYjs(roomToJoin); setMapId(null); setMapTitle('無題のマップ'); }
+      if (!hash) { 
+        roomToJoin = crypto.randomUUID(); 
+        if(typeof window !== 'undefined') window.history.replaceState(null, '', `#${roomToJoin}`); 
+      }
+      
+      if (hash) { 
+        const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single(); 
+        if (!isMounted) return; 
+        if (error || !data) { 
+          localChannel = initYjs(roomToJoin); 
+          setMapId(null); 
+          setMapTitle('無題のマップ'); 
+        } else { 
+          setMapId(data.id); 
+          setMapTitle(data.title); 
+          localChannel = initYjs(roomToJoin, data.data as MindNode); 
+        } 
+      } else { 
+        if (!isMounted) return; 
+        localChannel = initYjs(roomToJoin); 
+        setMapId(null); 
+        setMapTitle('無題のマップ'); 
+      }
     };
     setup();
     return () => { isMounted = false; if (localChannel) supabase.removeChannel(localChannel); else if (channelRef.current) supabase.removeChannel(channelRef.current); if (channelRef.current) broadcastAwareness(channelRef.current, myUserId, null); };
@@ -797,21 +857,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleUndo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.undo(); }, []);
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
-
-  const fetchMaps = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('maps')
-      .select('*, map_members(user_id, email)')
-      .order('created_at', { ascending: false });
-    if (error) { console.error('マップ一覧の取得に失敗しました:', error); return; }
-    if (data) {
-      const mapsWithMembers = data.map((map: any) => ({
-        ...map,
-        members: map.map_members ? map.map_members.filter((m: { user_id: string; email: string }) => m.email).map((m: { user_id: string; email: string }) => ({ user_id: m.user_id, email: m.email })) : []
-      })) as MapRecord[];
-      setSavedMaps(mapsWithMembers);
-    }
-  }, []);
 
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) {
@@ -860,17 +905,10 @@ const MindMapApp = ({ user }: { user: User }) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} }
       setTimeout(() => setSaveMessage(''), 2500);
       await fetchMaps();
-      await fetchMapMembers();
     } else {
       alert('保存に成功しましたが、データが返ってきませんでした');
     }
-  }, [mapId, mapTitle, roomId, user.id, fetchMaps, fetchMapMembers]);
-
-  useEffect(() => {
-    if (isSidebarOpen) {
-      fetchMaps();
-    }
-  }, [isSidebarOpen, fetchMaps]);
+  }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
 
   const handleLoadMap = useCallback((map: MapRecord) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
@@ -947,7 +985,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         setInviteMessage('招待しました！');
         setInviteEmail('');
         await fetchMapMembers();
-        await fetchMaps(); // サイドバーの共有ユーザー一覧も更新
       }
     } catch (err: unknown) {
       setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -1436,26 +1473,13 @@ const MindMapApp = ({ user }: { user: User }) => {
                     >
                       {map.title}
                     </button>
-                    <div className="flex flex-col px-3 pb-2.5 pt-1 text-xs text-slate-400">
+                    <div className="flex flex-col px-3 pb-2.5 pt-1">
                       <div className="flex items-center justify-between w-full">
                         <div className="flex items-center gap-2">
-                          <div className="flex -space-x-1.5">
-                            {map.members && map.members.slice(0, 3).map((member, idx) => (
-                              <div
-                                key={idx}
-                                className="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[10px] font-bold text-white border-2 border-white"
-                                style={{ backgroundColor: stringToColor(member.email) }}
-                                title={member.email}
-                              >
-                                {getInitial(member.email)}
-                              </div>
-                            ))}
-                            {map.members && map.members.length > 3 && (
-                              <div className="w-5 h-5 rounded-full bg-slate-400 flex items-center justify-center text-[10px] font-bold text-white border-2 border-white">
-                                +{map.members.length - 3}
-                              </div>
-                            )}
-                          </div>
+                          {/* ★ 修正：共有ユーザーアイコン一覧を廃止し、マップのステータスだけを表示して軽量化 */}
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
+                            {map.user_id === user.id ? '👑 オーナー' : '🤝 共有マップ'}
+                          </span>
                           <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
                             <button 
                               onClick={(e) => handleCopyMap(map, e)}
@@ -1473,25 +1497,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                             </button>
                           </div>
                         </div>
-                        <span className="text-[10px]">
-                          {map.updated_at ? new Date(map.updated_at).toLocaleDateString('ja-JP', {month: 'short', day: 'numeric'}) : ''}
+                        {/* ★ 時間を復活 */}
+                        <span className="text-[10px] text-slate-400">
+                          {map.updated_at ? new Date(map.updated_at).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       </div>
-                      
-                      {/* ★ 各マップに招待されているユーザー一覧を明記 */}
-                      {map.members && map.members.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-slate-100/50 flex flex-col gap-1 w-full">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Shared with:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {map.members.map((member, idx) => (
-                              <div key={idx} className="flex items-center gap-1 bg-slate-100 border border-slate-200 text-slate-600 px-1.5 py-0.5 rounded-sm max-w-full" title={member.email}>
-                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" />
-                                <span className="text-[10px] truncate max-w-[120px]">{member.email}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
