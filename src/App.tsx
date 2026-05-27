@@ -800,14 +800,17 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedStickyIds([id]);
   }, []);
 
+  // ★ 修正：図形の中心がクリック位置になるように x, y を調整
   const addOutline = useCallback((type: 'rectangle' | 'circle' | 'triangle' | 'text', x: number, y: number) => {
     const yOutlines = yOutlinesRef.current; if (!yOutlines || !ydocRef.current) return;
     const id = crypto.randomUUID();
     const width = type === 'text' ? 150 : 100;
     const height = type === 'text' ? 50 : 100;
+    const adjustedX = x - width / 2;
+    const adjustedY = y - height / 2;
     ydocRef.current.transact(() => {
       yOutlines.set(id, {
-        type, x, y, width, height,
+        type, x: adjustedX, y: adjustedY, width, height,
         text: type === 'text' ? 'テキスト' : '',
         color: '#475569'
       });
@@ -2900,4 +2903,4 @@ text-slate-800`} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleI
   );
 };
 
-export default App
+export default App;
