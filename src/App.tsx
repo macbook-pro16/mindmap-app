@@ -365,7 +365,6 @@ const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: strin
   }
   return null;
 };
-const findNodeById = (root: MindNode, id: string): MindNode | null => { if (root.id === id) return root; for (const c of root.children) { const found = findNodeById(c, id); if (found) return found; } return null; };
 const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositions: Record<string, { x: number; y: number }>, draggingNodeId: string | null): { x: number; y: number } | null => {
   if (!mindMap) return null;
   const node = findNodeById(mindMap, nodeId);
@@ -767,7 +766,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     } else if (selectedStickyId) {
       updateStickyColors(selectedStickyId, bgColor, textColor);
     } else if (selectedOutlineId) {
-      updateOutlineColor(selectedOutlineId, textColor); // アウトライントキストや線の色として適用
+      updateOutlineColor(selectedOutlineId, textColor); 
     }
   }, [selectedNodeId, selectedNodeIds, selectedStickyId, selectedOutlineId, updateNodeColors, updateMultipleNodeColors, updateStickyColors, updateOutlineColor]);
 
@@ -1105,15 +1104,14 @@ const MindMapApp = ({ user }: { user: User }) => {
     await fetchMaps();
   }, [mapId, handleResetMap, fetchMaps, user.id]);
 
-  // ★ 追加：サイドバーのドラッグ＆ドロップ並び替え処理
-  const handleMapDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+  const handleMapDragStart = (e: DragEvent<HTMLDivElement>, index: number) => {
     dragMapItemIndex.current = index;
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
     }
   };
 
-  const handleMapDragEnter = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+  const handleMapDragEnter = (_e: DragEvent<HTMLDivElement>, index: number) => {
     dragOverMapItemIndex.current = index;
   };
 
@@ -1125,7 +1123,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       
       setSavedMaps(_savedMaps);
       
-      // DBへ並び順を保存（Promise.allで一括実行）
       try {
         await Promise.all(
           _savedMaps.map((map, index) => 
@@ -1243,7 +1240,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
 
-    // ★ 追加：図形ツールが選択されている場合はクリックで描画してツール解除
     if (currentTool !== 'select') {
       e.stopPropagation();
       addOutline(currentTool as 'rectangle'|'circle'|'triangle'|'text', coords.x, coords.y);
@@ -1344,7 +1340,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedNodeIds.forEach((id: string) => { const initial = initialGroupDragPositions.current[id]; if (initial) newPositions[id] = { x: initial.x + deltaX, y: initial.y + deltaY }; });
       setDragPositions(newPositions); return;
     }
-  }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateStickySize, updateOutlinePosition, updateOutlineSize, images, stickies, outlines, isCanvasPanning]);
+  }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, images, stickies, outlines, isCanvasPanning]);
 
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
@@ -1550,7 +1546,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setDrawingEdge({ sourceNodeId: nodeId, sourcePoint: point, currentX: pt.x, currentY: pt.y });
   }, [mindMap]);
 
-  // ★ 追加：キャンバス上への画像ドロップ処理
   const handleCanvasDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
