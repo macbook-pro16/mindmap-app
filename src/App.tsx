@@ -727,7 +727,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   useEffect(() => {
     fetchMapMembers();
-  }, [fetchMapMembers]);
+  }, [fetchMapMembers, mapId]); // mapIdが変わったときに再取得
 
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
@@ -1297,7 +1297,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  // ★ 統合された参加者リストの生成
+  // ★ 統合された参加者リストの生成 (ここが修正の核です)
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
 
@@ -1312,33 +1312,34 @@ const MindMapApp = ({ user }: { user: User }) => {
     editingNodeId: ownAwareness?.editingNodeId ?? null,
   });
 
-  // 2. リアルタイムにオンラインのユーザーを登録 (DBにあるか否かに関わらず優先)
-  Object.entries(awarenessStates).forEach(([userId, state]) => {
-    if (userId === myUserId) return;
-    participantsMap.set(userId, {
-      user_id: userId,
-      email: state.email,
-      color: state.color,
-      isOnline: true,
-      isSelf: false,
-      selectedNodeId: state.selectedNodeId,
-      editingNodeId: state.editingNodeId,
-    });
-  });
-
-  // 3. DBから取得した過去のメンバーをマージ（オンラインでなければオフラインとして追加）
+  // 2. DBから取得した招待メンバーを登録（初期状態はオフラインとして扱う）
   mapMembers.forEach((member) => {
-    if (!participantsMap.has(member.user_id)) {
+    if (member.user_id !== myUserId) {
       participantsMap.set(member.user_id, {
         user_id: member.user_id,
         email: member.email,
         color: stringToColor(member.email),
-        isOnline: false,
+        isOnline: false, // 後でオンラインなら上書きする
         isSelf: false,
         selectedNodeId: null,
         editingNodeId: null,
       });
     }
+  });
+
+  // 3. リアルタイムにオンラインのユーザーで上書き (招待されていないゲスト参加者もここで追加される)
+  Object.entries(awarenessStates).forEach(([userId, state]) => {
+    if (userId === myUserId) return;
+    // 既存のユーザーがいればオンライン状態を更新、いなければ新規追加
+    participantsMap.set(userId, {
+      user_id: userId,
+      email: state.email,
+      color: state.color, // リアルタイムで共有された色を優先
+      isOnline: true,
+      isSelf: false,
+      selectedNodeId: state.selectedNodeId,
+      editingNodeId: state.editingNodeId,
+    });
   });
 
   const allParticipants = Array.from(participantsMap.values());
