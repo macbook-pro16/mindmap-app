@@ -79,6 +79,7 @@ export interface MapRecord {
   title: string;
   data: MindNode;
   room_id: string;
+  user_id: string;
   created_at: string;
   updated_at?: string;
   members?: MapMember[];
@@ -807,7 +808,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) {
       const mapsWithMembers = data.map((map: any) => ({
         ...map,
-        members: map.map_members ? map.map_members.filter((m: any) => m.email).map((m: any) => ({ user_id: m.user_id, email: m.email })) : []
+        members: map.map_members ? map.map_members.filter((m: { user_id: string; email: string }) => m.email).map((m: { user_id: string; email: string }) => ({ user_id: m.user_id, email: m.email })) : []
       })) as MapRecord[];
       setSavedMaps(mapsWithMembers);
     }
@@ -947,6 +948,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         setInviteMessage('招待しました！');
         setInviteEmail('');
         await fetchMapMembers();
+        await fetchMaps(); // サイドバーも更新
       }
     } catch (err: unknown) {
       setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -1435,45 +1437,62 @@ const MindMapApp = ({ user }: { user: User }) => {
                     >
                       {map.title}
                     </button>
-                    <div className="flex items-center justify-between px-3 pb-2.5 pt-1 text-xs text-slate-400">
-                      <div className="flex items-center gap-2">
-                        <div className="flex -space-x-1.5">
-                          {map.members && map.members.slice(0, 3).map((member, idx) => (
-                            <div
-                              key={idx}
-                              className="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[10px] font-bold text-white border-2 border-white"
-                              style={{ backgroundColor: stringToColor(member.email) }}
-                              title={member.email}
+                    <div className="flex flex-col px-3 pb-2.5 pt-1 text-xs text-slate-400">
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                          <div className="flex -space-x-1.5">
+                            {map.members && map.members.slice(0, 3).map((member, idx) => (
+                              <div
+                                key={idx}
+                                className="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[10px] font-bold text-white border-2 border-white"
+                                style={{ backgroundColor: stringToColor(member.email) }}
+                                title={member.email}
+                              >
+                                {getInitial(member.email)}
+                              </div>
+                            ))}
+                            {map.members && map.members.length > 3 && (
+                              <div className="w-5 h-5 rounded-full bg-slate-400 flex items-center justify-center text-[10px] font-bold text-white border-2 border-white">
+                                +{map.members.length - 3}
+                              </div>
+                            )}
+                          </div>
+                          <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
+                            <button 
+                              onClick={(e) => handleCopyMap(map, e)}
+                              className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors"
+                              title="コピー"
                             >
-                              {getInitial(member.email)}
-                            </div>
-                          ))}
-                          {map.members && map.members.length > 3 && (
-                            <div className="w-5 h-5 rounded-full bg-slate-400 flex items-center justify-center text-[10px] font-bold text-white border-2 border-white">
-                              +{map.members.length - 3}
-                            </div>
-                          )}
+                              <CopyIcon />
+                            </button>
+                            <button 
+                              onClick={(e) => handleDeleteMap(map, e)}
+                              className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors"
+                              title="削除"
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
                         </div>
-                        <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
-                          <button 
-                            onClick={(e) => handleCopyMap(map, e)}
-                            className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors"
-                            title="コピー"
-                          >
-                            <CopyIcon />
-                          </button>
-                          <button 
-                            onClick={(e) => handleDeleteMap(map, e)}
-                            className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors"
-                            title="削除"
-                          >
-                            <TrashIcon />
-                          </button>
-                        </div>
+                        <span className="text-[10px]">
+                          {map.updated_at ? new Date(map.updated_at).toLocaleDateString('ja-JP', {month: 'short', day: 'numeric'}) : ''}
+                        </span>
                       </div>
-                      <span className="text-[10px]">
-                        {map.updated_at ? new Date(map.updated_at).toLocaleDateString('ja-JP', {month: 'short', day: 'numeric'}) : ''}
-                      </span>
+                      
+                      {/* ★ 追加: 各マップに招待されているユーザー一覧をサイドバーに明記 */}
+                      {map.members && map.members.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-slate-100/50 flex flex-col gap-1 w-full">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Shared with:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {map.members.map((member, idx) => (
+                              <div key={idx} className="flex items-center gap-1 bg-slate-100 border border-slate-200 text-slate-600 px-1.5 py-0.5 rounded-sm max-w-full" title={member.email}>
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" />
+                                <span className="text-[10px] truncate max-w-[120px]">{member.email}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1568,7 +1587,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
-            {/* ★ 修正済み：統合された参加者リスト */}
+            {/* ★ ヘッダー参加者表示 */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
                 <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
