@@ -79,7 +79,6 @@ export interface MapRecord {
   title: string;
   data: MindNode;
   room_id: string;
-  user_id: string;
   created_at: string;
   updated_at?: string;
   members?: MapMember[];
@@ -728,7 +727,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   useEffect(() => {
     fetchMapMembers();
-  }, [fetchMapMembers, mapId]); // mapIdが変わったときに再取得
+  }, [fetchMapMembers, mapId]);
 
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
@@ -948,7 +947,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         setInviteMessage('招待しました！');
         setInviteEmail('');
         await fetchMapMembers();
-        await fetchMaps(); // サイドバーも更新
+        await fetchMaps(); // サイドバーの共有ユーザー一覧も更新
       }
     } catch (err: unknown) {
       setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -1299,7 +1298,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  // ★ 統合された参加者リストの生成 (ここが修正の核です)
+  // ★ 統合された参加者リストの生成
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
 
@@ -1479,7 +1478,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                         </span>
                       </div>
                       
-                      {/* ★ 追加: 各マップに招待されているユーザー一覧をサイドバーに明記 */}
+                      {/* ★ 各マップに招待されているユーザー一覧を明記 */}
                       {map.members && map.members.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-slate-100/50 flex flex-col gap-1 w-full">
                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Shared with:</span>
