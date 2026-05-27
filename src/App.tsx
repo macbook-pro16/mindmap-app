@@ -383,6 +383,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
+  const [mapMembers, setMapMembers] = useState<MapMember[]>([]); // ★ 招待メンバー一覧
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
@@ -564,7 +565,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedNodeId(childId); setSelectedNodeIds([childId]);
   }, []);
 
-  // ★ 独立トピック用の兄弟追加（中心テーマに繋がらない）
   const addIndependentSibling = useCallback((targetId: string, position: 'before' | 'after') => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return;
     const targetNode = nodes.get(targetId); if (!targetNode) return;
@@ -599,7 +599,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const deleteNode = useCallback((nodeId: string) => { const nodes = yNodesRef.current; if (!nodes || !yRootRef.current || nodeId === yRootRef.current) return; ydocRef.current?.transact(() => { nodes.forEach((value: YjsNodeData, key: string) => { if (value.children?.includes(nodeId)) nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) }); }); nodes.delete(nodeId); }); setSelectedNodeId(null); setSelectedNodeIds([]); }, []);
 
-  // ★ 複数ノード一括削除
   const deleteMultipleNodes = useCallback((nodeIds: string[]) => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return;
     ydocRef.current?.transact(() => {
@@ -616,7 +615,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
   const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
 
-  // ★ 複数ノード一括色変更
   const updateMultipleNodeColors = useCallback((nodeIds: string[], bgColor: string, textColor: string) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     ydocRef.current?.transact(() => {
@@ -689,7 +687,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [addSticky, zoomLevel]);
 
-  // ★ edgeStyleをYjsで共有するためのハンドラ
   const handleEdgeStyleChange = useCallback((newStyle: EdgeStyle) => {
     if (!ydocRef.current) return;
     const settings = ySettingsRef.current;
@@ -700,6 +697,24 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
     setEdgeStyle(newStyle);
   }, []);
+
+  // ★ マップの招待メンバー取得
+  const fetchMapMembers = useCallback(async () => {
+    if (!mapId) { setMapMembers([]); return; }
+    const { data, error } = await supabase
+      .from('map_members')
+      .select('user_id, email')
+      .eq('map_id', mapId);
+    if (error) {
+      console.error('メンバー取得エラー:', error);
+      return;
+    }
+    setMapMembers(data || []);
+  }, [mapId]);
+
+  useEffect(() => {
+    fetchMapMembers();
+  }, [fetchMapMembers]);
 
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
@@ -719,7 +734,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height }); }); setImages(imageList);
       const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
-      // ★ settings の反映
       const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined;
       if (currentStyle) setEdgeStyle(currentStyle);
     };
@@ -771,7 +785,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
-  // ★ マップ一覧取得（メンバー情報を正しくマッピング）
   const fetchMaps = useCallback(async () => {
     const { data, error } = await supabase
       .from('maps')
@@ -834,10 +847,11 @@ const MindMapApp = ({ user }: { user: User }) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} }
       setTimeout(() => setSaveMessage(''), 2500);
       await fetchMaps();
+      await fetchMapMembers(); // 保存後にメンバーも再取得
     } else {
       alert('保存に成功しましたが、データが返ってきませんでした');
     }
-  }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
+  }, [mapId, mapTitle, roomId, user.id, fetchMaps, fetchMapMembers]);
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -919,7 +933,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       } else {
         setInviteMessage('招待しました！');
         setInviteEmail('');
-        await fetchMaps(); // 招待後すぐに一覧更新
+        await fetchMapMembers(); // 招待後にメンバー一覧更新
       }
     } catch (err: unknown) {
       setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -1121,7 +1135,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedImageId && !selectedNodeId && !selectedEdgeId && !selectedStickyId) { e.preventDefault(); deleteImage(selectedImageId); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedStickyId && !selectedNodeId && !selectedEdgeId && !selectedImageId) { e.preventDefault(); deleteSticky(selectedStickyId); return; }
-    // ★ 複数ノード選択時は一括削除
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeIds.length > 1 && !selectedEdgeId && !selectedImageId && !selectedStickyId) { e.preventDefault(); deleteMultipleNodes(selectedNodeIds); return; }
     
     if (!selectedNodeId) return;
@@ -1164,7 +1177,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
       return;
     }
-    // ★ 独立トピックの場合は addIndependentSibling、それ以外は通常の addSiblingNode
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       const node = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
@@ -1272,26 +1284,28 @@ const MindMapApp = ({ user }: { user: User }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  const participants: (AwarenessState & { isSelf: boolean; isEditing: boolean; isSelecting: boolean })[] = [
+  // ★ 参加者リスト：自分＋招待メンバー（オンライン状態を反映）
+  const allParticipants = [
     {
+      user_id: myUserId,
       email: myEmail,
       color: myColor,
-      selectedNodeId: selectedNodeId,
-      editingNodeId: editingNodeId,
-      isEditing: editingNodeId !== null,
-      isSelecting: selectedNodeId !== null,
+      isOnline: true, // 自分は常にオンライン
       isSelf: true,
-    },
+      ...awarenessStates[myUserId] || { selectedNodeId: null, editingNodeId: null }
+    }
   ];
-  (Object.entries(awarenessStates) as [string, AwarenessState][]).forEach(([_userId, state]) => {
-    participants.push({
-      email: state.email,
-      color: state.color,
-      selectedNodeId: state.selectedNodeId,
-      editingNodeId: state.editingNodeId,
-      isEditing: state.editingNodeId !== null,
-      isSelecting: state.selectedNodeId !== null,
+  mapMembers.forEach((member) => {
+    if (member.user_id === myUserId) return; // 自分は除外
+    const onlineState = awarenessStates[member.user_id];
+    allParticipants.push({
+      user_id: member.user_id,
+      email: member.email,
+      color: onlineState ? onlineState.color : stringToColor(member.email),
+      isOnline: !!onlineState,
       isSelf: false,
+      selectedNodeId: onlineState?.selectedNodeId || null,
+      editingNodeId: onlineState?.editingNodeId || null
     });
   });
 
@@ -1520,6 +1534,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
+            {/* ★ 新ヘッダー参加者表示 */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
                 <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
@@ -1527,9 +1542,46 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
               <div className="relative">
                 <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1.5 transition-colors border border-transparent hover:border-slate-200" title="参加者一覧">
-                  <div className="flex -space-x-1.5">{participants.slice(0, 3).map((p, i) => (<div key={i} className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>))}{participants.length > 3 && <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm">+{participants.length - 3}</div>}</div>
+                  <div className="flex -space-x-1.5">
+                    {allParticipants.slice(0, 3).map((p) => (
+                      <div key={p.user_id} className="relative">
+                        <div 
+                          className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''}`} 
+                          style={{ backgroundColor: p.color }} 
+                          title={p.email}
+                        >
+                          {getInitial(p.email)}
+                        </div>
+                        <div className={`absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-2 h-2 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                      </div>
+                    ))}
+                    {allParticipants.length > 3 && (
+                      <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm">+{allParticipants.length - 3}</div>
+                    )}
+                  </div>
                 </button>
-                {showParticipants && (<div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50"><h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">コラボレーター ({participants.length})</h3><div className="space-y-3 max-h-64 overflow-y-auto">{participants.map((p, i) => (<div key={i} className="flex items-center gap-3 text-sm"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}</div><div className="flex-1 min-w-0"><div className="text-slate-800 font-medium truncate leading-tight">{p.email}{p.isSelf ? ' (You)' : ''}</div><div className="text-slate-400 text-[10px] mt-0.5">{p.isEditing ? '📝 編集中...' : p.isSelecting ? '👆 ノード選択中' : '👀 閲覧中'}</div></div></div>))}</div><button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button></div>)}
+                {showParticipants && (
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50">
+                    <h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">メンバー ({allParticipants.length})</h3>
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {allParticipants.map((p) => (
+                        <div key={p.user_id} className="flex items-center gap-3 text-sm">
+                          <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`} style={{ backgroundColor: p.color }}>
+                            {getInitial(p.email)}
+                            <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-slate-800 font-medium truncate leading-tight">{p.email}{p.isSelf ? ' (You)' : ''}</div>
+                            <div className="text-slate-400 text-[10px] mt-0.5">
+                              {p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
