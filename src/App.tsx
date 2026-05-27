@@ -383,7 +383,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
-  const [mapMembers, setMapMembers] = useState<MapMember[]>([]); // ★ 招待メンバー一覧
+  const [mapMembers, setMapMembers] = useState<MapMember[]>([]);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
@@ -393,7 +393,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yEdgesRef = useRef<Y.Map<YjsEdgeData> | null>(null);
   const yImagesRef = useRef<Y.Map<YjsImageData> | null>(null);
   const yStickiesRef = useRef<Y.Map<YjsStickyData> | null>(null);
-  const ySettingsRef = useRef<Y.Map<any> | null>(null); // ★ 設定共有用
+  const ySettingsRef = useRef<Y.Map<any> | null>(null);
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -698,7 +698,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setEdgeStyle(newStyle);
   }, []);
 
-  // ★ マップの招待メンバー取得
   const fetchMapMembers = useCallback(async () => {
     if (!mapId) { setMapMembers([]); return; }
     const { data, error } = await supabase
@@ -847,7 +846,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} }
       setTimeout(() => setSaveMessage(''), 2500);
       await fetchMaps();
-      await fetchMapMembers(); // 保存後にメンバーも再取得
+      await fetchMapMembers();
     } else {
       alert('保存に成功しましたが、データが返ってきませんでした');
     }
@@ -933,7 +932,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       } else {
         setInviteMessage('招待しました！');
         setInviteEmail('');
-        await fetchMapMembers(); // 招待後にメンバー一覧更新
+        await fetchMapMembers();
       }
     } catch (err: unknown) {
       setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -1284,19 +1283,21 @@ const MindMapApp = ({ user }: { user: User }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  // ★ 参加者リスト：自分＋招待メンバー（オンライン状態を反映）
+  // ★ 新ヘッダー用の参加者リスト
+  const ownAwareness = awarenessStates[myUserId];
   const allParticipants = [
     {
       user_id: myUserId,
       email: myEmail,
       color: myColor,
-      isOnline: true, // 自分は常にオンライン
+      isOnline: true,
       isSelf: true,
-      ...awarenessStates[myUserId] || { selectedNodeId: null, editingNodeId: null }
+      selectedNodeId: ownAwareness?.selectedNodeId ?? null,
+      editingNodeId: ownAwareness?.editingNodeId ?? null
     }
   ];
   mapMembers.forEach((member) => {
-    if (member.user_id === myUserId) return; // 自分は除外
+    if (member.user_id === myUserId) return;
     const onlineState = awarenessStates[member.user_id];
     allParticipants.push({
       user_id: member.user_id,
@@ -1534,7 +1535,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
-            {/* ★ 新ヘッダー参加者表示 */}
+            {/* ★ ヘッダー参加者表示 */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
                 <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
