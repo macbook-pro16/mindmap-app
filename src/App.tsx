@@ -6,6 +6,9 @@ import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
 import type { RealtimeChannel, User } from '@supabase/supabase-js';
 
+// Vercelデプロイ時の TS2591 (Cannot find name 'process') 回避用
+declare var process: any;
+
 // --------------------- 型定義 ---------------------
 export interface YjsNodeData {
   text: string;
