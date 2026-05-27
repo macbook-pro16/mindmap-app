@@ -275,6 +275,7 @@ const AlignVIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentC
 const AlignHIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12" strokeWidth={2} /><path strokeWidth={2} d="M7 5l-4 7 4 7M17 5l4 7-4 7" /></svg> );
 const PaletteIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg> );
 const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
+const LeaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> );
 const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const SiblingNodeIcon = ({ className = '' }: { className?: string }) => ( <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
 const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
@@ -400,11 +401,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
   const [mapMembers, setMapMembers] = useState<MapMember[]>([]);
 
-  // サイドバー用の編集ステート
   const [editingMapId, setEditingMapId] = useState<number | null>(null);
   const [editMapTitle, setEditMapTitle] = useState('');
   
-  // ヘルプモーダル用のステート
   const [showHelpModal, setShowHelpModal] = useState(false);
 
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
@@ -827,6 +826,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (mapId === id) setMapTitle(newTitle.trim());
       await fetchMaps();
     }
+    setEditingMapId(null);
   }, [mapId, fetchMaps]);
 
   const handleHeaderTitleBlur = useCallback(() => {
@@ -835,6 +835,23 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [mapId, mapTitle, handleSaveTitleOnly]);
 
+  // ★ 変更：マップ削除後などに呼び出すリセット関数（保存しない）
+  const handleResetMap = useCallback(() => {
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    if(typeof window !== 'undefined') window.history.replaceState(null, '', ' ');
+    
+    const newTitle = 'NEW';
+    const rootId = crypto.randomUUID();
+    const initialTree: MindNode = { id: rootId, text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' };
+    
+    initYjs(crypto.randomUUID(), initialTree);
+    
+    setMapId(null);
+    setMapTitle(newTitle);
+    setMapMembers([]);
+  }, []);
+
+  // ★ 新規マップ作成ボタン用（初期化して即座にDBへ保存する）
   const handleNewMap = useCallback(async () => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     const newRoom = crypto.randomUUID();
@@ -982,16 +999,36 @@ const MindMapApp = ({ user }: { user: User }) => {
     await fetchMaps();
   }, [user.id, fetchMaps]);
 
+  // ★ 変更：マップ削除後は新規作成(DB保存)ではなく、画面のリセットのみを行う
   const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
+    if (map.user_id !== user.id) {
+      alert('エラー：共有マップは削除できません。退出機能を利用してください。');
+      return;
+    }
     if (typeof window !== 'undefined' && !window.confirm('マップを削除してもよろしいですか？')) return;
     const { error } = await supabase.from('maps').delete().eq('id', map.id);
     if (error) { alert('削除に失敗しました'); return; }
+    
     if (mapId === map.id) {
-      handleNewMap();
+      handleResetMap();
     }
     await fetchMaps();
-  }, [mapId, handleNewMap, fetchMaps]);
+  }, [mapId, handleResetMap, fetchMaps, user.id]);
+
+  // ★ 追加：共有マップからの退出機能
+  const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
+    
+    const { error } = await supabase.from('map_members').delete().match({ map_id: map.id, user_id: user.id });
+    if (error) { alert(`退出に失敗しました: ${error.message}`); return; }
+    
+    if (mapId === map.id) {
+      handleResetMap();
+    }
+    await fetchMaps();
+  }, [mapId, handleResetMap, fetchMaps, user.id]);
 
   const handleShare = () => { if (!roomId) return; setShowInviteModal(true); };
 
@@ -1530,6 +1567,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       <div className="w-[280px] flex-shrink-0 h-full bg-white border-r border-slate-200 shadow-sm z-[100] flex flex-col relative">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
           <h2 className="font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+            {/* ★ おしゃれなデザインに変更されたアイコン */}
             <svg className="w-6 h-6 text-indigo-600 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <circle cx="12" cy="12" r="3" strokeWidth="2.5" fill="#e0e7ff"/>
               <circle cx="6" cy="6" r="2" strokeWidth="2.5"/>
@@ -1612,13 +1650,24 @@ const MindMapApp = ({ user }: { user: User }) => {
                           >
                             <CopyIcon />
                           </button>
-                          <button 
-                            onClick={(e) => handleDeleteMap(map, e)}
-                            className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors"
-                            title="削除"
-                          >
-                            <TrashIcon />
-                          </button>
+                          {/* ★ 退出機能と削除機能の出し分け */}
+                          {map.user_id === user.id ? (
+                            <button 
+                              onClick={(e) => handleDeleteMap(map, e)}
+                              className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors"
+                              title="削除"
+                            >
+                              <TrashIcon />
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={(e) => handleLeaveMap(map, e)}
+                              className="p-1.5 hover:bg-amber-100 rounded text-slate-500 hover:text-amber-600 transition-colors"
+                              title="退出"
+                            >
+                              <LeaveIcon />
+                            </button>
+                          )}
                         </div>
                       </div>
                       <span className="text-[10px] text-slate-400">
@@ -1653,7 +1702,7 @@ const MindMapApp = ({ user }: { user: User }) => {
               onChange={e => setMapTitle(e.target.value)} 
               onBlur={handleHeaderTitleBlur}
               onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-              className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-56 font-bold outline-none rounded-md transition-all text-slate-800" 
+              className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-56 font-bold outline-none rounded-md transition-all text-slate-800 ml-2" 
               placeholder="NEW" 
             />
             
@@ -1726,6 +1775,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
+            {/* ★ ヘッダー参加者表示 */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
                 <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
