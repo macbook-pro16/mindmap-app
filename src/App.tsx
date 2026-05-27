@@ -92,7 +92,6 @@ export interface AwarenessState {
   editingNodeId: string | null;
 }
 
-// 参加者リスト用の統合インターフェース
 export interface Participant {
   user_id: string;
   email: string;
@@ -282,6 +281,8 @@ const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="curren
 const ParentNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg> );
 const StickyIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> );
 const ImageIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> );
+const PencilIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> );
+const HelpIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -398,6 +399,13 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
   const [mapMembers, setMapMembers] = useState<MapMember[]>([]);
+
+  // サイドバー用の編集ステート
+  const [editingMapId, setEditingMapId] = useState<number | null>(null);
+  const [editMapTitle, setEditMapTitle] = useState('');
+  
+  // ヘルプモーダル用のステート
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
@@ -711,7 +719,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setEdgeStyle(newStyle);
   }, []);
 
-  // サイドバー用の一覧取得
   const fetchMaps = useCallback(async () => {
     const { data, error } = await supabase
       .from('maps')
@@ -723,7 +730,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // 選択中マップの共有メンバーを取得
   const fetchMapMembers = useCallback(async () => {
     if (!mapId) { setMapMembers([]); return; }
     const { data, error } = await supabase
@@ -758,7 +764,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     const yStickies = ydoc.getMap<YjsStickyData>('stickies'); yStickiesRef.current = yStickies;
     const ySettings = ydoc.getMap<string>('settings'); ySettingsRef.current = ySettings;
     
-    // 初期データの展開をトランザクション内で実行する
     ydoc.transact(() => {
       if (initialTree) { 
         treeToYMap(initialTree, yNodes); 
@@ -813,7 +818,23 @@ const MindMapApp = ({ user }: { user: User }) => {
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
-  // ★ 新規マップ作成とDB保存のロジック（ハッシュ無し・エラー時のリカバリー・新規ボタン押下時に共通利用）
+  const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
+    if (error) {
+      alert(`タイトルの更新に失敗しました: ${error.message}`);
+    } else {
+      if (mapId === id) setMapTitle(newTitle.trim());
+      await fetchMaps();
+    }
+  }, [mapId, fetchMaps]);
+
+  const handleHeaderTitleBlur = useCallback(() => {
+    if (mapId && mapTitle.trim()) {
+      handleSaveTitleOnly(mapId, mapTitle);
+    }
+  }, [mapId, mapTitle, handleSaveTitleOnly]);
+
   const handleNewMap = useCallback(async () => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     const newRoom = crypto.randomUUID();
@@ -856,7 +877,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   useEffect(() => {
     let isMounted = true; let localChannel: RealtimeChannel | null = null;
     const setup = async () => {
-      // AuthエラーがURLハッシュに含まれる場合は弾いて安全に処理する
       const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''; 
       const hash = rawHash.includes('error=') ? '' : rawHash;
       
@@ -864,7 +884,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single(); 
         if (!isMounted) return; 
         if (error || !data) { 
-          // 存在しないハッシュの場合は新規作成（保存）扱いにする
           handleNewMap();
         } else { 
           setMapId(data.id); 
@@ -873,7 +892,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         } 
       } else { 
         if (!isMounted) return; 
-        // ハッシュがない場合（ルートアクセス時）も新規作成して保存する
         handleNewMap();
       }
     };
@@ -1201,7 +1219,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, resizingImageHandle, resizingStickyHandle, selectionRect, selectedNodeIds, dragPositions, handleMouseMove, handleMouseUp, isCanvasPanning]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (editingNodeId || editingStickyId) return;
+    if (editingNodeId || editingStickyId || editingMapId !== null) return;
     if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; }
     if (e.altKey && (e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); setZenMode(prev => !prev); return; }
@@ -1274,7 +1292,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addParentNode(selectedNodeId); return; }
     if (e.key === 'Tab') { e.preventDefault(); addChildNode(selectedNodeId); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteNode(selectedNodeId); return; }
-  }, [editingNodeId, editingStickyId, selectedNodeId, selectedNodeIds, selectedEdgeId, selectedImageId, selectedStickyId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteMultipleNodes, deleteEdge, deleteImage, deleteSticky, changeZoom]);
+  }, [editingNodeId, editingStickyId, editingMapId, selectedNodeId, selectedNodeIds, selectedEdgeId, selectedImageId, selectedStickyId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteMultipleNodes, deleteEdge, deleteImage, deleteSticky, changeZoom]);
 
   const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'node', nodeId }); setShowColorPalette(null); }, []);
   const handleCanvasContextMenu = useCallback((e: ReactMouseEvent) => { e.preventDefault(); const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'canvas', canvasX: coords.x, canvasY: coords.y }); }, [zoomLevel]);
@@ -1418,8 +1436,8 @@ const MindMapApp = ({ user }: { user: User }) => {
       
       {/* 招待モーダル */}
       {showInviteModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); }}>
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-800">チームメンバーを招待</h3>
               <button onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button>
@@ -1454,11 +1472,64 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
+      {/* ヘルプモーダル (コマンド表) */}
+      {showHelpModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <HelpIcon /> 操作コマンド一覧
+              </h3>
+              <button onClick={() => setShowHelpModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">ノード操作</h4>
+                <ul className="space-y-3 text-sm">
+                  <li className="flex justify-between items-center"><span className="text-slate-600">子を追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Tab</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">下に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Enter</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">上に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Shift + Enter</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">キャンバス操作</h4>
+                <ul className="space-y-3 text-sm">
+                  <li className="flex justify-between items-center"><span className="text-slate-600">画面移動 (パン)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Space + ドラッグ</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">ズームイン/アウト</span><div className="flex gap-1"><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Wheel</kbd></div></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">全体表示に戻る</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Homeボタン</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">範囲選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">背景をドラッグ</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">線を引く</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">〇をドラッグ</kbd></li>
+                </ul>
+              </div>
+
+              <div className="md:col-span-2 pt-4 border-t border-slate-100">
+                <h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ul className="space-y-3 text-sm">
+                    <li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li>
+                    <li className="flex justify-between items-center"><span className="text-slate-600">元に戻す</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Z</kbd></li>
+                  </ul>
+                  <ul className="space-y-3 text-sm">
+                    <li className="flex justify-between items-center"><span className="text-slate-600">やり直し</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Shift + Z</kbd></li>
+                    <li className="flex justify-between items-center"><span className="text-slate-600">全画面表示 (Zen)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Alt + Cmd + F</kbd></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* サイドバー（固定式） */}
       <div className="w-[280px] flex-shrink-0 h-full bg-white border-r border-slate-200 shadow-sm z-[100] flex flex-col relative">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
           <h2 className="font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-            {/* ★ おしゃれなデザインに変更されたアイコン */}
             <svg className="w-6 h-6 text-indigo-600 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <circle cx="12" cy="12" r="3" strokeWidth="2.5" fill="#e0e7ff"/>
               <circle cx="6" cy="6" r="2" strokeWidth="2.5"/>
@@ -1493,12 +1564,40 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="flex flex-col gap-1.5">
               {savedMaps.map((map: MapRecord) => (
                 <div key={map.id} className={`group flex flex-col rounded-lg border transition-all ${mapId === map.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:border-slate-200 hover:shadow-sm'}`}>
-                  <button 
-                    onClick={() => handleLoadMap(map)} 
-                    className={`w-full text-left px-3 py-2.5 rounded-t-lg text-sm transition-colors ${mapId === map.id ? 'text-indigo-900 font-semibold' : 'text-slate-700 font-medium'}`}
-                  >
-                    {map.title}
-                  </button>
+                  
+                  {/* ★ サイドメニューでのタイトルインライン編集 */}
+                  {editingMapId === map.id ? (
+                    <div className="px-3 py-2.5 bg-white rounded-t-lg">
+                      <input
+                        autoFocus
+                        value={editMapTitle}
+                        onChange={e => setEditMapTitle(e.target.value)}
+                        onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle);
+                          if (e.key === 'Escape') setEditingMapId(null);
+                        }}
+                        className="w-full text-sm font-semibold text-indigo-900 bg-transparent border-b-2 border-indigo-500 outline-none pb-0.5"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between w-full relative overflow-hidden">
+                      <button 
+                        onClick={() => handleLoadMap(map)} 
+                        className={`flex-1 text-left px-3 py-2.5 rounded-t-lg text-sm transition-colors truncate ${mapId === map.id ? 'text-indigo-900 font-semibold' : 'text-slate-700 font-medium'}`}
+                      >
+                        {map.title}
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setEditMapTitle(map.title); setEditingMapId(map.id); }}
+                        className={`absolute right-2 p-1.5 opacity-0 group-hover:opacity-100 bg-slate-100/80 hover:bg-slate-200 rounded text-slate-500 hover:text-indigo-600 transition-all ${mapId === map.id ? 'opacity-100' : ''}`}
+                        title="タイトルを変更"
+                      >
+                        <PencilIcon />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="flex flex-col px-3 pb-2.5 pt-1">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
@@ -1548,7 +1647,15 @@ const MindMapApp = ({ user }: { user: User }) => {
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50">
         {!zenMode && (
           <div className="absolute top-0 left-0 right-0 z-50 flex items-center bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-2 shadow-sm">
-            <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-56 font-bold outline-none rounded-md transition-all text-slate-800 ml-2" placeholder="NEW" />
+            {/* ★ 修正済み：ヘッダーの入力フォーカス外れ(Enter/Blur)で自動保存 */}
+            <input 
+              value={mapTitle} 
+              onChange={e => setMapTitle(e.target.value)} 
+              onBlur={handleHeaderTitleBlur}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-56 font-bold outline-none rounded-md transition-all text-slate-800" 
+              placeholder="NEW" 
+            />
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
@@ -1607,6 +1714,9 @@ const MindMapApp = ({ user }: { user: User }) => {
             </div>
 
             <div className="ml-auto flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
+              {/* ★ 新規追加：ヘルプ表示ボタン */}
+              <button onClick={() => setShowHelpModal(true)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="ショートカット一覧"><HelpIcon /></button>
+              <div className="w-px h-4 bg-slate-300 mx-0.5" />
               <button onClick={scrollToHome} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="ホーム位置に戻る"><HomeIcon /></button>
               <div className="w-px h-4 bg-slate-300 mx-0.5" />
               <button onClick={() => changeZoom(-0.1)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="縮小">−</button>
