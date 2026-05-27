@@ -88,6 +88,17 @@ export interface AwarenessState {
   editingNodeId: string | null;
 }
 
+// 参加者リスト用の統合インターフェース
+export interface Participant {
+  user_id: string;
+  email: string;
+  color: string;
+  isOnline: boolean;
+  isSelf: boolean;
+  selectedNodeId: string | null;
+  editingNodeId: string | null;
+}
+
 export interface ContextMenuInfo {
   visible: boolean;
   x: number;
@@ -393,7 +404,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yEdgesRef = useRef<Y.Map<YjsEdgeData> | null>(null);
   const yImagesRef = useRef<Y.Map<YjsImageData> | null>(null);
   const yStickiesRef = useRef<Y.Map<YjsStickyData> | null>(null);
-  const ySettingsRef = useRef<Y.Map<any> | null>(null);
+  const ySettingsRef = useRef<Y.Map<string> | null>(null);
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -434,7 +445,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  const addLog = (msg: string) => { if (import.meta.env.MODE !== 'production') console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (process.env.NODE_ENV !== 'production') console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -489,7 +500,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [zoomLevel, isSpacePressed, setZoomWithAnchor]);
 
   useEffect(() => {
-    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space' && !editingNodeId && document.activeElement?.tagName !== 'INPUT') { e.preventDefault(); setIsSpacePressed(true); } };
+    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space' && !editingNodeId && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') { e.preventDefault(); setIsSpacePressed(true); } };
     const handleGlobalKeyUp = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space') { setIsSpacePressed(false); setIsCanvasPanning(false); } };
     window.addEventListener('keydown', handleGlobalKeyDown); window.addEventListener('keyup', handleGlobalKeyUp);
     return () => { window.removeEventListener('keydown', handleGlobalKeyDown); window.removeEventListener('keyup', handleGlobalKeyUp); };
@@ -591,7 +602,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     ydocRef.current.transact(() => {
       yStickies.set(id, {
         x, y, width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
-        text: '', bgColor: '#f0f9ff', textColor: '#0369a1'
+        text: '', bgColor: '#fefce8', textColor: '#854d0e'
       });
     });
     setSelectedStickyId(id); setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null);
@@ -725,7 +736,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const yEdges = ydoc.getMap<YjsEdgeData>('edges'); yEdgesRef.current = yEdges;
     const yImages = ydoc.getMap<YjsImageData>('images'); yImagesRef.current = yImages;
     const yStickies = ydoc.getMap<YjsStickyData>('stickies'); yStickiesRef.current = yStickies;
-    const ySettings = ydoc.getMap<any>('settings'); ySettingsRef.current = ySettings;
+    const ySettings = ydoc.getMap<string>('settings'); ySettingsRef.current = ySettings;
     if (initialTree) { treeToYMap(initialTree, yNodes); yRootRef.current = initialTree.id; }
     else { const rootId = crypto.randomUUID(); yNodes.set(rootId, { text: '中心テーマ', x: 5000, y: 5000, children: [], independent: false, bgColor: '#f0f9ff', textColor: '#0369a1' }); yRootRef.current = rootId; }
     const updateReact = () => {
@@ -1283,32 +1294,51 @@ const MindMapApp = ({ user }: { user: User }) => {
     edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y });
   }
 
-  // ★ 新ヘッダー用の参加者リスト
+  // ★ 統合された参加者リストの生成
   const ownAwareness = awarenessStates[myUserId];
-  const allParticipants = [
-    {
-      user_id: myUserId,
-      email: myEmail,
-      color: myColor,
+  const participantsMap = new Map<string, Participant>();
+
+  // 1. 自分自身をマップに登録
+  participantsMap.set(myUserId, {
+    user_id: myUserId,
+    email: myEmail,
+    color: myColor,
+    isOnline: true,
+    isSelf: true,
+    selectedNodeId: ownAwareness?.selectedNodeId ?? null,
+    editingNodeId: ownAwareness?.editingNodeId ?? null,
+  });
+
+  // 2. リアルタイムにオンラインのユーザーを登録 (DBにあるか否かに関わらず優先)
+  Object.entries(awarenessStates).forEach(([userId, state]) => {
+    if (userId === myUserId) return;
+    participantsMap.set(userId, {
+      user_id: userId,
+      email: state.email,
+      color: state.color,
       isOnline: true,
-      isSelf: true,
-      selectedNodeId: ownAwareness?.selectedNodeId ?? null,
-      editingNodeId: ownAwareness?.editingNodeId ?? null
-    }
-  ];
-  mapMembers.forEach((member) => {
-    if (member.user_id === myUserId) return;
-    const onlineState = awarenessStates[member.user_id];
-    allParticipants.push({
-      user_id: member.user_id,
-      email: member.email,
-      color: onlineState ? onlineState.color : stringToColor(member.email),
-      isOnline: !!onlineState,
       isSelf: false,
-      selectedNodeId: onlineState?.selectedNodeId || null,
-      editingNodeId: onlineState?.editingNodeId || null
+      selectedNodeId: state.selectedNodeId,
+      editingNodeId: state.editingNodeId,
     });
   });
+
+  // 3. DBから取得した過去のメンバーをマージ（オンラインでなければオフラインとして追加）
+  mapMembers.forEach((member) => {
+    if (!participantsMap.has(member.user_id)) {
+      participantsMap.set(member.user_id, {
+        user_id: member.user_id,
+        email: member.email,
+        color: stringToColor(member.email),
+        isOnline: false,
+        isSelf: false,
+        selectedNodeId: null,
+        editingNodeId: null,
+      });
+    }
+  });
+
+  const allParticipants = Array.from(participantsMap.values());
 
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
@@ -1360,7 +1390,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
-      {/* サイドバー */}
+      {/* モダナイズされたサイドバー */}
       <div 
         className={`absolute top-0 left-0 h-full bg-white border-r border-slate-200 shadow-xl z-[100] transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-[280px]' : 'w-0 overflow-hidden'}`}
       >
@@ -1496,7 +1526,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-sky-600 transition-all" title="画像を添付"><ImageIcon /></button>
             </div>
 
-            {/* カラーパレット */}
             <div className="flex items-center gap-1 ml-3">
               {COLOR_PALETTE.map(cp => (
                 <button
@@ -1535,7 +1564,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             
             <div className="w-px h-6 bg-slate-200 mx-3" />
             
-            {/* ★ ヘッダー参加者表示 */}
+            {/* ★ 修正済み：統合された参加者リスト */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
                 <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
@@ -1547,7 +1576,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                     {allParticipants.slice(0, 3).map((p) => (
                       <div key={p.user_id} className="relative">
                         <div 
-                          className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''}`} 
+                          className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} 
                           style={{ backgroundColor: p.color }} 
                           title={p.email}
                         >
@@ -1567,12 +1596,12 @@ const MindMapApp = ({ user }: { user: User }) => {
                     <div className="space-y-3 max-h-64 overflow-y-auto">
                       {allParticipants.map((p) => (
                         <div key={p.user_id} className="flex items-center gap-3 text-sm">
-                          <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`} style={{ backgroundColor: p.color }}>
+                          <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
                             {getInitial(p.email)}
                             <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-slate-800 font-medium truncate leading-tight">{p.email}{p.isSelf ? ' (You)' : ''}</div>
+                            <div className={`text-slate-800 font-medium truncate leading-tight ${!p.isOnline ? 'text-slate-400' : ''}`}>{p.email}{p.isSelf ? ' (You)' : ''}</div>
                             <div className="text-slate-400 text-[10px] mt-0.5">
                               {p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}
                             </div>
@@ -1664,17 +1693,17 @@ const MindMapApp = ({ user }: { user: User }) => {
                 key={image.id}
                 className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${selectedImageId === image.id ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-transparent shadow-md hover:shadow-lg'}`}
                 style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: 6 }}
-                onMouseDown={(e) => handleMouseDownOnImage(e as any, image.id)}
-                onContextMenu={(e) => handleImageContextMenu(e as any, image.id)}
+                onMouseDown={(e) => handleMouseDownOnImage(e as ReactMouseEvent, image.id)}
+                onContextMenu={(e) => handleImageContextMenu(e as ReactMouseEvent, image.id)}
                 onClick={(e) => e.stopPropagation()}
               >
                 <img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />
                 {selectedImageId === image.id && (
                   <>
-                    <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'nw')} />
-                    <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'ne')} />
-                    <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'sw')} />
-                    <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as any, image.id, 'se')} />
+                    <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as ReactMouseEvent, image.id, 'nw')} />
+                    <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as ReactMouseEvent, image.id, 'ne')} />
+                    <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as ReactMouseEvent, image.id, 'sw')} />
+                    <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as ReactMouseEvent, image.id, 'se')} />
                   </>
                 )}
               </div>
@@ -1690,8 +1719,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                   style={{ 
                     left: sticky.x, top: sticky.y, width: sticky.width, height: sticky.height, zIndex: 5,
                   }}
-                  onMouseDown={(e) => handleMouseDownOnSticky(e as any, sticky.id)}
-                  onContextMenu={(e) => handleStickyContextMenu(e as any, sticky.id)}
+                  onMouseDown={(e) => handleMouseDownOnSticky(e as ReactMouseEvent, sticky.id)}
+                  onContextMenu={(e) => handleStickyContextMenu(e as ReactMouseEvent, sticky.id)}
                   onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }}
                   onClick={(e) => { e.stopPropagation(); if(!draggingStickyId) { setSelectedStickyId(sticky.id); setSelectedNodeId(null); setSelectedEdgeId(null); setSelectedImageId(null); } }}
                 >
@@ -1733,10 +1762,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                   
                   {selectedStickyId === sticky.id && (
                     <>
-                      <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as any, sticky.id, 'nw')} />
-                      <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as any, sticky.id, 'ne')} />
-                      <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as any, sticky.id, 'sw')} />
-                      <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as any, sticky.id, 'se')} />
+                      <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as ReactMouseEvent, sticky.id, 'nw')} />
+                      <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as ReactMouseEvent, sticky.id, 'ne')} />
+                      <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as ReactMouseEvent, sticky.id, 'sw')} />
+                      <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e as ReactMouseEvent, sticky.id, 'se')} />
                     </>
                   )}
                 </div>
@@ -1766,7 +1795,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
                 return (
                   <g key={edgeId} className="pointer-events-auto">
-                    <path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e as any, edgeId)} />
+                    <path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as ReactMouseEvent, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e as ReactMouseEvent, edgeId)} />
                     <path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#cbd5e1'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} />
                   </g>
                 ); 
@@ -1777,11 +1806,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                 const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; 
                 return (
                   <g key={el.id} className="pointer-events-auto">
-                    <path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
-                    <path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : '#94a3b8'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e as any, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as any, el.id)} />
+                    <path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e as ReactMouseEvent, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as ReactMouseEvent, el.id)} />
+                    <path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : '#94a3b8'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e as ReactMouseEvent, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e as ReactMouseEvent, el.id)} />
                     {el.selected && (<>
-                      <circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'source')} />
-                      <circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as any, el.id, 'target')} />
+                      <circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as ReactMouseEvent, el.id, 'source')} />
+                      <circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e as ReactMouseEvent, el.id, 'target')} />
                     </>)}
                   </g>
                 ); 
