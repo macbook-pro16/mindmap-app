@@ -2900,4 +2900,4 @@ text-slate-800`} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleI
   );
 };
 
-export default App;
+export default App
