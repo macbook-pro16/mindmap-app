@@ -1424,6 +1424,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
 
+  // ★ 招待処理（エラーメッセージ修正）
   const handleInviteSubmit = useCallback(async () => {
     if (!inviteEmail.trim() || !mapId) {
       if (!mapId) setInviteMessage('マップを保存してから招待してください');
@@ -1469,7 +1470,8 @@ const MindMapApp = ({ user }: { user: User }) => {
         }
       }
     } catch (err: unknown) {
-      setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
+      const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err);
+      setInviteMessage('エラーが発生しました: ' + errorMessage);
     } finally {
       setInviteLoading(false);
     }
