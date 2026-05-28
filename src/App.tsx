@@ -1424,7 +1424,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
 
-  // ★ 招待処理（エラーメッセージ修正）
+  // ★ 招待処理（RPC版に差し替え）
   const handleInviteSubmit = useCallback(async () => {
     if (!inviteEmail.trim() || !mapId) {
       if (!mapId) setInviteMessage('マップを保存してから招待してください');
@@ -1434,40 +1434,20 @@ const MindMapApp = ({ user }: { user: User }) => {
     setInviteMessage('');
     setInviteLink('');
     try {
-      const { data: userIdData, error: rpcError } = await supabase.rpc('get_user_id_by_email', { p_email: inviteEmail.trim() });
-      if (rpcError) throw rpcError;
-      const invitedUserId = userIdData as string;
-      if (!invitedUserId) {
-        // 未登録ユーザー → 招待リンクを生成
-        const inviteCode = crypto.randomUUID();
-        const { error: insertError } = await supabase.from('map_invitations').insert({
-          map_id: mapId,
-          email: inviteEmail.trim(),
-          invite_code: inviteCode
-        });
-        if (insertError) throw insertError;
-        const link = `${window.location.origin}?invite=${inviteCode}`;
+      const { data, error } = await supabase.rpc('create_invitation', {
+        p_map_id: mapId,
+        p_email: inviteEmail.trim()
+      });
+      if (error) throw error;
+
+      if (data.status === 'added') {
+        setInviteMessage('招待しました！');
+        setInviteEmail('');
+        await fetchMapMembers();
+      } else if (data.status === 'invited') {
+        const link = `${window.location.origin}?invite=${data.invite_code}`;
         setInviteLink(link);
         setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。');
-      } else {
-        // 既存ユーザー → 直接メンバーに追加
-        const { error: insertError } = await supabase.from('map_members').insert({
-          map_id: mapId,
-          user_id: invitedUserId,
-          role: 'editor',
-          email: inviteEmail.trim()
-        });
-        if (insertError) {
-          if (insertError.code === '23505') {
-            setInviteMessage('このユーザーは既に招待されています');
-          } else {
-            throw insertError;
-          }
-        } else {
-          setInviteMessage('招待しました！');
-          setInviteEmail('');
-          await fetchMapMembers();
-        }
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err);
