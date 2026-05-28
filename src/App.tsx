@@ -620,9 +620,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  const dragMapItemIndex = useRef<number | null>(null);
-  const dragOverMapItemIndex = useRef<number | null>(null);
-
   const addLog = (msg: string) => { if (process.env.NODE_ENV !== 'production') console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
@@ -641,7 +638,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteLink, setInviteLink] = useState(''); // ★ 招待リンク用
+  const [inviteLink, setInviteLink] = useState('');
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1198,7 +1195,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [user.id, fetchMaps]);
 
-  // ★ handleLoadMap をここに移動（招待エフェクトより前に定義）
   const handleLoadMap = useCallback((map: MapRecord) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     if(typeof window !== 'undefined') window.location.hash = map.room_id;
@@ -1207,90 +1203,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setMapOwnerId(map.user_id);
     initYjs(map.room_id, map.data);
   }, []);
-
-  // ★ 招待コード処理用のエフェクト（初回のみ）
-  const inviteAcceptedRef = useRef(false);
-  useEffect(() => {
-    const processInvite = async () => {
-      if (inviteAcceptedRef.current) return;
-      const urlParams = new URLSearchParams(window.location.search);
-      const inviteCode = urlParams.get('invite');
-      if (!inviteCode) return;
-      inviteAcceptedRef.current = true;
-
-      try {
-        const { data: invitation, error } = await supabase
-          .from('map_invitations')
-          .select('*, maps:maps!inner(id, title, room_id, data, user_id, updated_at)')
-          .eq('invite_code', inviteCode)
-          .single();
-        if (error || !invitation) {
-          alert('招待が無効か、既に削除されています。');
-          return;
-        }
-        if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) {
-          alert('この招待は別のメールアドレス宛です。');
-          return;
-        }
-        // メンバーに追加
-        const { error: memberError } = await supabase.from('map_members').upsert({
-          map_id: invitation.map_id,
-          user_id: user.id,
-          role: 'editor',
-          email: user.email
-        }, { onConflict: 'map_id,user_id' });
-        if (memberError) throw memberError;
-        // 招待を削除
-        await supabase.from('map_invitations').delete().eq('id', invitation.id);
-        // URLから招待パラメータを除去
-        window.history.replaceState(null, '', window.location.pathname);
-        // マップを読み込む
-        handleLoadMap(invitation.maps);
-      } catch (err) {
-        console.error('招待の受け入れに失敗しました:', err);
-        alert('招待の受け入れに失敗しました。');
-      }
-    };
-    processInvite();
-  }, [user, handleLoadMap]);
-
-  // 通常のマップ初期化エフェクト（inviteがある場合はスキップ）
-  useEffect(() => {
-    let isMounted = true; let localChannel: RealtimeChannel | null = null;
-    const setup = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('invite')) return;
-
-      const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''; 
-      const hash = rawHash.includes('error=') ? '' : rawHash;
-      
-      if (hash) { 
-        const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single(); 
-        if (!isMounted) return; 
-        if (error || !data) { 
-          handleNewMap();
-        } else { 
-          setMapId(data.id); 
-          setMapTitle(data.title); 
-          setMapOwnerId(data.user_id);
-          localChannel = initYjs(hash, data.data as MindNode); 
-        } 
-      } else { 
-        if (!isMounted) return; 
-        handleNewMap();
-      }
-    };
-    setup();
-    return () => { isMounted = false; if (localChannel) supabase.removeChannel(localChannel); else if (channelRef.current) supabase.removeChannel(channelRef.current); if (channelRef.current) broadcastAwareness(channelRef.current, myUserId, null); };
-  }, []);
-
-  const initialScrollDone = useRef(false);
-  useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
-  useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness]);
-
-  const handleUndo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.undo(); }, []);
-  const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
-  const handleLogout = async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); };
 
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !roomId) {
@@ -1344,7 +1256,142 @@ const MindMapApp = ({ user }: { user: User }) => {
       alert('保存に成功しましたが、データが返ってきませんでした');
     }
   }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
-  // --------------------- マウスイベントハンドラ ---------------------
+
+  const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    const newRoom = crypto.randomUUID();
+    const { error: insertError } = await supabase.from('maps').insert({
+      title: `${map.title} のコピー`,
+      data: map.data,
+      room_id: newRoom,
+      user_id: user.id,
+      updated_at: new Date().toISOString()
+    });
+    if (insertError) { alert('コピーに失敗しました'); return; }
+    await fetchMaps();
+  }, [user.id, fetchMaps]);
+
+  const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (map.user_id !== user.id) {
+      alert('エラー：共有マップは削除できません。退出機能を利用してください。');
+      return;
+    }
+    if (typeof window !== 'undefined' && !window.confirm('マップを削除してもよろしいですか？')) return;
+    const { error } = await supabase.from('maps').delete().eq('id', map.id);
+    if (error) { alert('削除に失敗しました'); return; }
+    
+    if (mapId === map.id) {
+      handleResetMap();
+    }
+    await fetchMaps();
+  }, [mapId, handleResetMap, fetchMaps, user.id]);
+
+  const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
+    
+    const { error } = await supabase.from('map_members').delete().match({ map_id: map.id, user_id: user.id });
+    if (error) { alert(`退出に失敗しました: ${error.message}`); return; }
+    
+    if (mapId === map.id) {
+      handleResetMap();
+    }
+    await fetchMaps();
+  }, [mapId, handleResetMap, fetchMaps, user.id]);
+
+  const handleMapDragStart = useCallback((e: DragEvent<HTMLDivElement>, index: number) => {
+    // ドラッグ用にインデックスを保持するためにrefを使う
+    dragMapItemIndex.current = index;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+    }
+  }, []);
+
+  const handleMapDragEnter = useCallback((_e: DragEvent<HTMLDivElement>, index: number) => {
+    dragOverMapItemIndex.current = index;
+  }, []);
+
+  const handleMapDragEnd = useCallback(async () => {
+    if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) {
+      const _savedMaps = [...savedMaps];
+      const draggedItem = _savedMaps.splice(dragMapItemIndex.current, 1)[0];
+      _savedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem);
+      
+      setSavedMaps(_savedMaps);
+      
+      try {
+        await Promise.all(
+          _savedMaps.map((map, index) => 
+            supabase.from('maps').update({ sort_order: index }).eq('id', map.id)
+          )
+        );
+      } catch (err) {
+        console.error('並び替え保存エラー', err);
+      }
+    }
+    dragMapItemIndex.current = null;
+    dragOverMapItemIndex.current = null;
+  }, [savedMaps]);
+
+  const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
+
+  const handleInviteSubmit = useCallback(async () => {
+    if (!inviteEmail.trim() || !mapId) {
+      if (!mapId) setInviteMessage('マップを保存してから招待してください');
+      return;
+    }
+    setInviteLoading(true);
+    setInviteMessage('');
+    setInviteLink('');
+    try {
+      const { data: userIdData, error: rpcError } = await supabase.rpc('get_user_id_by_email', { p_email: inviteEmail.trim() });
+      if (rpcError) throw rpcError;
+      const invitedUserId = userIdData as string;
+      if (!invitedUserId) {
+        // 未登録ユーザー → 招待リンクを生成
+        const inviteCode = crypto.randomUUID();
+        const { error: insertError } = await supabase.from('map_invitations').insert({
+          map_id: mapId,
+          email: inviteEmail.trim(),
+          invite_code: inviteCode
+        });
+        if (insertError) throw insertError;
+        const link = `${window.location.origin}?invite=${inviteCode}`;
+        setInviteLink(link);
+        setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。');
+      } else {
+        // 既存ユーザー → 直接メンバーに追加
+        const { error: insertError } = await supabase.from('map_members').insert({
+          map_id: mapId,
+          user_id: invitedUserId,
+          role: 'editor',
+          email: inviteEmail.trim()
+        });
+        if (insertError) {
+          if (insertError.code === '23505') {
+            setInviteMessage('このユーザーは既に招待されています');
+          } else {
+            throw insertError;
+          }
+        } else {
+          setInviteMessage('招待しました！');
+          setInviteEmail('');
+          await fetchMapMembers();
+        }
+      }
+    } catch (err: unknown) {
+      setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setInviteLoading(false);
+    }
+  }, [inviteEmail, mapId, fetchMapMembers]);
+
+  // --- Drag refs for map list ---
+  const dragMapItemIndex = useRef<number | null>(null);
+  const dragOverMapItemIndex = useRef<number | null>(null);
+
+  // --- Mouse event handlers (unchanged from previous) ---
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -1634,7 +1681,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       setDraggingOutlineId(outlineId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
   }, [outlines, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, mindMap, images, stickies]);
-
 
   const handleResizeHandleMouseDown = useCallback((e: ReactMouseEvent, imageId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingImageHandle({ imageId, handle }); }, []);
   const handleStickyResizeHandleMouseDown = useCallback((e: ReactMouseEvent, stickyId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingStickyHandle({ stickyId, handle }); }, []);
@@ -2036,7 +2082,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
     setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu, showColorPalette]);
-
 
   const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); setEditingNodeId(nodeId); }, []);
   const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); };
