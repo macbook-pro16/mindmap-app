@@ -2816,7 +2816,16 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
 
   useEffect(() => { if (isEditing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [isEditing]);
   const handleBlur = () => { if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); };
-  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); } else if (e.key === 'Escape') onTextEditComplete(node.id, node.text); };
+  // ★ IME対応：isComposing中はEnterを無視
+  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (e.nativeEvent.isComposing) return; // IME編集中は何もしない
+      e.preventDefault();
+      if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value);
+    } else if (e.key === 'Escape') {
+      onTextEditComplete(node.id, node.text);
+    }
+  };
   const remoteEditors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.editingNodeId === node.id).map(([, state]: [string, AwarenessState]) => state);
   const remoteSelectors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.selectedNodeId === node.id && state.editingNodeId !== node.id).map(([, state]: [string, AwarenessState]) => state);
   
