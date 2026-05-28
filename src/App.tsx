@@ -218,17 +218,14 @@ const NODE_DEFAULT_FONT_SIZE = 14;
 const NODE_MIN_WIDTH = 80;
 const NODE_PADDING_HORIZONTAL = 40; // px-5 *2
 
-// フォントサイズの選択肢
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
 
-// --------------------- テキスト幅計算ユーティリティ ---------------------
 let _measureCanvas: HTMLCanvasElement | null = null;
 const getMeasureCanvas = (): CanvasRenderingContext2D => {
   if (!_measureCanvas) {
     _measureCanvas = document.createElement('canvas');
   }
   const ctx = _measureCanvas.getContext('2d')!;
-  // デフォルトのフォントファミリーを適用（Inter/Noto Sans JP）
   ctx.font = `${NODE_DEFAULT_FONT_SIZE}px 'Inter', 'Noto Sans JP', sans-serif`;
   return ctx;
 };
@@ -543,7 +540,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
   const [mapMembers, setMapMembers] = useState<MapMember[]>([]);
-  const [mapOwnerId, setMapOwnerId] = useState<string | null>(null); // 所有者ID
+  const [mapOwnerId, setMapOwnerId] = useState<string | null>(null);
 
   const [editingMapId, setEditingMapId] = useState<number | null>(null);
   const [editMapTitle, setEditMapTitle] = useState('');
@@ -791,7 +788,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  // ノードの幅を更新する関数
   const updateNodeWidth = useCallback((nodeId: string, width: number) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
@@ -1175,7 +1171,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     setMapId(null);
     setMapTitle(newTitle);
     setMapMembers([]);
-    setMapOwnerId(user.id); // 新規作成なので自分が所有者
+    setMapOwnerId(user.id);
     setSaveMessage('保存中...');
     
     const { data, error } = await supabase.from('maps').insert([{ 
@@ -1833,9 +1829,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (!mindMap) return; 
       const sourceNode = findNodeById(mindMap, drawingEdge.sourceNodeId);
       if (!sourceNode) return;
-      const sourceW = sourceNode.width ?? NODE_WIDTH;
-      const sourceH = sourceNode.height ?? NODE_HEIGHT;
-      const sourcePt = getConnectionPoint(sourceNode.x, sourceNode.y, drawingEdge.sourcePoint, sourceW, sourceH);
+      // 未使用の sourcePt 変数は削除済み
       if (drawingEdge.targetNodeId && drawingEdge.targetPoint) {
         addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, drawingEdge.targetNodeId, drawingEdge.targetPoint);
       } else {
@@ -2810,7 +2804,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const nodeHeight = node.height ?? NODE_HEIGHT;
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
-  // テキスト内容に基づいて幅を自動調整
   useEffect(() => {
     const newWidth = computeNodeWidth(node.text, fontSize);
     if (Math.abs(newWidth - nodeWidth) > 1) {
@@ -2830,17 +2823,13 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const remoteEditors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.editingNodeId === node.id).map(([, state]: [string, AwarenessState]) => state);
   const remoteSelectors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.selectedNodeId === node.id && state.editingNodeId !== node.id).map(([, state]: [string, AwarenessState]) => state);
   
-  const depthTextClass = depth === 0 ? 'text-lg font-extrabold tracking-tight' : (depth === 1 ? 'text-base font-bold' : 'text-sm font-semibold');
-  const depthShadowClass = depth === 0 ? 'shadow-xl shadow-slate-200/50' : (depth === 1 ? 'shadow-lg shadow-slate-200/40' : 'shadow-md hover:shadow-lg');
-  const activeShadowClass = isSelected ? 'shadow-2xl shadow-indigo-500/30' : depthShadowClass;
-  
   const borderColorClass = isTarget ? 'border-emerald-500 border-2 ring-4 ring-emerald-500/20' : (isSelected ? (isSingleSelected ? 'border-indigo-600 ring-4 ring-indigo-600/20' : 'border-purple-600 ring-4 ring-purple-600/20') : 'border-transparent');
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
 
   return (
     <>
       <div
-        className={`absolute flex items-center justify-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${activeShadowClass} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
+        className={`absolute flex items-center justify-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
         style={{
           left: displayPos.x - nodeWidth/2, top: displayPos.y - nodeHeight/2,
           width: nodeWidth, height: nodeHeight, zIndex: node.zIndex ?? (10 + depth),
@@ -2858,7 +2847,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         {remoteEditors.length > 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteEditors.map((editor: AwarenessState, i: number) => <div key={i} className="w-5 h-5 rounded-full border-2 border-white shadow-md animate-pulse" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
         {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteSelectors.map((selector: AwarenessState, i: number) => <div key={i} className="w-4 h-4 rounded-full border-2 border-white opacity-80 shadow-sm" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
         
-        {/* フォントサイズ変更UI（選択ノードが1つで編集中ではない時） */}
         {isSingleSelected && !isEditing && !isMultiDragging && (
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-1 z-30">
             <select 
