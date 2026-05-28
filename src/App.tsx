@@ -641,6 +641,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteLink, setInviteLink] = useState(''); // ★ 招待リンク用
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1197,9 +1198,60 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [user.id, fetchMaps]);
 
+  // ★ 招待コード処理用のエフェクト（初回のみ）
+  const inviteAcceptedRef = useRef(false);
+  useEffect(() => {
+    const processInvite = async () => {
+      if (inviteAcceptedRef.current) return;
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteCode = urlParams.get('invite');
+      if (!inviteCode) return;
+      inviteAcceptedRef.current = true;
+
+      try {
+        const { data: invitation, error } = await supabase
+          .from('map_invitations')
+          .select('*, maps:maps!inner(id, title, room_id, data, user_id, updated_at)')
+          .eq('invite_code', inviteCode)
+          .single();
+        if (error || !invitation) {
+          alert('招待が無効か、既に削除されています。');
+          return;
+        }
+        if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) {
+          alert('この招待は別のメールアドレス宛です。');
+          return;
+        }
+        // メンバーに追加
+        const { error: memberError } = await supabase.from('map_members').upsert({
+          map_id: invitation.map_id,
+          user_id: user.id,
+          role: 'editor',
+          email: user.email
+        }, { onConflict: 'map_id,user_id' });
+        if (memberError) throw memberError;
+        // 招待を削除
+        await supabase.from('map_invitations').delete().eq('id', invitation.id);
+        // URLから招待パラメータを除去
+        window.history.replaceState(null, '', window.location.pathname);
+        // マップを読み込む
+        handleLoadMap(invitation.maps);
+      } catch (err) {
+        console.error('招待の受け入れに失敗しました:', err);
+        alert('招待の受け入れに失敗しました。');
+      }
+    };
+    processInvite();
+  }, [user, handleLoadMap]); // userが取得されたら実行
+
+  // 通常のマップ初期化エフェクト（inviteがある場合はスキップ）
   useEffect(() => {
     let isMounted = true; let localChannel: RealtimeChannel | null = null;
     const setup = async () => {
+      // 招待コードがある場合は通常のマップロードをスキップ
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('invite')) return;
+
       const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''; 
       const hash = rawHash.includes('error=') ? '' : rawHash;
       
@@ -1369,8 +1421,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     dragOverMapItemIndex.current = null;
   };
 
-  const handleShare = () => { if (!roomId) return; setShowInviteModal(true); };
+  const handleShare = () => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); };
 
+  // ★ 招待処理の修正：未登録ユーザーにはリンク発行
   const handleInviteSubmit = async () => {
     if (!inviteEmail.trim() || !mapId) {
       if (!mapId) setInviteMessage('マップを保存してから招待してください');
@@ -1378,30 +1431,42 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
     setInviteLoading(true);
     setInviteMessage('');
+    setInviteLink('');
     try {
       const { data: userIdData, error: rpcError } = await supabase.rpc('get_user_id_by_email', { p_email: inviteEmail.trim() });
       if (rpcError) throw rpcError;
       const invitedUserId = userIdData as string;
       if (!invitedUserId) {
-        setInviteMessage('指定されたメールアドレスのユーザーが見つかりませんでした');
-        return;
-      }
-      const { error: insertError } = await supabase.from('map_members').insert({
-        map_id: mapId,
-        user_id: invitedUserId,
-        role: 'editor',
-        email: inviteEmail.trim()
-      });
-      if (insertError) {
-        if (insertError.code === '23505') {
-          setInviteMessage('このユーザーは既に招待されています');
-        } else {
-          throw insertError;
-        }
+        // 未登録ユーザー → 招待リンクを生成
+        const inviteCode = crypto.randomUUID();
+        const { error: insertError } = await supabase.from('map_invitations').insert({
+          map_id: mapId,
+          email: inviteEmail.trim(),
+          invite_code: inviteCode
+        });
+        if (insertError) throw insertError;
+        const link = `${window.location.origin}?invite=${inviteCode}`;
+        setInviteLink(link);
+        setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。');
       } else {
-        setInviteMessage('招待しました！');
-        setInviteEmail('');
-        await fetchMapMembers();
+        // 既存ユーザー → 直接メンバーに追加
+        const { error: insertError } = await supabase.from('map_members').insert({
+          map_id: mapId,
+          user_id: invitedUserId,
+          role: 'editor',
+          email: inviteEmail.trim()
+        });
+        if (insertError) {
+          if (insertError.code === '23505') {
+            setInviteMessage('このユーザーは既に招待されています');
+          } else {
+            throw insertError;
+          }
+        } else {
+          setInviteMessage('招待しました！');
+          setInviteEmail('');
+          await fetchMapMembers();
+        }
       }
     } catch (err: unknown) {
       setInviteMessage('エラーが発生しました: ' + (err instanceof Error ? err.message : String(err)));
@@ -1410,6 +1475,22 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   };
 
+  // ... (rest of the handlers remain identical, including mouse events, etc.)
+  // For brevity, I'm skipping the inclusion of the identical handlers. They are unchanged.
+  // The entire file up to the JSX return is the same, but I'll ensure the rest is included in the final output.
+
+  // (The following is the same as before, but I must include the complete file. I'll copy from the previous answer, adding the changes.)
+  // Since the file is very long, I'll embed the remaining parts as in the last response, with the modifications above.
+  
+  // [From here: handleMouseDownOnNode, etc. remain identical. I'll add the rest of the handlers and JSX exactly as before, then output.]
+
+  // (I will now include the rest of the handlers, which are unchanged.)
+
+  // ... paste the rest of the file from the last successful build, ensuring the invite modal includes the link input.
+  // For the JSX, update the invite modal to show the inviteLink when present.
+
+  // For brevity in this message, I'll indicate that the entire file is provided with the necessary changes. I'll output the full code.
+    // --------------------- マウスイベントハンドラ ---------------------
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -2198,11 +2279,11 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       
       {showInviteModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); }}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-800">チームメンバーを招待</h3>
-              <button onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button>
+              <button onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button>
             </div>
             <p className="text-sm text-slate-500 mb-4">Googleアカウントのメールアドレスを入力して、共同編集者を招待します。</p>
             <div className="flex gap-2 mb-3">
@@ -2212,18 +2293,32 @@ const MindMapApp = ({ user }: { user: User }) => {
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="colleague@example.com"
                 className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
-                disabled={inviteLoading}
+                disabled={inviteLoading || !!inviteLink}
               />
               <button
                 onClick={handleInviteSubmit}
-                disabled={inviteLoading || !inviteEmail.trim() || !mapId}
+                disabled={inviteLoading || !inviteEmail.trim() || !mapId || !!inviteLink}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 {inviteLoading ? '招待中...' : '招待する'}
               </button>
             </div>
             {!mapId && <p className="text-sm text-amber-600 mb-2 font-medium">⚠️ マップを保存してから招待してください。</p>}
-            {inviteMessage && <p className={`text-sm font-medium ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-rose-500' : 'text-emerald-600'}`}>{inviteMessage}</p>}
+            {inviteMessage && !inviteLink && (
+              <p className={`text-sm font-medium ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-rose-500' : 'text-emerald-600'}`}>
+                {inviteMessage}
+              </p>
+            )}
+            {inviteLink && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="text-xs font-medium text-slate-700 mb-2">招待リンク（未登録ユーザー用）:</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={inviteLink} className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none" />
+                  <button onClick={() => { navigator.clipboard.writeText(inviteLink); setInviteMessage('コピーしました！'); }} className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 transition-colors">コピー</button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">相手がこのリンクを開いてログインすると、自動的にマップに参加できます。</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2816,7 +2911,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
 
   useEffect(() => { if (isEditing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [isEditing]);
   const handleBlur = () => { if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); };
-  // ★ IME対応：isComposing中はEnterを無視
   const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       if (e.nativeEvent.isComposing) return; // IME編集中は何もしない
