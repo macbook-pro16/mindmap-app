@@ -216,7 +216,7 @@ const NODE_WIDTH = 160;
 const NODE_HEIGHT = 50;
 const NODE_DEFAULT_FONT_SIZE = 14;
 const NODE_MIN_WIDTH = 80;
-const NODE_PADDING_HORIZONTAL = 40; // px-5 *2
+const NODE_PADDING_HORIZONTAL = 40;
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
 
@@ -1827,9 +1827,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
     if (drawingEdge) { 
       if (!mindMap) return; 
-      const sourceNode = findNodeById(mindMap, drawingEdge.sourceNodeId);
-      if (!sourceNode) return;
-      // 未使用の sourcePt 変数は削除済み
       if (drawingEdge.targetNodeId && drawingEdge.targetPoint) {
         addEdge(drawingEdge.sourceNodeId, drawingEdge.sourcePoint, drawingEdge.targetNodeId, drawingEdge.targetPoint);
       } else {
@@ -2842,7 +2839,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         {isEditing ? (
           <input ref={inputRef} className={`w-full h-full bg-transparent text-center outline-none border-none focus:ring-0`} style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
         ) : (
-          <span className={`truncate block max-w-full`} style={{ color: node.textColor || '#1e293b', fontSize }}>{node.text}</span>
+          <span className="whitespace-nowrap" style={{ color: node.textColor || '#1e293b', fontSize }}>{node.text}</span>
         )}
         {remoteEditors.length > 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteEditors.map((editor: AwarenessState, i: number) => <div key={i} className="w-5 h-5 rounded-full border-2 border-white shadow-md animate-pulse" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
         {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteSelectors.map((selector: AwarenessState, i: number) => <div key={i} className="w-4 h-4 rounded-full border-2 border-white opacity-80 shadow-sm" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
