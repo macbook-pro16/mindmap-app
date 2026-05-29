@@ -642,6 +642,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
 
+  // ★ 自動保存用のタイマー
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
            draggingImageId !== null || draggingStickyId !== null || draggingOutlineId !== null || 
@@ -1074,6 +1077,62 @@ const MindMapApp = ({ user }: { user: User }) => {
     return mapMembers.some(m => m.user_id === user.id);
   }, [mapId, mapOwnerId, user.id, mapMembers]);
 
+  // ★ 自動保存：Yjs の更新をデータベースに自動保存する
+  useEffect(() => {
+    if (!ydocRef.current || !yNodesRef.current || !yRootRef.current || !roomId) return;
+    
+    const autoSave = async () => {
+      const tree = yMapToTree(yNodesRef.current!, yRootRef.current!);
+      if (!tree) return;
+      
+      try {
+        if (mapId) {
+          const { error } = await supabase
+            .from('maps')
+            .update({ data: tree, updated_at: new Date().toISOString() })
+            .eq('id', mapId);
+          if (!error) {
+            setIsDirty(false);
+            if (roomId) {
+              localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
+            }
+          }
+        } else if (roomId) {
+          const { data, error } = await supabase
+            .from('maps')
+            .insert({
+              title: mapTitle,
+              data: tree,
+              room_id: roomId,
+              user_id: user.id,
+              owner_email: user.email,
+              updated_at: new Date().toISOString()
+            })
+            .select();
+          if (!error && data && data[0]) {
+            setMapId(data[0].id);
+            setMapOwnerId(data[0].user_id);
+            setIsDirty(false);
+            localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
+          }
+        }
+      } catch (err) {
+        console.error('自動保存エラー:', err);
+      }
+    };
+    
+    const handleUpdate = () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = setTimeout(autoSave, 500);
+    };
+    
+    ydocRef.current.on('update', handleUpdate);
+    return () => {
+      ydocRef.current?.off('update', handleUpdate);
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [ydocRef.current, yNodesRef.current, yRootRef.current, roomId, mapId, mapTitle, user.id, user.email]);
+
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1409,32 +1468,31 @@ const MindMapApp = ({ user }: { user: User }) => {
     await fetchMaps();
   }, [mapId, handleResetMap, fetchMaps, user.id]);
 
-  // ★ 退出処理を修正（確実に削除されるように）
+  // ★ 退出処理を修正（確実に削除されるように、countオプション付き）
   const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
-  e.stopPropagation();
-  if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
-  
-  const { error, count } = await supabase
-    .from('map_members')
-    .delete({ count: 'exact' })
-    .eq('map_id', map.id)
-    .eq('user_id', user.id);
+    e.stopPropagation();
+    if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
     
-  if (error) {
-    alert(`退出に失敗しました: ${error.message}`);
-    return;
-  }
-  if (count === 0) {
-    alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。');
-    return;
-  }
-  
-  if (mapId === map.id) {
-    handleResetMap();
-  }
-  await fetchMaps();
-  alert('マップから退出しました');
-}, [mapId, handleResetMap, fetchMaps, user.id]);
+    const { error, count } = await supabase
+      .from('map_members')
+      .delete({ count: 'exact' })
+      .eq('map_id', map.id)
+      .eq('user_id', user.id);
+    if (error) {
+      alert(`退出に失敗しました: ${error.message}`);
+      return;
+    }
+    if (count === 0) {
+      alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。');
+      return;
+    }
+    
+    if (mapId === map.id) {
+      handleResetMap();
+    }
+    await fetchMaps();
+    alert('マップから退出しました');
+  }, [mapId, handleResetMap, fetchMaps, user.id]);
 
   const handleMapDragStart = useCallback((e: DragEvent<HTMLDivElement>, index: number) => {
     dragMapItemIndex.current = index;
@@ -2496,15 +2554,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <div className="flex flex-col px-3 pb-2.5 pt-1 cursor-default">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
-                        {/* ★ アイコン表示に変更（メールアドレス非表示） */}
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
-                          {map.user_id === user.id ? (
-                            <span className="flex items-center gap-1">👑 オーナー</span>
-                          ) : (
-                            <span title={`オーナー: ${map.owner_email || '不明'}`} className="flex items-center gap-1">
-                              🤝 共有
-                            </span>
-                          )}
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500" title={map.user_id === user.id ? undefined : `オーナー: ${map.owner_email || '不明'}`}>
+                          {map.user_id === user.id ? '👑 オーナー' : '🤝 共有'}
                         </span>
                         <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
                           <button onClick={(e) => handleCopyMap(map, e)} className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors" title="コピー"><CopyIcon /></button>
