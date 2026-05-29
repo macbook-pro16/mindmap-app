@@ -1411,30 +1411,30 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   // ★ 退出処理を修正（確実に削除されるように）
   const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
-    e.stopPropagation();
-    if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
+  e.stopPropagation();
+  if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
+  
+  const { error, count } = await supabase
+    .from('map_members')
+    .delete({ count: 'exact' })
+    .eq('map_id', map.id)
+    .eq('user_id', user.id);
     
-    const { error, count } = await supabase
-      .from('map_members')
-      .delete()
-      .eq('map_id', map.id)
-      .eq('user_id', user.id);
-    if (error) {
-      alert(`退出に失敗しました: ${error.message}`);
-      return;
-    }
-    if (count === 0) {
-      alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。');
-      return;
-    }
-    
-    // 現在開いているマップが退出したマップと同じならリセット
-    if (mapId === map.id) {
-      handleResetMap();
-    }
-    // マップ一覧を再取得
-    await fetchMaps();
-  }, [mapId, handleResetMap, fetchMaps, user.id]);
+  if (error) {
+    alert(`退出に失敗しました: ${error.message}`);
+    return;
+  }
+  if (count === 0) {
+    alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。');
+    return;
+  }
+  
+  if (mapId === map.id) {
+    handleResetMap();
+  }
+  await fetchMaps();
+  alert('マップから退出しました');
+}, [mapId, handleResetMap, fetchMaps, user.id]);
 
   const handleMapDragStart = useCallback((e: DragEvent<HTMLDivElement>, index: number) => {
     dragMapItemIndex.current = index;
