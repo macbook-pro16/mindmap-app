@@ -3360,7 +3360,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             {stamps.map((stamp) => (
               <div
                 key={stamp.id}
-                className={`absolute cursor-move shadow-md flex items-center justify-center font-bold transition-all ${selectedStampIds.includes(stamp.id) ? 'ring-2 ring-indigo-500 ring-offset-2' : 'hover:shadow-lg'}`}
+                className={`absolute cursor-move flex items-center justify-center transition-all duration-300 ${selectedStampIds.includes(stamp.id) ? 'ring-4 ring-indigo-500/30 scale-105 shadow-2xl' : 'hover:shadow-xl hover:scale-105 hover:-translate-y-1'}`}
                 style={{
                   left: stamp.x,
                   top: stamp.y,
@@ -3368,33 +3368,42 @@ const MindMapApp = ({ user }: { user: User }) => {
                   height: stamp.height,
                   backgroundColor: 'transparent',
                   color: stamp.color,
-                  border: `3px solid ${stamp.color}`, // 日本の印鑑らしく少し太めの枠線
-                  borderRadius: '50%',
                   zIndex: stamp.zIndex ?? 3,
-                  // 横書きを許可するため vertical-rl を解除
-                  writingMode: 'horizontal-tb' as const, 
-                  fontSize: '15px',
-                  fontFamily: "'MS Mincho', 'Yu Mincho', serif", // 明朝体にして印鑑らしく
-                  padding: '4px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  lineHeight: '1.2'
+                  fontFamily: "'MS Mincho', 'Yu Mincho', serif", // 日本の印鑑らしい明朝体
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
                 }}
                 onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)}
                 onContextMenu={(e) => handleStampContextMenu(e, stamp.id)}
                 onClick={(e) => handleStampClick(e, stamp.id)}
                 title={`${stamp.email} の印鑑`}
               >
-                <div className="flex flex-col items-center w-full h-full justify-center">
-                    <div className="border-b border-b-[rgba(234,85,80,0.3)] w-full text-center pb-0.5 text-[10px] uppercase opacity-70">
-                        CONFIRM
-                    </div>
-                    <div className="flex-1 flex items-center justify-center pt-1 text-center font-extrabold tracking-widest text-[16px]">
-                        {stamp.text}
-                    </div>
+                {/* データネーム印（シヤチハタ風）デザイン本体 */}
+                <div 
+                  className="flex flex-col items-center justify-center w-full h-full rounded-full border-[3px] bg-white/90 backdrop-blur-sm relative overflow-hidden"
+                  style={{ borderColor: stamp.color }}
+                >
+                  {/* 上段：確認 */}
+                  <div className="w-full text-center border-b-[1.5px] pb-0.5" style={{ borderColor: stamp.color }}>
+                    <span className="text-[10px] font-bold tracking-widest leading-none block pt-1">確認</span>
+                  </div>
+                  
+                  {/* 中段：日付 (YY.MM.DD 形式) */}
+                  <div className="w-full text-center border-b-[1.5px] py-0.5" style={{ borderColor: stamp.color }}>
+                    <span className="text-[9px] font-bold tracking-tighter leading-none block font-sans">
+                      {new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}
+                    </span>
+                  </div>
+                  
+                  {/* 下段：名前 */}
+                  <div className="w-full text-center pt-0.5 flex-1 flex items-center justify-center">
+                    <span className="text-[15px] font-extrabold tracking-widest leading-none block pb-1">
+                      {stamp.text}
+                    </span>
+                  </div>
+                  
+                  {/* 朱肉のかすれ・滲みを表現するノイズエフェクト */}
+                  <div className="absolute inset-0 pointer-events-none rounded-full opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPgo8cGF0aCBkPSJNMCAwdjRoNFYweiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4=')]"></div>
                 </div>
-                {/* 印鑑のかすれを表現するエフェクトレイヤー */}
-                <div className="absolute inset-0 pointer-events-none rounded-full opacity-20 bg-[radial-gradient(circle_at_center,transparent_50%,rgba(0,0,0,0.1)_100%)]"></div>
               </div>
             ))}
 
