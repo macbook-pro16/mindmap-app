@@ -20,6 +20,10 @@ export interface YjsNodeData {
   width?: number;
   height?: number;
   fontSize?: number;
+  collapsed?: boolean;           // ★ 折りたたみ状態
+  imageUrl?: string;             // ★ 画像ノード用URL
+  imageWidth?: number;           // ★ 画像の表示幅（px）
+  imageHeight?: number;          // ★ 画像の表示高さ（px）
 }
 
 export interface YjsEdgeData {
@@ -78,6 +82,10 @@ export interface MindNode {
   width?: number;
   height?: number;
   fontSize?: number;
+  collapsed?: boolean;           // ★ 折りたたみ状態
+  imageUrl?: string;             // ★ 画像URL
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 export interface FlatNode {
@@ -216,6 +224,8 @@ const NODE_HEIGHT = 50;
 const NODE_DEFAULT_FONT_SIZE = 14;
 const NODE_MIN_WIDTH = 80;
 const NODE_PADDING_HORIZONTAL = 40;
+const IMAGE_NODE_MIN_WIDTH = 120;
+const IMAGE_NODE_MIN_HEIGHT = 120;
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
 
@@ -369,6 +379,9 @@ const TriangleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="curren
 const TextOutlineIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V4h16v3M9 20h6M12 4v16" /></svg> );
 const GroupIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg> );
 const UngroupIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> );
+const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
+const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
+const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth="2" /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -385,9 +398,13 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       textColor: data.textColor ?? '#334155',
       groupId: data.groupId,
       zIndex: data.zIndex,
-      width: data.width ?? computeNodeWidth(data.text, fontSize),
-      height: data.height ?? NODE_HEIGHT,
+      width: data.width ?? (data.imageUrl ? IMAGE_NODE_MIN_WIDTH : computeNodeWidth(data.text, fontSize)),
+      height: data.height ?? (data.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT),
       fontSize,
+      collapsed: data.collapsed ?? false,
+      imageUrl: data.imageUrl,
+      imageWidth: data.imageWidth,
+      imageHeight: data.imageHeight,
       children,
     };
   };
@@ -405,6 +422,10 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     width: root.width,
     height: root.height,
     fontSize: root.fontSize,
+    collapsed: root.collapsed ?? false,
+    imageUrl: root.imageUrl,
+    imageWidth: root.imageWidth,
+    imageHeight: root.imageHeight,
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -429,7 +450,9 @@ const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: strin
     const h = node.height ?? NODE_HEIGHT;
     const left = node.x - w / 2 - 15, top = node.y - h / 2 - 15;
     if (x >= left && x <= left + w + 30 && y >= top && y <= top + h + 30 && node.id !== excludeId) return node;
-    for (const c of node.children) stack.push(c);
+    if (!node.collapsed) {
+      for (const c of node.children) stack.push(c);
+    }
   }
   return null;
 };
@@ -447,8 +470,8 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
   if (!mindMap) return null;
   const node = findNodeById(mindMap, nodeId);
   if (!node) return null;
-  const w = node.width ?? NODE_WIDTH;
-  const h = node.height ?? NODE_HEIGHT;
+  const w = node.width ?? (node.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
+  const h = node.height ?? (node.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
   if (nodeId === draggingNodeId && dragPositions[nodeId]) return { x: dragPositions[nodeId].x, y: dragPositions[nodeId].y, width: w, height: h };
   return { x: node.x, y: node.y, width: w, height: h };
 };
@@ -533,6 +556,7 @@ const App = () => {
 const MindMapApp = ({ user }: { user: User }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null); // 画像ノード用
   const [mapId, setMapId] = useState<number | null>(null);
   const [mapTitle, setMapTitle] = useState('NEW');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -620,7 +644,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  const addLog = (msg: string) => { if (process.env.NODE_ENV !== 'production') console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -640,7 +664,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
 
-  // ★ 自動保存用のタイマー（ブラウザ環境対応）
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAnyDragging = useMemo(() => {
@@ -795,6 +818,22 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) nodes.set(nodeId, { ...data, width });
   }, []);
 
+  const updateNodeHeight = useCallback((nodeId: string, height: number) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data) nodes.set(nodeId, { ...data, height });
+  }, []);
+
+  const toggleNodeCollapse = useCallback((nodeId: string) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data) {
+      ydocRef.current?.transact(() => {
+        nodes.set(nodeId, { ...data, collapsed: !data.collapsed });
+      });
+    }
+  }, []);
+
   const addChildNode = useCallback((parentId: string) => {
     const nodes = yNodesRef.current; if (!nodes) return; const parent = nodes.get(parentId); if (!parent) return;
     const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(parent.x + NODE_WIDTH + 40, parent.y, nodes);
@@ -802,7 +841,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize });
+      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
       nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
     });
     setSelectedNodeIds([childId]);
@@ -818,7 +857,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize });
+      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
       nodes.set(parentId, { ...parent, children: newChildren });
     });
     setSelectedNodeIds([siblingId]);
@@ -833,24 +872,47 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize });
+      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
       const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
     });
     setSelectedNodeIds([newParentId]);
   }, []);
 
-  const addNodeAtPosition = useCallback((x: number, y: number) => {
+  const addNodeAtPosition = useCallback((x: number, y: number, isImageNode: boolean = false, imageUrl?: string) => {
     const nodes = yNodesRef.current, rootId = yRootRef.current; if (!nodes || !rootId) return;
     const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(x, y, nodes);
-    const defaultText = '独立トピック';
+    const defaultText = isImageNode ? '' : '独立トピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
-    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    const initialWidth = isImageNode ? IMAGE_NODE_MIN_WIDTH : computeNodeWidth(defaultText, defaultFontSize);
+    const initialHeight = isImageNode ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT;
     ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize });
+      nodes.set(childId, {
+        text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true,
+        bgColor: '#f8fafc', textColor: '#334155',
+        width: initialWidth, height: initialHeight, fontSize: defaultFontSize,
+        collapsed: false, imageUrl: imageUrl
+      });
       const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
     });
     setSelectedNodeIds([childId]);
   }, []);
+
+  const addImageNodeWithUpload = useCallback(async (x: number, y: number) => {
+    if (!imageFileInputRef.current) return;
+    imageFileInputRef.current.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (!file) return;
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const { data, error } = await supabase.storage.from('images').upload(fileName, file);
+      if (error) { alert('画像のアップロードに失敗しました'); return; }
+      const publicUrl = supabase.storage.from('images').getPublicUrl(data.path).data.publicUrl;
+      addNodeAtPosition(x, y, true, publicUrl);
+      target.value = '';
+    };
+    imageFileInputRef.current.click();
+  }, [addNodeAtPosition]);
 
   const addIndependentSibling = useCallback((targetId: string, position: 'before' | 'after') => {
     const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return;
@@ -863,7 +925,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize });
+      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
       const root = nodes.get(rootId); if (root) {
         const curChildren: string[] = root.children ?? [];
         const targetIndex = curChildren.indexOf(targetId);
@@ -1010,7 +1072,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setEdgeStyle(newStyle);
   }, []);
 
-  // ★ 共有マップも取得するように修正
   const fetchMaps = useCallback(async () => {
     const { data: ownMaps, error: ownError } = await supabase
       .from('maps')
@@ -1068,14 +1129,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     fetchMapMembers();
   }, [fetchMapMembers, mapId]);
 
-  // ★ 共有可能かどうかの判定（オーナーまたはメンバー）
   const canShare = useMemo(() => {
     if (!mapId) return false;
     if (mapOwnerId === user.id) return true;
     return mapMembers.some(m => m.user_id === user.id);
   }, [mapId, mapOwnerId, user.id, mapMembers]);
 
-  // ★ 自動保存：Yjs の更新をデータベースに自動保存する（修正: 依存配列を調整）
   useEffect(() => {
     if (!ydocRef.current || !yNodesRef.current || !yRootRef.current || !roomId) return;
     
@@ -1130,7 +1189,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       doc.off('update', handleUpdate);
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [mapId, mapTitle, roomId, user.id, user.email]); // ydocRef.current は依存配列から除外（ref の変化では再実行されないが、roomId でカバー）
+  }, [mapId, mapTitle, roomId, user.id, user.email]);
 
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
@@ -1155,7 +1214,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         const defaultText = '中心テーマ';
         const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
         const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize }); 
+        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false }); 
         yRootRef.current = rootId; 
       }
     });
@@ -1225,7 +1284,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [mapId, mapTitle, handleSaveTitleOnly]);
 
-  // ★ 新規マップを作成しない
   const handleResetMap = useCallback(() => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     if(typeof window !== 'undefined') window.history.replaceState(null, '', ' ');
@@ -1254,7 +1312,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '中心テーマ';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize };
+    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false };
     
     initYjs(newRoom, initialTree);
     
@@ -1305,7 +1363,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     initYjs(map.room_id, map.data);
   }, []);
 
-  // ★ 招待コード処理用のエフェクト
   const inviteAcceptedRef = useRef(false);
   useEffect(() => {
     const processInvite = async () => {
@@ -1347,7 +1404,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     processInvite();
   }, [user, handleLoadMap]);
 
-  // ★ 初回ロード時のみマップ初期化
   useEffect(() => {
     let isMounted = true;
     const init = async () => {
@@ -1467,7 +1523,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     await fetchMaps();
   }, [mapId, handleResetMap, fetchMaps, user.id]);
 
-  // ★ 退出処理を修正（確実に削除されるように、countオプション付き）
   const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
     if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
@@ -1528,7 +1583,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
 
-  // ★ 招待処理（RPC版）
   const handleInviteSubmit = useCallback(async () => {
     if (!inviteEmail.trim() || !mapId) {
       if (!mapId) setInviteMessage('マップを保存してから招待してください');
@@ -1561,11 +1615,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [inviteEmail, mapId, fetchMapMembers]);
 
-  // --- Drag refs for map list ---
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
 
-  // --- Mouse event handlers (unchanged) ---
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -1896,7 +1948,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
     if (!nodeUnder) {
-      addNodeAtPosition(coords.x, coords.y);
+      addNodeAtPosition(coords.x, coords.y, false);
     }
   }, [mindMap, zoomLevel, isSpacePressed, currentTool, addNodeAtPosition]);
 
@@ -2178,6 +2230,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         case 'alignHorizontal': alignNodes('horizontal'); break;
         case 'bringToFront': bringToFront(); break;
         case 'sendToBack': sendToBack(); break;
+        case 'toggleCollapse': toggleNodeCollapse(nodeId); break;
       }
     } else if (contextMenu.type === 'edge' && contextMenu.edgeId) {
       switch (action) { case 'deleteEdge': deleteEdge(contextMenu.edgeId); break; case 'arrowNone': updateEdgeArrow(contextMenu.edgeId, 'none'); break; case 'arrowStart': updateEdgeArrow(contextMenu.edgeId, 'start'); break; case 'arrowEnd': updateEdgeArrow(contextMenu.edgeId, 'end'); break; case 'arrowBoth': updateEdgeArrow(contextMenu.edgeId, 'both'); break; }
@@ -2203,11 +2256,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
     }
     else if (contextMenu.type === 'canvas') { 
-      if (action === 'addNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addNodeAtPosition(contextMenu.canvasX, contextMenu.canvasY); 
+      if (action === 'addNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addNodeAtPosition(contextMenu.canvasX, contextMenu.canvasY, false); 
+      else if (action === 'addImageNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addImageNodeWithUpload(contextMenu.canvasX, contextMenu.canvasY);
       else if (action === 'addSticky' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addSticky(contextMenu.canvasX, contextMenu.canvasY); 
       else if (action === 'addImage') fileInputRef.current?.click(); 
     }
-  }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addSticky, alignNodes, deleteImage, deleteSticky, deleteOutline, bringToFront, sendToBack]);
+  }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, alignNodes, deleteImage, deleteSticky, deleteOutline, bringToFront, sendToBack, toggleNodeCollapse]);
 
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => {
     e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
@@ -2267,8 +2321,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => {
     e.stopPropagation(); e.preventDefault();
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
-    const w = node.width ?? NODE_WIDTH;
-    const h = node.height ?? NODE_HEIGHT;
+    const w = node.width ?? (node.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
+    const h = node.height ?? (node.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
     const pt = getConnectionPoint(node.x, node.y, point, w, h);
     setDrawingEdge({ sourceNodeId: nodeId, sourcePoint: point, currentX: pt.x, currentY: pt.y });
   }, [mindMap]);
@@ -2405,6 +2459,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
       
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+      <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
@@ -2468,6 +2523,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li>
                   <li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li>
                   <li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン</kbd></li>
                 </ul>
               </div>
               <div>
@@ -2634,7 +2690,8 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={() => setCurrentTool('text')} className={`p-1.5 rounded-md transition-all ${currentTool === 'text' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="テキストツール"><TextOutlineIcon /></button>
               <div className="w-px h-4 bg-slate-300 mx-1" />
               <button onClick={handleHeaderAddSticky} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-amber-600 transition-all" title="付箋を追加"><StickyIcon /></button>
-              <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-sky-600 transition-all" title="画像を添付"><ImageIcon /></button>
+              <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-sky-600 transition-all" title="画像を添付（自由配置）"><ImageIcon /></button>
+              <button onClick={() => { const container = scrollContainerRef.current; if (container) { const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel; const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel; addImageNodeWithUpload(x, y); } }} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-purple-600 transition-all" title="画像専用ノードを追加"><ImageNodeIcon /></button>
             </div>
             <div className="flex items-center gap-1 ml-3">
               {COLOR_PALETTE.map(cp => (<button key={cp.label} onClick={() => handleHeaderColorSelect(cp.bg, cp.text)} disabled={totalSelectedCount === 0} className="w-6 h-6 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm" style={{ backgroundColor: cp.bg }} title={cp.label} />))}
@@ -2707,12 +2764,12 @@ const MindMapApp = ({ user }: { user: User }) => {
         
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
+            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('toggleCollapse')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">折りたたみ/展開</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
             {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>線を削除</span><span className="text-[10px] text-rose-300 border border-rose-100 rounded px-1 group-hover:border-rose-200 group-hover:text-rose-500">⌫</span></button><div className="mx-2 my-1 border-b border-slate-100" /><div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">両方 ⇄</button></>)}
             {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">画像を削除</button></>)}
             {contextMenu.type === 'sticky' && contextMenu.stickyId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteSticky')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">付箋を削除</button></>)}
             {contextMenu.type === 'outline' && contextMenu.outlineId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteOutline')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">図形/テキストを削除</button></>)}
-            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addSticky')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">付箋を追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像を添付</button></>)}
+            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addImageNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像専用ノードを追加</button><button onClick={() => executeContextAction('addSticky')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">付箋を追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像を添付（自由配置）</button></>)}
           </div>
         )}
         {showColorPalette && (
@@ -2774,6 +2831,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
                 <div className="w-px h-5 bg-slate-600 mx-0.5" />
                 <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-rose-900/50 rounded-md text-rose-400 hover:text-rose-300 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+                <div className="w-px h-5 bg-slate-600 mx-0.5" />
+                <button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">
+                  {mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}
+                </button>
               </div>
             )}
 
@@ -2821,7 +2882,7 @@ const MindMapApp = ({ user }: { user: User }) => {
               );
             })}
 
-            {/* 画像 */}
+            {/* 画像（自由配置） */}
             {images.map((image: ImageData) => {
               const isSelected = selectedImageIds.includes(image.id);
               return (
@@ -2934,8 +2995,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                   d={(() => {
                     const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId);
                     if (!sNode) return '';
-                    const sw = sNode.width ?? NODE_WIDTH;
-                    const sh = sNode.height ?? NODE_HEIGHT;
+                    const sw = sNode.width ?? (sNode.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
+                    const sh = sNode.height ?? (sNode.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
                     return getEdgePath(
                       getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh),
                       {x: drawingEdge.currentX, y: drawingEdge.currentY},
@@ -2983,6 +3044,7 @@ const MindMapApp = ({ user }: { user: User }) => {
               isAnyDragging={isAnyDragging} 
               updateNodeWidth={updateNodeWidth}
               updateNodeFontSize={updateNodeFontSize}
+              toggleCollapse={toggleNodeCollapse}
             />
           </div>
         </div>
@@ -3013,25 +3075,28 @@ interface RecursiveNodeProps {
   isAnyDragging: boolean;
   updateNodeWidth: (nodeId: string, width: number) => void;
   updateNodeFontSize: (nodeId: string, fontSize: number) => void;
+  toggleCollapse: (nodeId: string) => void;
 }
 
-const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeWidth, updateNodeFontSize }: RecursiveNodeProps) => {
+const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeWidth, updateNodeFontSize, toggleCollapse }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
   const isEditing = editingNodeId === node.id, isSingleDragging = draggingNodeId === node.id;
   const isTarget = dragTargetNodeId === node.id;
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const nodeWidth = node.width ?? NODE_WIDTH;
-  const nodeHeight = node.height ?? NODE_HEIGHT;
+  const nodeWidth = node.width ?? (node.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
+  const nodeHeight = node.height ?? (node.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
   useEffect(() => {
-    const newWidth = computeNodeWidth(node.text, fontSize);
-    if (Math.abs(newWidth - nodeWidth) > 1) {
-      updateNodeWidth(node.id, newWidth);
+    if (!node.imageUrl) {
+      const newWidth = computeNodeWidth(node.text, fontSize);
+      if (Math.abs(newWidth - nodeWidth) > 1) {
+        updateNodeWidth(node.id, newWidth);
+      }
     }
-  }, [node.text, fontSize, node.id, updateNodeWidth, nodeWidth]);
+  }, [node.text, fontSize, node.id, updateNodeWidth, nodeWidth, node.imageUrl]);
 
   const displayPos = (() => {
     if (isMultiDragging && dragPositions[node.id]) return dragPositions[node.id];
@@ -3069,15 +3134,33 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         }}
         onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}
       >
-        {isEditing ? (
-          <input ref={inputRef} className={`w-full h-full bg-transparent text-center outline-none border-none focus:ring-0`} style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+        {/* 折りたたみボタン（子がある場合のみ） */}
+        {node.children.length > 0 && (
+          <div 
+            className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
+            onClick={(e) => { e.stopPropagation(); toggleCollapse(node.id); }}
+          >
+            {node.collapsed ? <ExpandIcon /> : <CollapseIcon />}
+          </div>
+        )}
+        {node.imageUrl ? (
+          <div className="w-full h-full flex flex-col items-center justify-center p-1">
+            <img src={node.imageUrl} alt="node image" className="max-w-full max-h-full object-contain rounded" style={{ maxWidth: nodeWidth - 10, maxHeight: nodeHeight - 10 }} />
+            {node.text && <span className="text-xs mt-1 truncate">{node.text}</span>}
+          </div>
         ) : (
-          <span className="whitespace-nowrap" style={{ color: node.textColor || '#1e293b', fontSize }}>{node.text}</span>
+          <>
+            {isEditing ? (
+              <input ref={inputRef} className={`w-full h-full bg-transparent text-center outline-none border-none focus:ring-0`} style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+            ) : (
+              <span className="whitespace-nowrap" style={{ color: node.textColor || '#1e293b', fontSize }}>{node.text}</span>
+            )}
+          </>
         )}
         {remoteEditors.length > 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteEditors.map((editor: AwarenessState, i: number) => <div key={i} className="w-5 h-5 rounded-full border-2 border-white shadow-md animate-pulse" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
         {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteSelectors.map((selector: AwarenessState, i: number) => <div key={i} className="w-4 h-4 rounded-full border-2 border-white opacity-80 shadow-sm" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
         
-        {isSingleSelected && !isEditing && !isMultiDragging && (
+        {isSingleSelected && !isEditing && !isMultiDragging && !node.imageUrl && (
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-1 z-30">
             <select 
               value={fontSize}
@@ -3090,7 +3173,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         )}
       </div>
       {isSingleSelected && !isMultiDragging && connectionPoints.map((point: ConnectionPoint) => { const pt = getConnectionPoint(displayPos.x, displayPos.y, point, nodeWidth, nodeHeight); return <div key={point} className={`absolute w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-crosshair hover:scale-150 hover:bg-indigo-50 shadow-md ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'}`} style={{ left: pt.x-8, top: pt.y-8, zIndex: 20 + depth }} onMouseDown={e => onConnectionPointMouseDown(e, node.id, point)} />; })}
-      {node.children.map((child: MindNode) => (<RecursiveNode key={child.id} node={child} selectedNodeId={selectedNodeId} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} draggingNodeId={draggingNodeId} dragPositions={dragPositions} dragTargetNodeId={dragTargetNodeId} isMultiDragging={isMultiDragging} awarenessStates={awarenessStates} myUserId={myUserId} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick} onMouseDownOnNode={onMouseDownOnNode} onTextEditComplete={onTextEditComplete} onContextMenu={onContextMenu} onConnectionPointMouseDown={onConnectionPointMouseDown} depth={depth+1} isAnyDragging={isAnyDragging} updateNodeWidth={updateNodeWidth} updateNodeFontSize={updateNodeFontSize} />))}
+      {!node.collapsed && node.children.map((child: MindNode) => (<RecursiveNode key={child.id} node={child} selectedNodeId={selectedNodeId} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} draggingNodeId={draggingNodeId} dragPositions={dragPositions} dragTargetNodeId={dragTargetNodeId} isMultiDragging={isMultiDragging} awarenessStates={awarenessStates} myUserId={myUserId} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick} onMouseDownOnNode={onMouseDownOnNode} onTextEditComplete={onTextEditComplete} onContextMenu={onContextMenu} onConnectionPointMouseDown={onConnectionPointMouseDown} depth={depth+1} isAnyDragging={isAnyDragging} updateNodeWidth={updateNodeWidth} updateNodeFontSize={updateNodeFontSize} toggleCollapse={toggleCollapse} />))}
     </>
   );
 };
