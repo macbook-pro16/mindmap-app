@@ -260,7 +260,7 @@ const NODE_MIN_WIDTH = 80;
 const NODE_PADDING_HORIZONTAL = 40;
 const IMAGE_NODE_MAX_INITIAL_SIZE = 300;
 const STAMP_DEFAULT_WIDTH = 80;
-const STAMP_DEFAULT_HEIGHT = 40;
+const STAMP_DEFAULT_HEIGHT = 80; // Changed for round stamp
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
 const IMAGE_SCALE_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
@@ -420,7 +420,7 @@ const GroupIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCo
 const UngroupIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> );
 const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
 const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
-const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth="2" /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
+const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth={2} /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth={2} /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
 const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16M8 4v16M16 4v16" /></svg> );
 const CloseIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> );
 const StampIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 0v14M12 7v10M7 12h10" /></svg> );
@@ -1279,7 +1279,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (memberError) { console.error('共有マップの取得に失敗しました:', memberError); return; }
 
     const sharedMapIds = (memberMaps || []).map(m => m.map_id);
-    let sharedMaps: any[] = [];
+    let sharedMaps: MapRecord[] = [];
     if (sharedMapIds.length > 0) {
       const { data: sharedData, error: sharedError } = await supabase
         .from('maps')
@@ -1288,16 +1288,16 @@ const MindMapApp = ({ user }: { user: User }) => {
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: false });
       if (sharedError) { console.error('共有マップ詳細の取得に失敗しました:', sharedError); return; }
-      sharedMaps = sharedData || [];
+      sharedMaps = (sharedData || []) as MapRecord[];
     }
 
-    const allMaps = [...(ownMaps || [])];
+    const allMaps = [...(ownMaps || [])] as MapRecord[];
     for (const sm of sharedMaps) {
       if (!allMaps.find(m => m.id === sm.id)) {
         allMaps.push(sm);
       }
     }
-    setSavedMaps(allMaps as MapRecord[]);
+    setSavedMaps(allMaps);
   }, [user.id]);
 
   const fetchMapMembers = useCallback(async () => {
@@ -1757,15 +1757,15 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const handleMapDragEnd = useCallback(async () => {
     if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) {
-      const _savedMaps = [...savedMaps];
-      const draggedItem = _savedMaps.splice(dragMapItemIndex.current, 1)[0];
-      _savedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem);
+      const newSavedMaps = [...savedMaps];
+      const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0];
+      newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem);
       
-      setSavedMaps(_savedMaps);
+      setSavedMaps(newSavedMaps);
       
       try {
         await Promise.all(
-          _savedMaps.map((map, index) => 
+          newSavedMaps.map((map, index) => 
             supabase.from('maps').update({ sort_order: index }).eq('id', map.id)
           )
         );
@@ -2790,7 +2790,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const canvasScrollClass = `w-full h-full overflow-auto pt-14 relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
 
-  // ==================== レンダリング（JSX） ====================
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -2798,7 +2797,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       
-      {/* 画像ポップアップモーダル */}
       {imageModalUrl && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}>
           <div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}>
@@ -2808,7 +2806,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
       
-      {/* 招待モーダル */}
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}>
@@ -2854,7 +2851,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
-      {/* ヘルプモーダル（更新済み） */}
       {showHelpModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -2909,7 +2905,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
-      {/* 左サイドバー */}
       <div className="w-[280px] flex-shrink-0 h-full bg-white border-r border-slate-200 shadow-sm z-[100] flex flex-col relative">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
           <h2 className="font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
@@ -2994,153 +2989,158 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       </div>
 
-      {/* 右側キャンバスエリア */}
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50">
         {!zenMode && (
-          <div className="absolute top-0 left-0 right-0 z-50 flex items-center bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-2 shadow-sm">
-            <input 
-              value={mapTitle} 
-              onChange={e => setMapTitle(e.target.value)} 
-              onBlur={handleHeaderTitleBlur}
-              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-              className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-48 font-bold outline-none rounded-md transition-all text-slate-800 ml-2" 
-              placeholder="NEW" 
-            />
-            <div className="w-px h-6 bg-slate-200 mx-3" />
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-              <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:shadow-none text-slate-600 transition-all" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
-              <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:shadow-none text-slate-600 transition-all" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
-            </div>
-            <div className="w-px h-6 bg-slate-200 mx-3" />
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-              <button onClick={() => selectedNodeId && addChildNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
-              <button onClick={() => { if(!selectedNodeId) return; const n = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if(n?.independent) addIndependentSibling(selectedNodeId, 'after'); else addSiblingNode(selectedNodeId, 'after'); }} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
-              <button onClick={() => { if(!selectedNodeId) return; const n = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if(n?.independent) addIndependentSibling(selectedNodeId, 'before'); else addSiblingNode(selectedNodeId, 'before'); }} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="上に追加 (Shift+Enter)"><SiblingNodeIcon className="rotate-180" /><span className="text-[10px] font-bold">上</span></button>
-              <button onClick={() => selectedNodeId && addParentNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="左に追加 (Ctrl+Enter)"><ParentNodeIcon /><span className="text-[10px] font-bold">左</span></button>
-              <div className="w-px h-4 bg-slate-300 mx-1" />
-              {selectedNodeIds.length >= 2 && (<><button onClick={() => alignNodes('vertical')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="垂直に整列"><AlignVIcon /></button><button onClick={() => alignNodes('horizontal')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="水平に整列"><AlignHIcon /></button><div className="w-px h-4 bg-slate-300 mx-1" /></>)}
-              {totalSelectedCount >= 2 && (<><button onClick={handleGroup} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-indigo-600 transition-all" title="グループ化"><GroupIcon /></button><button onClick={handleUngroup} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-indigo-600 transition-all" title="グループ解除"><UngroupIcon /></button><div className="w-px h-4 bg-slate-300 mx-1" /></>)}
-              <button onClick={() => { 
-                if (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
-                  ydocRef.current?.transact(() => {
-                    selectedNodeIds.forEach(id => { if (id !== yRootRef.current) { yNodesRef.current?.forEach((v, k) => { if (v.children?.includes(id)) yNodesRef.current?.set(k, { ...v, children: v.children.filter(cid => cid !== id) }); }); yNodesRef.current?.delete(id); } });
-                    selectedImageIds.forEach(id => yImagesRef.current?.delete(id));
-                    selectedStickyIds.forEach(id => yStickiesRef.current?.delete(id));
-                    selectedOutlineIds.forEach(id => yOutlinesRef.current?.delete(id));
-                    selectedStampIds.forEach(id => yStampsRef.current?.delete(id));
-                  });
-                  setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
-                } else if (selectedNodeId) {
-                  deleteNode(selectedNodeId);
-                }
-              }} disabled={totalSelectedCount === 0} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-rose-500 transition-all" title="削除 (Delete/Backspace)"><TrashIcon /></button>
-            </div>
-            <div className="w-px h-6 bg-slate-200 mx-3" />
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-              <button onClick={() => setCurrentTool('select')} className={`p-1.5 rounded-md transition-all ${currentTool === 'select' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="選択ツール"><CursorIcon /></button>
-              <div className="w-px h-4 bg-slate-300 mx-1" />
-              <button onClick={() => setCurrentTool('rectangle')} className={`p-1.5 rounded-md transition-all ${currentTool === 'rectangle' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="四角形ツール"><SquareIcon /></button>
-              <button onClick={() => setCurrentTool('circle')} className={`p-1.5 rounded-md transition-all ${currentTool === 'circle' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="円形ツール"><CircleIcon /></button>
-              <button onClick={() => setCurrentTool('triangle')} className={`p-1.5 rounded-md transition-all ${currentTool === 'triangle' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="三角形ツール"><TriangleIcon /></button>
-              <button onClick={() => setCurrentTool('text')} className={`p-1.5 rounded-md transition-all ${currentTool === 'text' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="テキストツール"><TextOutlineIcon /></button>
-              <div className="w-px h-4 bg-slate-300 mx-1" />
-              <button onClick={handleHeaderAddSticky} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-amber-600 transition-all" title="付箋を追加"><StickyIcon /></button>
-              <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-sky-600 transition-all" title="画像を添付（自由配置）"><ImageIcon /></button>
-              <button onClick={() => { const container = scrollContainerRef.current; if (container) { const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel; const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel; addImageNodeWithUpload(x, y); } }} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-purple-600 transition-all" title="画像専用ノードを追加"><ImageNodeIcon /></button>
-            </div>
-            <div className="flex items-center gap-1 ml-3">
-              {COLOR_PALETTE.map(cp => (<button key={cp.label} onClick={() => handleHeaderColorSelect(cp.bg, cp.text)} disabled={totalSelectedCount === 0} className="w-6 h-6 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm" style={{ backgroundColor: cp.bg }} title={cp.label} />))}
-            </div>
-            <div className="w-px h-6 bg-slate-200 mx-3" />
-            <div className="flex items-center gap-2">
-              <select value={edgeStyle} onChange={e => handleEdgeStyleChange(e.target.value as EdgeStyle)} className="text-xs border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 cursor-pointer shadow-sm transition-colors font-medium">
-                <option value="bezier">曲線</option>
-                <option value="step">直角</option>
-                <option value="straight">直線</option>
-              </select>
-            </div>
-            {/* ★ スタンプ設定UI */}
-            <div className="flex items-center gap-1 ml-2 border-l border-slate-200 pl-3">
-              <input
-                type="text"
-                value={stampText}
-                onChange={e => setStampText(e.target.value.slice(0, 12))}
-                className="text-xs w-20 border border-slate-300 rounded px-1 py-0.5"
-                placeholder="印鑑名"
-                title="印鑑に表示する名前"
+          <div className="absolute top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm flex flex-col">
+            {/* 上段：ツールバー１ */}
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+              <input 
+                value={mapTitle} 
+                onChange={e => setMapTitle(e.target.value)} 
+                onBlur={handleHeaderTitleBlur}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-48 font-bold outline-none rounded-md transition-all text-slate-800" 
+                placeholder="NEW" 
               />
-              <button
-                onClick={() => {
-                  const container = scrollContainerRef.current;
-                  if (container) {
-                    const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
-                    const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
-                    addStamp(x, y);
-                  }
-                }}
-                className="p-1.5 rounded-md hover:bg-slate-100 text-indigo-600 transition-all"
-                title="自分の印鑑を配置 (Ctrl+Shift+S)"
-              >
-                <StampIcon />
-              </button>
-              <button
-                onClick={() => setShowColorPalette({ stampId: 'preview', x: 0, y: 0 })}
-                className="w-5 h-5 rounded-full border border-slate-300 shadow-sm"
-                style={{ backgroundColor: stampColor }}
-                title="印鑑の色を変更"
-              />
-            </div>
-            <div className="flex items-center gap-2 ml-4">
-              {isDirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>未保存</span>}
-              {saveMessage === '保存完了' && <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>保存済み</span>}
-            </div>
-            <div className="ml-auto flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
-              <button onClick={() => setShowHelpModal(true)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="ショートカット一覧"><HelpIcon /></button>
-              <div className="w-px h-4 bg-slate-300 mx-0.5" />
-              <button onClick={scrollToHome} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="ホーム位置に戻る"><HomeIcon /></button>
-              <div className="w-px h-4 bg-slate-300 mx-0.5" />
-              <button onClick={() => changeZoom(-0.1)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="縮小">−</button>
-              <span className="text-xs text-slate-600 font-semibold px-2 w-14 text-center cursor-pointer" onClick={() => setZoomLevel(1.0)} title="100%に戻す">{Math.round(zoomLevel * 100)}%</span>
-              <button onClick={() => changeZoom(0.1)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="拡大">＋</button>
-            </div>
-            <div className="w-px h-6 bg-slate-200 mx-3" />
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
-                <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
-                <span className="text-[10px] font-medium text-slate-500 hidden md:block">{connectionStatus === '接続済み' ? 'Online' : 'Offline'}</span>
+              <div className="w-px h-6 bg-slate-200" />
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:shadow-none text-slate-600 transition-all" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
+                <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:shadow-none text-slate-600 transition-all" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
               </div>
-              <div className="relative">
-                <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1.5 transition-colors border border-transparent hover:border-slate-200" title="参加者一覧">
-                  <div className="flex -space-x-1.5">
-                    {allParticipants.slice(0, 3).map((p) => (
-                      <div key={p.user_id} className="relative">
-                        <div className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>
-                        <div className={`absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-2 h-2 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
-                      </div>
-                    ))}
-                    {allParticipants.length > 3 && <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm">+{allParticipants.length - 3}</div>}
-                  </div>
+              <div className="w-px h-6 bg-slate-200" />
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                <button onClick={() => selectedNodeId && addChildNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
+                <button onClick={() => { if(!selectedNodeId) return; const n = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if(n?.independent) addIndependentSibling(selectedNodeId, 'after'); else addSiblingNode(selectedNodeId, 'after'); }} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
+                <button onClick={() => { if(!selectedNodeId) return; const n = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if(n?.independent) addIndependentSibling(selectedNodeId, 'before'); else addSiblingNode(selectedNodeId, 'before'); }} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="上に追加 (Shift+Enter)"><SiblingNodeIcon className="rotate-180" /><span className="text-[10px] font-bold">上</span></button>
+                <button onClick={() => selectedNodeId && addParentNode(selectedNodeId)} disabled={!selectedNodeId} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-indigo-600 flex items-center gap-1 transition-all" title="左に追加 (Ctrl+Enter)"><ParentNodeIcon /><span className="text-[10px] font-bold">左</span></button>
+                <div className="w-px h-4 bg-slate-300 mx-1" />
+                {selectedNodeIds.length >= 2 && (<><button onClick={() => alignNodes('vertical')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="垂直に整列"><AlignVIcon /></button><button onClick={() => alignNodes('horizontal')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="水平に整列"><AlignHIcon /></button><div className="w-px h-4 bg-slate-300 mx-1" /></>)}
+                {totalSelectedCount >= 2 && (<><button onClick={handleGroup} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-indigo-600 transition-all" title="グループ化"><GroupIcon /></button><button onClick={handleUngroup} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-indigo-600 transition-all" title="グループ解除"><UngroupIcon /></button><div className="w-px h-4 bg-slate-300 mx-1" /></>)}
+                <button onClick={() => { 
+                  if (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
+                    ydocRef.current?.transact(() => {
+                      selectedNodeIds.forEach(id => { if (id !== yRootRef.current) { yNodesRef.current?.forEach((v, k) => { if (v.children?.includes(id)) yNodesRef.current?.set(k, { ...v, children: v.children.filter(cid => cid !== id) }); }); yNodesRef.current?.delete(id); } });
+                      selectedImageIds.forEach(id => yImagesRef.current?.delete(id));
+                      selectedStickyIds.forEach(id => yStickiesRef.current?.delete(id));
+                      selectedOutlineIds.forEach(id => yOutlinesRef.current?.delete(id));
+                      selectedStampIds.forEach(id => yStampsRef.current?.delete(id));
+                    });
+                    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
+                  } else if (selectedNodeId) {
+                    deleteNode(selectedNodeId);
+                  }
+                }} disabled={totalSelectedCount === 0} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-40 text-rose-500 transition-all" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+              </div>
+              <div className="w-px h-6 bg-slate-200" />
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                <button onClick={() => setCurrentTool('select')} className={`p-1.5 rounded-md transition-all ${currentTool === 'select' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="選択ツール"><CursorIcon /></button>
+                <div className="w-px h-4 bg-slate-300 mx-1" />
+                <button onClick={() => setCurrentTool('rectangle')} className={`p-1.5 rounded-md transition-all ${currentTool === 'rectangle' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="四角形ツール"><SquareIcon /></button>
+                <button onClick={() => setCurrentTool('circle')} className={`p-1.5 rounded-md transition-all ${currentTool === 'circle' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="円形ツール"><CircleIcon /></button>
+                <button onClick={() => setCurrentTool('triangle')} className={`p-1.5 rounded-md transition-all ${currentTool === 'triangle' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="三角形ツール"><TriangleIcon /></button>
+                <button onClick={() => setCurrentTool('text')} className={`p-1.5 rounded-md transition-all ${currentTool === 'text' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'hover:bg-white hover:shadow-sm text-slate-600'}`} title="テキストツール"><TextOutlineIcon /></button>
+                <div className="w-px h-4 bg-slate-300 mx-1" />
+                <button onClick={handleHeaderAddSticky} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-amber-600 transition-all" title="付箋を追加"><StickyIcon /></button>
+                <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-sky-600 transition-all" title="画像を添付（自由配置）"><ImageIcon /></button>
+                <button onClick={() => { const container = scrollContainerRef.current; if (container) { const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel; const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel; addImageNodeWithUpload(x, y); } }} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-purple-600 transition-all" title="画像専用ノードを追加"><ImageNodeIcon /></button>
+              </div>
+              <div className="flex items-center gap-1">
+                {COLOR_PALETTE.map(cp => (<button key={cp.label} onClick={() => handleHeaderColorSelect(cp.bg, cp.text)} disabled={totalSelectedCount === 0} className="w-6 h-6 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm" style={{ backgroundColor: cp.bg }} title={cp.label} />))}
+              </div>
+              <div className="w-px h-6 bg-slate-200" />
+              <div className="flex items-center gap-2">
+                <select value={edgeStyle} onChange={e => handleEdgeStyleChange(e.target.value as EdgeStyle)} className="text-xs border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 cursor-pointer shadow-sm transition-colors font-medium">
+                  <option value="bezier">曲線</option>
+                  <option value="step">直角</option>
+                  <option value="straight">直線</option>
+                </select>
+              </div>
+              {/* ★ スタンプ設定UI */}
+              <div className="flex items-center gap-1 ml-2 border-l border-slate-200 pl-3">
+                <input
+                  type="text"
+                  value={stampText}
+                  onChange={e => setStampText(e.target.value.slice(0, 12))}
+                  className="text-xs w-20 border border-slate-300 rounded px-1 py-0.5"
+                  placeholder="印鑑名"
+                  title="印鑑に表示する名前"
+                />
+                <button
+                  onClick={() => {
+                    const container = scrollContainerRef.current;
+                    if (container) {
+                      const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
+                      const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
+                      addStamp(x, y);
+                    }
+                  }}
+                  className="p-1.5 rounded-md hover:bg-slate-100 text-indigo-600 transition-all"
+                  title="自分の印鑑を配置 (Ctrl+Shift+S)"
+                >
+                  <StampIcon />
                 </button>
-                {showParticipants && (
-                  <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50">
-                    <h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">メンバー ({allParticipants.length})</h3>
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                <button
+                  onClick={() => setShowColorPalette({ stampId: 'preview', x: 0, y: 0 })}
+                  className="w-5 h-5 rounded-full border border-slate-300 shadow-sm"
+                  style={{ backgroundColor: stampColor }}
+                  title="印鑑の色を変更"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                {isDirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>未保存</span>}
+                {saveMessage === '保存完了' && <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>保存済み</span>}
+              </div>
+            </div>
+            {/* 下段：参加者・ズーム・その他 */}
+            <div className="flex flex-wrap items-center justify-between px-4 py-1.5 bg-slate-50/50 border-t border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-white rounded-md border border-slate-200 shadow-inner" title={connectionStatus}>
+                  <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
+                  <span className="text-[10px] font-medium text-slate-500">{connectionStatus === '接続済み' ? 'Online' : 'Offline'}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1.5 transition-colors border border-transparent hover:border-slate-200" title="参加者一覧">
+                    <div className="flex flex-wrap -space-x-1.5 max-w-[200px]">
                       {allParticipants.map((p) => (
-                        <div key={p.user_id} className="flex items-center gap-3 text-sm">
-                          <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
-                            {getInitial(p.email)}
-                            <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className={`text-slate-800 font-medium truncate leading-tight ${!p.isOnline ? 'text-slate-400' : ''}`}>{p.email}{p.isSelf ? ' (You)' : ''}</div>
-                            <div className="text-slate-400 text-[10px] mt-0.5">{p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}</div>
-                          </div>
+                        <div key={p.user_id} className="relative">
+                          <div className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div>
+                          <div className={`absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-2 h-2 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button>
-                  </div>
-                )}
+                  </button>
+                  {showParticipants && (
+                    <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50">
+                      <h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">メンバー ({allParticipants.length})</h3>
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                        {allParticipants.map((p) => (
+                          <div key={p.user_id} className="flex items-center gap-3 text-sm">
+                            <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
+                              {getInitial(p.email)}
+                              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className={`text-slate-800 font-medium truncate leading-tight ${!p.isOnline ? 'text-slate-400' : ''}`}>{p.email}{p.isSelf ? ' (You)' : ''}</div>
+                              <div className="text-slate-400 text-[10px] mt-0.5">{p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                  <button onClick={() => setShowHelpModal(true)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="ショートカット一覧"><HelpIcon /></button>
+                  <div className="w-px h-4 bg-slate-300 mx-0.5" />
+                  <button onClick={scrollToHome} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="ホーム位置に戻る"><HomeIcon /></button>
+                  <div className="w-px h-4 bg-slate-300 mx-0.5" />
+                  <button onClick={() => changeZoom(-0.1)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="縮小">−</button>
+                  <span className="text-xs text-slate-600 font-semibold px-2 w-14 text-center cursor-pointer" onClick={() => setZoomLevel(1.0)} title="100%に戻す">{Math.round(zoomLevel * 100)}%</span>
+                  <button onClick={() => changeZoom(0.1)} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="拡大">＋</button>
+                </div>
               </div>
             </div>
           </div>
@@ -3148,7 +3148,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         
         {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-4 right-4 z-50 bg-slate-900/80 backdrop-blur text-white border border-slate-700 rounded-full px-5 py-2 text-xs font-bold shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105">ZEN解除 (Alt+Cmd+F)</button>}
         
-        {/* コンテキストメニュー */}
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
             {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('toggleCollapse')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">折りたたみ/展開</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
@@ -3202,7 +3201,6 @@ const MindMapApp = ({ user }: { user: User }) => {
             }} 
             onContextMenu={handleCanvasContextMenu}
           >
-            {/* フローティングツールバー */}
             {showFloatingToolbar && floatingToolbarPos && (
               <div 
                 className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5"
@@ -3269,7 +3267,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             )}
 
-            {/* アウトライン（図形・テキスト） */}
             {outlines.map((outline: OutlineData) => {
               const isEditing = editingOutlineId === outline.id;
               const isSelected = selectedOutlineIds.includes(outline.id);
@@ -3314,7 +3311,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               );
             })}
 
-            {/* 画像（自由配置） */}
             {images.map((image: ImageData) => {
               const isSelected = selectedImageIds.includes(image.id);
               return (
@@ -3337,7 +3333,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               );
             })}
 
-            {/* 付箋 */}
             {stickies.map((sticky: StickyData) => {
               const isEditing = editingStickyId === sticky.id;
               const isSelected = selectedStickyIds.includes(sticky.id);
@@ -3382,14 +3377,28 @@ const MindMapApp = ({ user }: { user: User }) => {
             {stamps.map((stamp) => (
               <div
                 key={stamp.id}
-                className={`absolute cursor-move rounded-md shadow-md flex items-center justify-center font-bold transition-all ${selectedStampIds.includes(stamp.id) ? 'ring-2 ring-indigo-500 ring-offset-2' : 'hover:shadow-lg'}`}
-                style={{ left: stamp.x, top: stamp.y, width: stamp.width, height: stamp.height, backgroundColor: stamp.color, color: stamp.textColor, zIndex: stamp.zIndex ?? 3 }}
+                className={`absolute cursor-move shadow-md flex items-center justify-center font-bold transition-all ${selectedStampIds.includes(stamp.id) ? 'ring-2 ring-indigo-500 ring-offset-2' : 'hover:shadow-lg'}`}
+                style={{
+                  left: stamp.x,
+                  top: stamp.y,
+                  width: 80,
+                  height: 80,
+                  backgroundColor: stamp.color,
+                  color: stamp.textColor,
+                  border: `2px solid ${stamp.textColor}`,
+                  borderRadius: '50%',
+                  zIndex: stamp.zIndex ?? 3,
+                  writingMode: 'vertical-rl' as const,
+                  textOrientation: 'upright',
+                  fontSize: '14px',
+                  padding: '4px'
+                }}
                 onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)}
                 onContextMenu={(e) => handleStampContextMenu(e, stamp.id)}
                 onClick={(e) => handleStampClick(e, stamp.id)}
                 title={`${stamp.email} の印鑑`}
               >
-                <span className="text-sm font-bold truncate px-2">{stamp.text}</span>
+                {stamp.text}
               </div>
             ))}
 
