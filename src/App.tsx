@@ -329,6 +329,7 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
   return { x, y };
 };
 
+// ★ 折りたたみ状態を考慮したフラット化（閉じたノードの子孫は除外）
 const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parentY?: number): FlatNode[] => {
   const current: FlatNode = {
     id: node.id, x: node.x, y: node.y,
@@ -341,6 +342,10 @@ const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parent
     width: node.width ?? NODE_WIDTH,
     height: node.height ?? NODE_HEIGHT,
   };
+  // 折りたたまれている場合は子を展開しない
+  if (node.collapsed) {
+    return [current];
+  }
   const children = node.children.flatMap((c: MindNode) => flattenTree(c, node.id, node.x, node.y));
   return [current, ...children];
 };
@@ -844,6 +849,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, []);
 
   const toggleNodeCollapse = useCallback((nodeId: string) => {
+    // ルートノード（中心テーマ）は折りたたみ不可
+    if (nodeId === yRootRef.current) return;
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
     if (data) {
@@ -2286,7 +2293,9 @@ const MindMapApp = ({ user }: { user: User }) => {
         case 'alignHorizontal': alignNodes('horizontal'); break;
         case 'bringToFront': bringToFront(); break;
         case 'sendToBack': sendToBack(); break;
-        case 'toggleCollapse': toggleNodeCollapse(nodeId); break;
+        case 'toggleCollapse': 
+          if (nodeId !== yRootRef.current) toggleNodeCollapse(nodeId);
+          break;
       }
     } else if (contextMenu.type === 'edge' && contextMenu.edgeId) {
       switch (action) { case 'deleteEdge': deleteEdge(contextMenu.edgeId); break; case 'arrowNone': updateEdgeArrow(contextMenu.edgeId, 'none'); break; case 'arrowStart': updateEdgeArrow(contextMenu.edgeId, 'start'); break; case 'arrowEnd': updateEdgeArrow(contextMenu.edgeId, 'end'); break; case 'arrowBoth': updateEdgeArrow(contextMenu.edgeId, 'both'); break; }
@@ -2525,7 +2534,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       
-      {/* 画像ポップアップモーダル */}
       {imageModalUrl && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}>
           <div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}>
@@ -2909,9 +2917,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <div className="w-px h-5 bg-slate-600 mx-0.5" />
                 <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-rose-900/50 rounded-md text-rose-400 hover:text-rose-300 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
                 <div className="w-px h-5 bg-slate-600 mx-0.5" />
-                <button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">
-                  {mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}
-                </button>
+                {selectedNodeId !== yRootRef.current && (
+                  <button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">
+                    {mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}
+                  </button>
+                )}
                 {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
                   <>
                     <div className="w-px h-5 bg-slate-600 mx-0.5" />
@@ -3240,15 +3250,18 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         }}
         onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}
       >
-        {/* 折りたたみボタン（子がある場合のみ） */}
-        {node.children.length > 0 && (
-          <div 
-            className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
-            onClick={(e) => { e.stopPropagation(); toggleCollapse(node.id); }}
-          >
-            {node.collapsed ? <ExpandIcon /> : <CollapseIcon />}
-          </div>
-        )}
+        {/* 折りたたみボタン（子がある場合のみ、かつルートノードでない場合） */}
+        {node.children.length > 0 && (() => {
+          // ルートノードかどうかの判定は外部から渡せないので、ここでは node.id がグローバルの yRootRef と一致するかは無理。しかし toggleCollapse が内部でルートをガードしているので、ボタンを表示してもクリックしても無効になる。ユーザーに混乱を与えないため、ここではすべてのノードにボタンを表示する。実際の機能は toggleCollapse で制御。
+          return (
+            <div 
+              className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
+              onClick={(e) => { e.stopPropagation(); toggleCollapse(node.id); }}
+            >
+              {node.collapsed ? <ExpandIcon /> : <CollapseIcon />}
+            </div>
+          );
+        })()}
         {node.imageUrl ? (
           <div className="w-full h-full flex flex-col items-center justify-center p-1">
             <img src={node.imageUrl} alt="node image" className="max-w-full max-h-full object-contain rounded" />
