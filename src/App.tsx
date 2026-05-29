@@ -20,10 +20,10 @@ export interface YjsNodeData {
   width?: number;
   height?: number;
   fontSize?: number;
-  collapsed?: boolean;           // ★ 折りたたみ状態
-  imageUrl?: string;             // ★ 画像ノード用URL
-  imageWidth?: number;           // ★ 画像の表示幅（px）
-  imageHeight?: number;          // ★ 画像の表示高さ（px）
+  collapsed?: boolean;
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 export interface YjsEdgeData {
@@ -82,8 +82,8 @@ export interface MindNode {
   width?: number;
   height?: number;
   fontSize?: number;
-  collapsed?: boolean;           // ★ 折りたたみ状態
-  imageUrl?: string;             // ★ 画像URL
+  collapsed?: boolean;
+  imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
 }
@@ -556,7 +556,7 @@ const App = () => {
 const MindMapApp = ({ user }: { user: User }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageFileInputRef = useRef<HTMLInputElement>(null); // 画像ノード用
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
   const [mapId, setMapId] = useState<number | null>(null);
   const [mapTitle, setMapTitle] = useState('NEW');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -818,11 +818,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) nodes.set(nodeId, { ...data, width });
   }, []);
 
-  const updateNodeHeight = useCallback((nodeId: string, height: number) => {
-    const nodes = yNodesRef.current; if (!nodes) return;
-    const data = nodes.get(nodeId);
-    if (data) nodes.set(nodeId, { ...data, height });
-  }, []);
+  // ★ updateNodeHeight は未使用のため削除しました
 
   const toggleNodeCollapse = useCallback((nodeId: string) => {
     const nodes = yNodesRef.current; if (!nodes) return;
