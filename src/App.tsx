@@ -903,12 +903,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) yStamps.set(stampId, { ...data, color, textColor });
   }, []);
 
-  const updateStampText = useCallback((stampId: string, text: string) => {
-    const yStamps = yStampsRef.current; if (!yStamps) return;
-    const data = yStamps.get(stampId);
-    if (data) yStamps.set(stampId, { ...data, text });
-  }, []);
-
   const updateOutlineFontSize = useCallback((outlineId: string, fontSize: number) => {
     const yOutlines = yOutlinesRef.current; if (!yOutlines) return;
     const data = yOutlines.get(outlineId);
