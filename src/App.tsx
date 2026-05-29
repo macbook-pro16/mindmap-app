@@ -109,6 +109,7 @@ export interface MapRecord {
   data: MindNode;
   room_id: string;
   user_id: string;
+  owner_email?: string;        // ★ オーナーのメールアドレス
   created_at: string;
   updated_at?: string;
   sort_order?: number;
@@ -1066,6 +1067,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     fetchMapMembers();
   }, [fetchMapMembers, mapId]);
 
+  // ★ 共有可能かどうかの判定（オーナーまたはメンバー）
+  const canShare = useMemo(() => {
+    if (!mapId) return false;
+    if (mapOwnerId === user.id) return true;
+    return mapMembers.some(m => m.user_id === user.id);
+  }, [mapId, mapOwnerId, user.id, mapMembers]);
+
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1203,6 +1211,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       data: initialTree, 
       room_id: newRoom, 
       user_id: user.id, 
+      owner_email: user.email,   // ★ owner_email 保存
       updated_at: new Date().toISOString() 
     }]).select();
 
@@ -1219,7 +1228,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       setTimeout(() => setSaveMessage(''), 2500);
       await fetchMaps();
     }
-  }, [user.id, fetchMaps]);
+  }, [user.id, user.email, fetchMaps]);
 
   const handleUndo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.undo(); }, []);
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
@@ -1251,7 +1260,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       try {
         const { data: invitation, error } = await supabase
           .from('map_invitations')
-          .select('*, maps:maps!inner(id, title, room_id, data, user_id, updated_at)')
+          .select('*, maps:maps!inner(id, title, room_id, data, user_id, owner_email, updated_at)')
           .eq('invite_code', inviteCode)
           .single();
         if (error || !invitation) {
@@ -1344,6 +1353,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         data: tree, 
         room_id: roomId, 
         user_id: user.id, 
+        owner_email: user.email,   // ★ owner_email 保存
         updated_at: new Date().toISOString() 
       }]).select();
       resultData = data;
@@ -1366,7 +1376,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     } else {
       alert('保存に成功しましたが、データが返ってきませんでした');
     }
-  }, [mapId, mapTitle, roomId, user.id, fetchMaps]);
+  }, [mapId, mapTitle, roomId, user.id, user.email, fetchMaps]);
 
   const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
@@ -1376,11 +1386,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       data: map.data,
       room_id: newRoom,
       user_id: user.id,
+      owner_email: user.email,
       updated_at: new Date().toISOString()
     });
     if (insertError) { alert('コピーに失敗しました'); return; }
     await fetchMaps();
-  }, [user.id, fetchMaps]);
+  }, [user.id, user.email, fetchMaps]);
 
   const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
@@ -2312,8 +2323,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId }); });
   const allParticipants = Array.from(participantsMap.values());
 
-  const isMapOwner = mapOwnerId === user.id;
-
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
 
@@ -2432,7 +2441,8 @@ const MindMapApp = ({ user }: { user: User }) => {
           <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg shadow-sm w-full font-medium transition-colors"><PlusIcon /> 新規マップ作成</button>
           <div className="flex gap-2">
             <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm"><SaveIcon /> 保存</button>
-            <button onClick={handleShare} disabled={!isMapOwner} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"><LinkIcon /> 共有</button>
+            {/* ★ 共有ボタンの有効条件を canShare に変更 */}
+            <button onClick={handleShare} disabled={!canShare} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"><LinkIcon /> 共有</button>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-3 bg-slate-50/50">
@@ -2473,7 +2483,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <div className="flex flex-col px-3 pb-2.5 pt-1 cursor-default">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">{map.user_id === user.id ? '👑 オーナー' : '🤝 共有マップ'}</span>
+                        {/* ★ オーナーメールを表示 */}
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
+                          {map.user_id === user.id ? '👑 オーナー' : `🤝 オーナー: ${map.owner_email || '不明'}`}
+                        </span>
                         <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
                           <button onClick={(e) => handleCopyMap(map, e)} className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors" title="コピー"><CopyIcon /></button>
                           {map.user_id === user.id ? (
@@ -2961,7 +2974,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const handleBlur = () => { if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); };
   const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      if (e.nativeEvent.isComposing) return; // IME編集中は何もしない
+      if (e.nativeEvent.isComposing) return;
       e.preventDefault();
       if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value);
     } else if (e.key === 'Escape') {
