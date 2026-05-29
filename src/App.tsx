@@ -385,6 +385,7 @@ const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="curren
 const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth="2" /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
 const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16M8 4v16M16 4v16" /></svg> );
+const CloseIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -687,6 +688,9 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ★ 画像ポップアップ用 state
+  const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
+
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
            draggingImageId !== null || draggingStickyId !== null || draggingOutlineId !== null || 
@@ -849,7 +853,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 画像ノードのリサイズ
   const resizeImageNode = useCallback((nodeId: string, scale: number) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
@@ -906,7 +909,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedNodeIds([newParentId]);
   }, []);
 
-  // 通常ノード追加（独立トピック）もしくは画像ノード追加（画像URL指定あり）
   const addNodeAtPosition = useCallback((x: number, y: number, isImageNode: boolean = false, imageUrl?: string, imageWidth?: number, imageHeight?: number) => {
     const nodes = yNodesRef.current, rootId = yRootRef.current; if (!nodes || !rootId) return;
     const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(x, y, nodes);
@@ -938,7 +940,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedNodeIds([childId]);
   }, []);
 
-  // 画像アップロード＋画像専用ノード追加（元の縦横比を維持）
   const addImageNodeWithUpload = useCallback(async (x: number, y: number) => {
     if (!imageFileInputRef.current) return;
     imageFileInputRef.current.onchange = async (e: Event) => {
@@ -2366,7 +2367,15 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu, showColorPalette]);
 
-  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); setEditingNodeId(nodeId); }, []);
+  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    const node = mindMap ? findNodeById(mindMap, nodeId) : null;
+    if (node?.imageUrl) {
+      setImageModalUrl(node.imageUrl);
+    } else {
+      setEditingNodeId(nodeId);
+    }
+  }, [mindMap]);
   const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); }, [closeContextMenu]);
@@ -2516,6 +2525,18 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       
+      {/* 画像ポップアップモーダル */}
+      {imageModalUrl && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}>
+          <div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setImageModalUrl(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-1 shadow-lg hover:bg-slate-100 transition-colors z-10">
+              <CloseIcon />
+            </button>
+            <img src={imageModalUrl} alt="拡大画像" className="max-w-full max-h-[85vh] object-contain rounded" />
+          </div>
+        </div>
+      )}
+      
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}>
@@ -2579,6 +2600,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li>
                   <li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック</kbd></li>
                   <li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">画像を拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li>
                 </ul>
               </div>
               <div>
@@ -2890,7 +2912,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">
                   {mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}
                 </button>
-                {/* ★ 画像ノード用リサイズボタン */}
                 {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
                   <>
                     <div className="w-px h-5 bg-slate-600 mx-0.5" />
