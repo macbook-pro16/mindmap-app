@@ -6,8 +6,6 @@ import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
 import type { RealtimeChannel, User } from '@supabase/supabase-js';
 
-declare var process: any;
-
 // --------------------- 型定義 ---------------------
 export interface YjsNodeData {
   text: string;
@@ -642,8 +640,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
 
-  // ★ 自動保存用のタイマー
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // ★ 自動保存用のタイマー（ブラウザ環境対応）
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1077,7 +1075,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     return mapMembers.some(m => m.user_id === user.id);
   }, [mapId, mapOwnerId, user.id, mapMembers]);
 
-  // ★ 自動保存：Yjs の更新をデータベースに自動保存する
+  // ★ 自動保存：Yjs の更新をデータベースに自動保存する（修正: 依存配列を調整）
   useEffect(() => {
     if (!ydocRef.current || !yNodesRef.current || !yRootRef.current || !roomId) return;
     
@@ -1126,12 +1124,13 @@ const MindMapApp = ({ user }: { user: User }) => {
       autoSaveTimerRef.current = setTimeout(autoSave, 500);
     };
     
-    ydocRef.current.on('update', handleUpdate);
+    const doc = ydocRef.current;
+    doc.on('update', handleUpdate);
     return () => {
-      ydocRef.current?.off('update', handleUpdate);
+      doc.off('update', handleUpdate);
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [ydocRef.current, yNodesRef.current, yRootRef.current, roomId, mapId, mapTitle, user.id, user.email]);
+  }, [mapId, mapTitle, roomId, user.id, user.email]); // ydocRef.current は依存配列から除外（ref の変化では再実行されないが、roomId でカバー）
 
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
