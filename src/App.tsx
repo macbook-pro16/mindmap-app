@@ -24,6 +24,7 @@ export interface YjsNodeData {
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
+  imageScale?: number;
 }
 
 export interface YjsEdgeData {
@@ -86,6 +87,7 @@ export interface MindNode {
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
+  imageScale?: number;
 }
 
 export interface FlatNode {
@@ -224,10 +226,10 @@ const NODE_HEIGHT = 50;
 const NODE_DEFAULT_FONT_SIZE = 14;
 const NODE_MIN_WIDTH = 80;
 const NODE_PADDING_HORIZONTAL = 40;
-const IMAGE_NODE_MIN_WIDTH = 120;
-const IMAGE_NODE_MIN_HEIGHT = 120;
+const IMAGE_NODE_MAX_INITIAL_SIZE = 300;
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
+const IMAGE_SCALE_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
 
 let _measureCanvas: HTMLCanvasElement | null = null;
 const getMeasureCanvas = (): CanvasRenderingContext2D => {
@@ -382,6 +384,7 @@ const UngroupIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="current
 const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
 const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth="2" /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
+const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16M8 4v16M16 4v16" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -391,6 +394,19 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
     const childIds = (data.children || []) as string[];
     const children = childIds.map(convert).filter((c): c is MindNode => c !== null);
     const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+    let width = data.width;
+    let height = data.height;
+    if (data.imageUrl && data.imageWidth && data.imageHeight) {
+      const scale = data.imageScale ?? 1.0;
+      width = data.imageWidth * scale;
+      height = data.imageHeight * scale;
+    } else if (!width && data.imageUrl) {
+      width = IMAGE_NODE_MAX_INITIAL_SIZE;
+      height = IMAGE_NODE_MAX_INITIAL_SIZE;
+    } else if (!width) {
+      width = computeNodeWidth(data.text, fontSize);
+      height = NODE_HEIGHT;
+    }
     return {
       id, text: data.text, x: data.x, y: data.y,
       independent: data.independent ?? false,
@@ -398,13 +414,13 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       textColor: data.textColor ?? '#334155',
       groupId: data.groupId,
       zIndex: data.zIndex,
-      width: data.width ?? (data.imageUrl ? IMAGE_NODE_MIN_WIDTH : computeNodeWidth(data.text, fontSize)),
-      height: data.height ?? (data.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT),
+      width, height,
       fontSize,
       collapsed: data.collapsed ?? false,
       imageUrl: data.imageUrl,
       imageWidth: data.imageWidth,
       imageHeight: data.imageHeight,
+      imageScale: data.imageScale ?? 1.0,
       children,
     };
   };
@@ -426,6 +442,7 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     imageUrl: root.imageUrl,
     imageWidth: root.imageWidth,
     imageHeight: root.imageHeight,
+    imageScale: root.imageScale ?? 1.0,
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -470,8 +487,12 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
   if (!mindMap) return null;
   const node = findNodeById(mindMap, nodeId);
   if (!node) return null;
-  const w = node.width ?? (node.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
-  const h = node.height ?? (node.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
+  let w = node.width ?? NODE_WIDTH;
+  let h = node.height ?? NODE_HEIGHT;
+  if (node.imageUrl && node.imageWidth && node.imageHeight && node.imageScale !== undefined) {
+    w = node.imageWidth * node.imageScale;
+    h = node.imageHeight * node.imageScale;
+  }
   if (nodeId === draggingNodeId && dragPositions[nodeId]) return { x: dragPositions[nodeId].x, y: dragPositions[nodeId].y, width: w, height: h };
   return { x: node.x, y: node.y, width: w, height: h };
 };
@@ -818,14 +839,25 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) nodes.set(nodeId, { ...data, width });
   }, []);
 
-  // ★ updateNodeHeight は未使用のため削除しました
-
   const toggleNodeCollapse = useCallback((nodeId: string) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
     if (data) {
       ydocRef.current?.transact(() => {
         nodes.set(nodeId, { ...data, collapsed: !data.collapsed });
+      });
+    }
+  }, []);
+
+  // ★ 画像ノードのリサイズ
+  const resizeImageNode = useCallback((nodeId: string, scale: number) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data && data.imageUrl && data.imageWidth && data.imageHeight) {
+      ydocRef.current?.transact(() => {
+        const newWidth = data.imageWidth! * scale;
+        const newHeight = data.imageHeight! * scale;
+        nodes.set(nodeId, { ...data, imageScale: scale, width: newWidth, height: newHeight });
       });
     }
   }, []);
@@ -874,25 +906,39 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedNodeIds([newParentId]);
   }, []);
 
-  const addNodeAtPosition = useCallback((x: number, y: number, isImageNode: boolean = false, imageUrl?: string) => {
+  // 通常ノード追加（独立トピック）もしくは画像ノード追加（画像URL指定あり）
+  const addNodeAtPosition = useCallback((x: number, y: number, isImageNode: boolean = false, imageUrl?: string, imageWidth?: number, imageHeight?: number) => {
     const nodes = yNodesRef.current, rootId = yRootRef.current; if (!nodes || !rootId) return;
     const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(x, y, nodes);
-    const defaultText = isImageNode ? '' : '独立トピック';
-    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
-    const initialWidth = isImageNode ? IMAGE_NODE_MIN_WIDTH : computeNodeWidth(defaultText, defaultFontSize);
-    const initialHeight = isImageNode ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT;
-    ydocRef.current?.transact(() => {
-      nodes.set(childId, {
-        text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true,
-        bgColor: '#f8fafc', textColor: '#334155',
-        width: initialWidth, height: initialHeight, fontSize: defaultFontSize,
-        collapsed: false, imageUrl: imageUrl
+    if (isImageNode && imageUrl && imageWidth && imageHeight) {
+      ydocRef.current?.transact(() => {
+        nodes.set(childId, {
+          text: '', x: safePos.x, y: safePos.y, children: [], independent: true,
+          bgColor: '#f8fafc', textColor: '#334155',
+          width: imageWidth, height: imageHeight,
+          collapsed: false,
+          imageUrl, imageWidth, imageHeight, imageScale: 1.0
+        });
+        const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
       });
-      const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
-    });
+    } else {
+      const defaultText = '独立トピック';
+      const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
+      const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+      ydocRef.current?.transact(() => {
+        nodes.set(childId, {
+          text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true,
+          bgColor: '#f8fafc', textColor: '#334155',
+          width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize,
+          collapsed: false
+        });
+        const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
+      });
+    }
     setSelectedNodeIds([childId]);
   }, []);
 
+  // 画像アップロード＋画像専用ノード追加（元の縦横比を維持）
   const addImageNodeWithUpload = useCallback(async (x: number, y: number) => {
     if (!imageFileInputRef.current) return;
     imageFileInputRef.current.onchange = async (e: Event) => {
@@ -904,7 +950,19 @@ const MindMapApp = ({ user }: { user: User }) => {
       const { data, error } = await supabase.storage.from('images').upload(fileName, file);
       if (error) { alert('画像のアップロードに失敗しました'); return; }
       const publicUrl = supabase.storage.from('images').getPublicUrl(data.path).data.publicUrl;
-      addNodeAtPosition(x, y, true, publicUrl);
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        const maxDim = IMAGE_NODE_MAX_INITIAL_SIZE;
+        if (w > maxDim || h > maxDim) {
+          const ratio = Math.min(maxDim / w, maxDim / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        addNodeAtPosition(x, y, true, publicUrl, w, h);
+      };
+      img.src = publicUrl;
       target.value = '';
     };
     imageFileInputRef.current.click();
@@ -999,7 +1057,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const updateNodeFontSize = useCallback((nodeId: string, fontSize: number) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
-    if (data) {
+    if (data && !data.imageUrl) {
       const newWidth = computeNodeWidth(data.text, fontSize);
       nodes.set(nodeId, { ...data, fontSize, width: newWidth });
     }
@@ -1614,6 +1672,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
 
+  // --------------------- Mouse event handlers ---------------------
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -2317,8 +2376,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => {
     e.stopPropagation(); e.preventDefault();
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
-    const w = node.width ?? (node.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
-    const h = node.height ?? (node.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
+    const w = node.width ?? (node.imageUrl ? (node.imageWidth && node.imageScale ? node.imageWidth * node.imageScale : NODE_WIDTH) : NODE_WIDTH);
+    const h = node.height ?? (node.imageUrl ? (node.imageHeight && node.imageScale ? node.imageHeight * node.imageScale : NODE_HEIGHT) : NODE_HEIGHT);
     const pt = getConnectionPoint(node.x, node.y, point, w, h);
     setDrawingEdge({ sourceNodeId: nodeId, sourcePoint: point, currentX: pt.x, currentY: pt.y });
   }, [mindMap]);
@@ -2831,6 +2890,31 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">
                   {mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}
                 </button>
+                {/* ★ 画像ノード用リサイズボタン */}
+                {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
+                  <>
+                    <div className="w-px h-5 bg-slate-600 mx-0.5" />
+                    <div className="relative group">
+                      <button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更">
+                        <ResizeIcon />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">
+                        {IMAGE_SCALE_PRESETS.map(scale => {
+                          const percent = Math.round(scale * 100);
+                          return (
+                            <button
+                              key={scale}
+                              onClick={() => resizeImageNode(selectedNodeId!, scale)}
+                              className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors"
+                            >
+                              {percent}%
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -2991,8 +3075,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                   d={(() => {
                     const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId);
                     if (!sNode) return '';
-                    const sw = sNode.width ?? (sNode.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
-                    const sh = sNode.height ?? (sNode.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
+                    const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH);
+                    const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT);
                     return getEdgePath(
                       getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh),
                       {x: drawingEdge.currentX, y: drawingEdge.currentY},
@@ -3081,8 +3165,13 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const isTarget = dragTargetNodeId === node.id;
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const nodeWidth = node.width ?? (node.imageUrl ? IMAGE_NODE_MIN_WIDTH : NODE_WIDTH);
-  const nodeHeight = node.height ?? (node.imageUrl ? IMAGE_NODE_MIN_HEIGHT : NODE_HEIGHT);
+  let nodeWidth = node.width ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : NODE_WIDTH);
+  let nodeHeight = node.height ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : NODE_HEIGHT);
+  if (node.imageUrl && node.imageWidth && node.imageHeight) {
+    const scale = node.imageScale ?? 1.0;
+    nodeWidth = node.imageWidth * scale;
+    nodeHeight = node.imageHeight * scale;
+  }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
   useEffect(() => {
@@ -3141,8 +3230,8 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         )}
         {node.imageUrl ? (
           <div className="w-full h-full flex flex-col items-center justify-center p-1">
-            <img src={node.imageUrl} alt="node image" className="max-w-full max-h-full object-contain rounded" style={{ maxWidth: nodeWidth - 10, maxHeight: nodeHeight - 10 }} />
-            {node.text && <span className="text-xs mt-1 truncate">{node.text}</span>}
+            <img src={node.imageUrl} alt="node image" className="max-w-full max-h-full object-contain rounded" />
+            {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
           </div>
         ) : (
           <>
