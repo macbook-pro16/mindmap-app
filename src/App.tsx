@@ -67,6 +67,21 @@ export interface YjsOutlineData {
   color: string;
   groupId?: string;
   zIndex?: number;
+  fontSize?: number;
+}
+
+export interface YjsStampData {
+  text: string;
+  color: string;
+  textColor: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  userId: string;
+  email: string;
+  groupId?: string;
+  zIndex?: number;
 }
 
 export interface MindNode {
@@ -145,12 +160,13 @@ export interface ContextMenuInfo {
   visible: boolean;
   x: number;
   y: number;
-  type: 'node' | 'canvas' | 'edge' | 'colorPalette' | 'image' | 'sticky' | 'outline';
+  type: 'node' | 'canvas' | 'edge' | 'colorPalette' | 'image' | 'sticky' | 'outline' | 'stamp';
   nodeId?: string;
   edgeId?: string;
   imageId?: string;
   stickyId?: string;
   outlineId?: string;
+  stampId?: string;
   canvasX?: number;
   canvasY?: number;
 }
@@ -202,6 +218,22 @@ export interface OutlineData {
   color: string;
   groupId?: string;
   zIndex?: number;
+  fontSize?: number;
+}
+
+export interface StampData {
+  id: string;
+  text: string;
+  color: string;
+  textColor: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  userId: string;
+  email: string;
+  groupId?: string;
+  zIndex?: number;
 }
 
 type ToolType = 'select' | 'rectangle' | 'circle' | 'triangle' | 'text';
@@ -227,6 +259,8 @@ const NODE_DEFAULT_FONT_SIZE = 14;
 const NODE_MIN_WIDTH = 80;
 const NODE_PADDING_HORIZONTAL = 40;
 const IMAGE_NODE_MAX_INITIAL_SIZE = 300;
+const STAMP_DEFAULT_WIDTH = 80;
+const STAMP_DEFAULT_HEIGHT = 40;
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
 const IMAGE_SCALE_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
@@ -329,7 +363,6 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
   return { x, y };
 };
 
-// ★ 折りたたみ状態を考慮したフラット化（閉じたノードの子孫は除外）
 const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parentY?: number): FlatNode[] => {
   const current: FlatNode = {
     id: node.id, x: node.x, y: node.y,
@@ -342,7 +375,6 @@ const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parent
     width: node.width ?? NODE_WIDTH,
     height: node.height ?? NODE_HEIGHT,
   };
-  // 折りたたまれている場合は子を展開しない
   if (node.collapsed) {
     return [current];
   }
@@ -391,6 +423,7 @@ const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentC
 const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth="2" /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
 const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16M8 4v16M16 4v16" /></svg> );
 const CloseIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> );
+const StampIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 0v14M12 7v10M7 12h10" /></svg> );
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -544,6 +577,12 @@ const isOutlineInRect = (outline: OutlineData, rect: { x1: number; y1: number; x
   return !(outline.x + outline.width < rx1 || outline.x > rx2 || outline.y + outline.height < ry1 || outline.y > ry2);
 };
 
+const isStampInRect = (stamp: StampData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
+  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
+  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
+  return !(stamp.x + stamp.width < rx1 || stamp.x > rx2 || stamp.y + stamp.height < ry1 || stamp.y > ry2);
+};
+
 // --------------------- 認証画面 ---------------------
 const AuthScreen = () => (
   <div className="flex items-center justify-center h-screen bg-slate-50">
@@ -608,6 +647,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yStickiesRef = useRef<Y.Map<YjsStickyData> | null>(null);
   const yOutlinesRef = useRef<Y.Map<YjsOutlineData> | null>(null);
   const ySettingsRef = useRef<Y.Map<string> | null>(null);
+  const yStampsRef = useRef<Y.Map<YjsStampData> | null>(null);
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
@@ -617,16 +657,19 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [images, setImages] = useState<ImageData[]>([]);
   const [stickies, setStickies] = useState<StickyData[]>([]);
   const [outlines, setOutlines] = useState<OutlineData[]>([]);
+  const [stamps, setStamps] = useState<StampData[]>([]);
 
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const [selectedStickyIds, setSelectedStickyIds] = useState<string[]>([]);
   const [selectedOutlineIds, setSelectedOutlineIds] = useState<string[]>([]);
+  const [selectedStampIds, setSelectedStampIds] = useState<string[]>([]);
 
   const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
   const selectedImageId = selectedImageIds.length === 1 ? selectedImageIds[0] : null;
   const selectedStickyId = selectedStickyIds.length === 1 ? selectedStickyIds[0] : null;
   const selectedOutlineId = selectedOutlineIds.length === 1 ? selectedOutlineIds[0] : null;
+  const selectedStampId = selectedStampIds.length === 1 ? selectedStampIds[0] : null;
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -638,11 +681,12 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [editingEdgeEndpoint, setEditingEdgeEndpoint] = useState<{ edgeId: string; endpoint: 'source' | 'target' } | null>(null);
   const [drawingEdge, setDrawingEdge] = useState<{ sourceNodeId: string; sourcePoint: ConnectionPoint; currentX: number; currentY: number; targetNodeId?: string; targetPoint?: ConnectionPoint } | null>(null);
 
-  const [showColorPalette, setShowColorPalette] = useState<{ nodeId?: string; stickyId?: string; outlineId?: string; x: number; y: number } | null>(null);
+  const [showColorPalette, setShowColorPalette] = useState<{ nodeId?: string; stickyId?: string; outlineId?: string; stampId?: string; x: number; y: number } | null>(null);
   
   const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
   const [draggingStickyId, setDraggingStickyId] = useState<string | null>(null);
   const [draggingOutlineId, setDraggingOutlineId] = useState<string | null>(null);
+  const [draggingStampId, setDraggingStampId] = useState<string | null>(null);
 
   const [resizingImageHandle, setResizingImageHandle] = useState<{ imageId: string; handle: string } | null>(null);
   const [resizingStickyHandle, setResizingStickyHandle] = useState<{ stickyId: string; handle: string } | null>(null);
@@ -654,6 +698,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const imageDragOffset = useRef({ x: 0, y: 0 });
   const stickyDragOffset = useRef({ x: 0, y: 0 });
   const outlineDragOffset = useRef({ x: 0, y: 0 });
+  const stampDragOffset = useRef({ x: 0, y: 0 });
 
   const [selectionRect, setSelectionRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const wasDraggingRef = useRef(false);
@@ -663,6 +708,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const initialGroupImagePositions = useRef<Record<string, { x: number; y: number }>>({});
   const initialGroupStickyPositions = useRef<Record<string, { x: number; y: number }>>({});
   const initialGroupOutlinePositions = useRef<Record<string, { x: number; y: number }>>({});
+  const initialGroupStampPositions = useRef<Record<string, { x: number; y: number }>>({});
   
   const [multiDragOffsets, setMultiDragOffsets] = useState<{dx: number, dy: number} | null>(null);
   const isMultiDragging = multiDragOffsets !== null;
@@ -692,16 +738,22 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [inviteLink, setInviteLink] = useState('');
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // ★ 画像ポップアップ用 state
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
+
+  // ★ 印鑑設定用
+  const [stampText, setStampText] = useState<string>(() => {
+    const name = myEmail.split('@')[0];
+    return name.length > 8 ? name.substring(0, 8) : name;
+  });
+  const [stampColor, setStampColor] = useState<string>(myColor);
+  const [stampTextColor, setStampTextColor] = useState<string>('#ffffff');
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
-           draggingImageId !== null || draggingStickyId !== null || draggingOutlineId !== null || 
+           draggingImageId !== null || draggingStickyId !== null || draggingOutlineId !== null || draggingStampId !== null ||
            resizingImageHandle !== null || resizingStickyHandle !== null || resizingOutlineHandle !== null || 
            selectionRect !== null || isCanvasPanning || isMultiDragging;
-  }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
+  }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
 
   // --- Layer Management ---
   const getMaxZIndex = useCallback(() => {
@@ -710,6 +762,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     yImagesRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
     yStickiesRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
     yOutlinesRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
+    yStampsRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
     return max;
   }, []);
 
@@ -719,6 +772,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     yImagesRef.current?.forEach(v => { if (v.zIndex && v.zIndex < min) min = v.zIndex; });
     yStickiesRef.current?.forEach(v => { if (v.zIndex && v.zIndex < min) min = v.zIndex; });
     yOutlinesRef.current?.forEach(v => { if (v.zIndex && v.zIndex < min) min = v.zIndex; });
+    yStampsRef.current?.forEach(v => { if (v.zIndex && v.zIndex < min) min = v.zIndex; });
     return min;
   }, []);
 
@@ -729,8 +783,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => { const n = yImagesRef.current?.get(id); if (n) yImagesRef.current?.set(id, { ...n, zIndex: newZ }); });
       selectedStickyIds.forEach(id => { const n = yStickiesRef.current?.get(id); if (n) yStickiesRef.current?.set(id, { ...n, zIndex: newZ }); });
       selectedOutlineIds.forEach(id => { const n = yOutlinesRef.current?.get(id); if (n) yOutlinesRef.current?.set(id, { ...n, zIndex: newZ }); });
+      selectedStampIds.forEach(id => { const n = yStampsRef.current?.get(id); if (n) yStampsRef.current?.set(id, { ...n, zIndex: newZ }); });
     });
-  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, getMaxZIndex]);
+  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, getMaxZIndex]);
 
   const sendToBack = useCallback(() => {
     const newZ = getMinZIndex() - 1;
@@ -739,8 +794,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => { const n = yImagesRef.current?.get(id); if (n) yImagesRef.current?.set(id, { ...n, zIndex: newZ }); });
       selectedStickyIds.forEach(id => { const n = yStickiesRef.current?.get(id); if (n) yStickiesRef.current?.set(id, { ...n, zIndex: newZ }); });
       selectedOutlineIds.forEach(id => { const n = yOutlinesRef.current?.get(id); if (n) yOutlinesRef.current?.set(id, { ...n, zIndex: newZ }); });
+      selectedStampIds.forEach(id => { const n = yStampsRef.current?.get(id); if (n) yStampsRef.current?.set(id, { ...n, zIndex: newZ }); });
     });
-  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, getMinZIndex]);
+  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, getMinZIndex]);
 
   const handleGroup = useCallback(() => {
     const gId = crypto.randomUUID();
@@ -749,8 +805,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, groupId: gId}); });
       selectedStickyIds.forEach(id => { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, groupId: gId}); });
       selectedOutlineIds.forEach(id => { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, groupId: gId}); });
+      selectedStampIds.forEach(id => { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, groupId: gId}); });
     });
-  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds]);
+  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
 
   const handleUngroup = useCallback(() => {
     ydocRef.current?.transact(() => {
@@ -758,10 +815,11 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, groupId: undefined}); });
       selectedStickyIds.forEach(id => { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, groupId: undefined}); });
       selectedOutlineIds.forEach(id => { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, groupId: undefined}); });
+      selectedStampIds.forEach(id => { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, groupId: undefined}); });
     });
-  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds]);
+  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
 
-  const totalSelectedCount = selectedNodeIds.length + selectedImageIds.length + selectedStickyIds.length + selectedOutlineIds.length;
+  const totalSelectedCount = selectedNodeIds.length + selectedImageIds.length + selectedStickyIds.length + selectedOutlineIds.length + selectedStampIds.length;
 
   const closeContextMenu = useCallback(() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowColorPalette(null); }, []);
   const scrollToHome = useCallback(() => { const container = scrollContainerRef.current; if (!container) return; const centerX = 5000 * zoomLevel - container.clientWidth / 2; const centerY = 5000 * zoomLevel - container.clientHeight / 2; container.scrollTo({ left: centerX, top: centerY, behavior: 'smooth' }); }, [zoomLevel]);
@@ -805,6 +863,80 @@ const MindMapApp = ({ user }: { user: User }) => {
     return () => { window.removeEventListener('keydown', handleGlobalKeyDown); window.removeEventListener('keyup', handleGlobalKeyUp); };
   }, [editingNodeId]);
 
+  // ★ スタンプ追加・削除・位置更新
+  const addStamp = useCallback((x: number, y: number) => {
+    const yStamps = yStampsRef.current; if (!yStamps || !ydocRef.current) return;
+    const id = crypto.randomUUID();
+    ydocRef.current.transact(() => {
+      yStamps.set(id, {
+        text: stampText,
+        color: stampColor,
+        textColor: stampTextColor,
+        x, y,
+        width: STAMP_DEFAULT_WIDTH,
+        height: STAMP_DEFAULT_HEIGHT,
+        userId: myUserId,
+        email: myEmail,
+      });
+    });
+    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+    setSelectedStampIds([id]);
+  }, [stampText, stampColor, stampTextColor, myUserId, myEmail]);
+
+  const deleteStamp = useCallback((stampId: string) => {
+    const yStamps = yStampsRef.current; if (!yStamps) return;
+    ydocRef.current?.transact(() => {
+      yStamps.delete(stampId);
+    });
+    setSelectedStampIds(prev => prev.filter(id => id !== stampId));
+  }, []);
+
+  const updateStampPosition = useCallback((stampId: string, x: number, y: number) => {
+    const yStamps = yStampsRef.current; if (!yStamps) return;
+    const data = yStamps.get(stampId);
+    if (data) yStamps.set(stampId, { ...data, x, y });
+  }, []);
+
+  const updateStampColors = useCallback((stampId: string, color: string, textColor: string) => {
+    const yStamps = yStampsRef.current; if (!yStamps) return;
+    const data = yStamps.get(stampId);
+    if (data) yStamps.set(stampId, { ...data, color, textColor });
+  }, []);
+
+  const updateStampText = useCallback((stampId: string, text: string) => {
+    const yStamps = yStampsRef.current; if (!yStamps) return;
+    const data = yStamps.get(stampId);
+    if (data) yStamps.set(stampId, { ...data, text });
+  }, []);
+
+  const updateOutlineFontSize = useCallback((outlineId: string, fontSize: number) => {
+    const yOutlines = yOutlinesRef.current; if (!yOutlines) return;
+    const data = yOutlines.get(outlineId);
+    if (data && data.type === 'text') {
+      ydocRef.current?.transact(() => {
+        yOutlines.set(outlineId, { ...data, fontSize });
+      });
+    }
+  }, []);
+
+  // ★ グローバルショートカット (Ctrl+Shift+S)
+  useEffect(() => {
+    const handleGlobalStampShortcut = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
+        e.preventDefault();
+        const container = scrollContainerRef.current;
+        if (container) {
+          const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
+          const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
+          addStamp(x, y);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalStampShortcut);
+    return () => window.removeEventListener('keydown', handleGlobalStampShortcut);
+  }, [addStamp, zoomLevel]);
+
+  // ★ 既存のエッジ関連関数（変更なし）
   const addEdge = useCallback((sourceNodeId: string, sourcePoint: ConnectionPoint, targetNodeId: string, targetPoint: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges || !ydocRef.current) return; const edgeId = crypto.randomUUID(); ydocRef.current.transact(() => { yEdges.set(edgeId, { sourceNodeId, sourcePoint, targetNodeId, targetPoint, arrow: 'none' }); }); }, []);
   const deleteEdge = useCallback((edgeId: string) => {
     if (edgeId.startsWith('parent-edge-')) {
@@ -849,7 +981,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, []);
 
   const toggleNodeCollapse = useCallback((nodeId: string) => {
-    // ルートノード（中心テーマ）は折りたたみ不可
     if (nodeId === yRootRef.current) return;
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
@@ -1008,7 +1139,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         text: '', bgColor: '#fefce8', textColor: '#a16207'
       });
     });
-    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]);
+    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
     setSelectedStickyIds([id]);
   }, []);
 
@@ -1021,10 +1152,11 @@ const MindMapApp = ({ user }: { user: User }) => {
       yOutlines.set(id, {
         type, x, y, width, height,
         text: type === 'text' ? 'テキスト' : '',
-        color: '#475569'
+        color: '#475569',
+        fontSize: NODE_DEFAULT_FONT_SIZE
       });
     });
-    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]);
+    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
     setSelectedOutlineIds([id]);
     if (type === 'text') setEditingOutlineId(id);
   }, []);
@@ -1121,7 +1253,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (selectedOutlineIds.length > 0) {
       selectedOutlineIds.forEach(id => updateOutlineColor(id, textColor));
     }
-  }, [selectedNodeIds, selectedStickyIds, selectedOutlineIds, updateMultipleNodeColors, updateStickyColors, updateOutlineColor]);
+    if (selectedStampIds.length > 0) {
+      selectedStampIds.forEach(id => updateStampColors(id, bgColor, textColor));
+    }
+  }, [selectedNodeIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, updateMultipleNodeColors, updateStickyColors, updateOutlineColor, updateStampColors]);
 
   const handleEdgeStyleChange = useCallback((newStyle: EdgeStyle) => {
     if (!ydocRef.current) return;
@@ -1134,6 +1269,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     setEdgeStyle(newStyle);
   }, []);
 
+  // ★ fetchMaps (owner_email 含む)
   const fetchMaps = useCallback(async () => {
     const { data: ownMaps, error: ownError } = await supabase
       .from('maps')
@@ -1266,6 +1402,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const yStickies = ydoc.getMap<YjsStickyData>('stickies'); yStickiesRef.current = yStickies;
     const yOutlines = ydoc.getMap<YjsOutlineData>('outlines'); yOutlinesRef.current = yOutlines;
     const ySettings = ydoc.getMap<string>('settings'); ySettingsRef.current = ySettings;
+    const yStamps = ydoc.getMap<YjsStampData>('stamps'); yStampsRef.current = yStamps;
     
     ydoc.transact(() => {
       if (initialTree) { 
@@ -1286,14 +1423,15 @@ const MindMapApp = ({ user }: { user: User }) => {
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
       const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
-      const outlineList: OutlineData[] = []; yOutlines.forEach((value: YjsOutlineData, key: string) => { outlineList.push({ id: key, ...value }); }); setOutlines(outlineList);
+      const outlineList: OutlineData[] = []; yOutlines.forEach((value: YjsOutlineData, key: string) => { outlineList.push({ id: key, ...value, fontSize: value.fontSize ?? NODE_DEFAULT_FONT_SIZE }); }); setOutlines(outlineList);
+      const stampList: StampData[] = []; yStamps.forEach((value: YjsStampData, key: string) => { stampList.push({ id: key, ...value }); }); setStamps(stampList);
       const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined;
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
-    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); yOutlines.observe(updateReact); ySettings.observe(updateReact); updateReact();
+    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); yOutlines.observe(updateReact); ySettings.observe(updateReact); yStamps.observe(updateReact); updateReact();
     
-    const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, yOutlines, ySettings]); undoManagerRef.current = undoManager;
+    const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, yOutlines, ySettings, yStamps]); undoManagerRef.current = undoManager;
     const updateUndoRedoState = () => { setCanUndo(undoManager.undoStack.length > 0); setCanRedo(undoManager.redoStack.length > 0); };
     undoManager.on('stack-item-added', updateUndoRedoState); undoManager.on('stack-item-popped', updateUndoRedoState); updateUndoRedoState();
     
@@ -1358,10 +1496,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     setImages([]);
     setStickies([]);
     setOutlines([]);
+    setStamps([]);
     setSelectedNodeIds([]);
     setSelectedImageIds([]);
     setSelectedStickyIds([]);
     setSelectedOutlineIds([]);
+    setSelectedStampIds([]);
   }, []);
 
   const handleNewMap = useCallback(async () => {
@@ -1680,19 +1820,19 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
 
-  // --------------------- Mouse event handlers ---------------------
+  // --------------------- マウスイベントハンドラ（スタンプ対応含む） ---------------------
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
-    
     const targetGroupId = node.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>();
     const newSelectedImageIds = new Set<string>();
     const newSelectedStickyIds = new Set<string>();
     const newSelectedOutlineIds = new Set<string>();
+    const newSelectedStampIds = new Set<string>();
 
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
@@ -1700,31 +1840,34 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => newSelectedImageIds.add(id));
       selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
       selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       if (newSelectedNodeIds.has(nodeId)) newSelectedNodeIds.delete(nodeId);
       else newSelectedNodeIds.add(nodeId);
-      
       setSelectedNodeIds(Array.from(newSelectedNodeIds));
     } else {
-      if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0)) {
+      if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
         selectedImageIds.forEach(id => newSelectedImageIds.add(id));
         selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
         selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
         yImagesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedImageIds.add(k); });
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
+        yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
         setSelectedNodeIds(Array.from(newSelectedNodeIds));
         setSelectedImageIds(Array.from(newSelectedImageIds));
         setSelectedStickyIds(Array.from(newSelectedStickyIds));
         setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
+        setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
         newSelectedNodeIds.add(nodeId);
         setSelectedNodeIds([nodeId]);
-        setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+        setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       }
     }
 
@@ -1734,16 +1877,19 @@ const MindMapApp = ({ user }: { user: User }) => {
       const initImgPos: Record<string, { x: number; y: number }> = {};
       const initStickyPos: Record<string, { x: number; y: number }> = {};
       const initOutlinePos: Record<string, { x: number; y: number }> = {};
+      const initStampPos: Record<string, { x: number; y: number }> = {};
       
       newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
       newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
       newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
       newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
+      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
       
       initialGroupDragPositions.current = initNodePos;
       initialGroupImagePositions.current = initImgPos;
       initialGroupStickyPositions.current = initStickyPos;
       initialGroupOutlinePositions.current = initOutlinePos;
+      initialGroupStampPositions.current = initStampPos;
       
       setMultiDragOffsets({ dx: 0, dy: 0 });
       setDraggingNodeId(null); setDragTargetNodeId(null); setSelectedEdgeId(null);
@@ -1753,20 +1899,20 @@ const MindMapApp = ({ user }: { user: User }) => {
       setDraggingNodeId(nodeId); setDragTargetNodeId(null); setSelectedEdgeId(null);
       setMultiDragOffsets(null);
     }
-  }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, isSpacePressed, images, stickies, outlines]);
+  }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, isSpacePressed, images, stickies, outlines, stamps]);
 
   const handleMouseDownOnImage = useCallback((e: ReactMouseEvent, imageId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const image = images.find((img: ImageData) => img.id === imageId); if (!image) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-
     const targetGroupId = yImagesRef.current?.get(imageId)?.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>();
     const newSelectedImageIds = new Set<string>();
     const newSelectedStickyIds = new Set<string>();
     const newSelectedOutlineIds = new Set<string>();
+    const newSelectedStampIds = new Set<string>();
 
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
@@ -1774,31 +1920,34 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => newSelectedImageIds.add(id));
       selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
       selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       if (newSelectedImageIds.has(imageId)) newSelectedImageIds.delete(imageId);
       else newSelectedImageIds.add(imageId);
-      
       setSelectedImageIds(Array.from(newSelectedImageIds));
     } else {
-      if (selectedImageIds.includes(imageId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 1 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0)) {
+      if (selectedImageIds.includes(imageId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 1 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
         selectedImageIds.forEach(id => newSelectedImageIds.add(id));
         selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
         selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
         yImagesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedImageIds.add(k); });
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
+        yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
         setSelectedNodeIds(Array.from(newSelectedNodeIds));
         setSelectedImageIds(Array.from(newSelectedImageIds));
         setSelectedStickyIds(Array.from(newSelectedStickyIds));
         setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
+        setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
         newSelectedImageIds.add(imageId);
         setSelectedImageIds([imageId]);
-        setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+        setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       }
     }
 
@@ -1808,16 +1957,19 @@ const MindMapApp = ({ user }: { user: User }) => {
       const initImgPos: Record<string, { x: number; y: number }> = {};
       const initStickyPos: Record<string, { x: number; y: number }> = {};
       const initOutlinePos: Record<string, { x: number; y: number }> = {};
+      const initStampPos: Record<string, { x: number; y: number }> = {};
       
       newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
       newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
       newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
       newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
+      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
       
       initialGroupDragPositions.current = initNodePos;
       initialGroupImagePositions.current = initImgPos;
       initialGroupStickyPositions.current = initStickyPos;
       initialGroupOutlinePositions.current = initOutlinePos;
+      initialGroupStampPositions.current = initStampPos;
       
       setMultiDragOffsets({ dx: 0, dy: 0 });
       setDraggingImageId(null); setSelectedEdgeId(null);
@@ -1825,20 +1977,20 @@ const MindMapApp = ({ user }: { user: User }) => {
       imageDragOffset.current = { x: coords.x - image.x, y: coords.y - image.y };
       setDraggingImageId(imageId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
-  }, [images, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, mindMap, stickies, outlines]);
+  }, [images, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, stickies, outlines, stamps]);
 
   const handleMouseDownOnSticky = useCallback((e: ReactMouseEvent, stickyId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const sticky = stickies.find((s: StickyData) => s.id === stickyId); if (!sticky) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-
     const targetGroupId = yStickiesRef.current?.get(stickyId)?.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>();
     const newSelectedImageIds = new Set<string>();
     const newSelectedStickyIds = new Set<string>();
     const newSelectedOutlineIds = new Set<string>();
+    const newSelectedStampIds = new Set<string>();
 
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
@@ -1846,31 +1998,34 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => newSelectedImageIds.add(id));
       selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
       selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       if (newSelectedStickyIds.has(stickyId)) newSelectedStickyIds.delete(stickyId);
       else newSelectedStickyIds.add(stickyId);
-      
       setSelectedStickyIds(Array.from(newSelectedStickyIds));
     } else {
-      if (selectedStickyIds.includes(stickyId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 1 || selectedOutlineIds.length > 0)) {
+      if (selectedStickyIds.includes(stickyId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 1 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
         selectedImageIds.forEach(id => newSelectedImageIds.add(id));
         selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
         selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
         yImagesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedImageIds.add(k); });
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
+        yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
         setSelectedNodeIds(Array.from(newSelectedNodeIds));
         setSelectedImageIds(Array.from(newSelectedImageIds));
         setSelectedStickyIds(Array.from(newSelectedStickyIds));
         setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
+        setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
         newSelectedStickyIds.add(stickyId);
         setSelectedStickyIds([stickyId]);
-        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]);
+        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       }
     }
 
@@ -1880,16 +2035,19 @@ const MindMapApp = ({ user }: { user: User }) => {
       const initImgPos: Record<string, { x: number; y: number }> = {};
       const initStickyPos: Record<string, { x: number; y: number }> = {};
       const initOutlinePos: Record<string, { x: number; y: number }> = {};
+      const initStampPos: Record<string, { x: number; y: number }> = {};
       
       newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
       newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
       newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
       newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
+      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
       
       initialGroupDragPositions.current = initNodePos;
       initialGroupImagePositions.current = initImgPos;
       initialGroupStickyPositions.current = initStickyPos;
       initialGroupOutlinePositions.current = initOutlinePos;
+      initialGroupStampPositions.current = initStampPos;
       
       setMultiDragOffsets({ dx: 0, dy: 0 });
       setDraggingStickyId(null); setSelectedEdgeId(null);
@@ -1897,20 +2055,20 @@ const MindMapApp = ({ user }: { user: User }) => {
       stickyDragOffset.current = { x: coords.x - sticky.x, y: coords.y - sticky.y };
       setDraggingStickyId(stickyId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
-  }, [stickies, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, mindMap, images, outlines]);
+  }, [stickies, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, outlines, stamps]);
 
   const handleMouseDownOnOutline = useCallback((e: ReactMouseEvent, outlineId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const outline = outlines.find((o: OutlineData) => o.id === outlineId); if (!outline) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-
     const targetGroupId = yOutlinesRef.current?.get(outlineId)?.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>();
     const newSelectedImageIds = new Set<string>();
     const newSelectedStickyIds = new Set<string>();
     const newSelectedOutlineIds = new Set<string>();
+    const newSelectedStampIds = new Set<string>();
 
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
@@ -1918,31 +2076,34 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedImageIds.forEach(id => newSelectedImageIds.add(id));
       selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
       selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       if (newSelectedOutlineIds.has(outlineId)) newSelectedOutlineIds.delete(outlineId);
       else newSelectedOutlineIds.add(outlineId);
-      
       setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
     } else {
-      if (selectedOutlineIds.includes(outlineId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 1)) {
+      if (selectedOutlineIds.includes(outlineId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 1 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
         selectedImageIds.forEach(id => newSelectedImageIds.add(id));
         selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
         selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
         yImagesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedImageIds.add(k); });
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
+        yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
         setSelectedNodeIds(Array.from(newSelectedNodeIds));
         setSelectedImageIds(Array.from(newSelectedImageIds));
         setSelectedStickyIds(Array.from(newSelectedStickyIds));
         setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
+        setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
         newSelectedOutlineIds.add(outlineId);
         setSelectedOutlineIds([outlineId]);
-        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]);
+        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
       }
     }
 
@@ -1952,16 +2113,19 @@ const MindMapApp = ({ user }: { user: User }) => {
       const initImgPos: Record<string, { x: number; y: number }> = {};
       const initStickyPos: Record<string, { x: number; y: number }> = {};
       const initOutlinePos: Record<string, { x: number; y: number }> = {};
+      const initStampPos: Record<string, { x: number; y: number }> = {};
       
       newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
       newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
       newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
       newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
+      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
       
       initialGroupDragPositions.current = initNodePos;
       initialGroupImagePositions.current = initImgPos;
       initialGroupStickyPositions.current = initStickyPos;
       initialGroupOutlinePositions.current = initOutlinePos;
+      initialGroupStampPositions.current = initStampPos;
       
       setMultiDragOffsets({ dx: 0, dy: 0 });
       setDraggingOutlineId(null); setSelectedEdgeId(null);
@@ -1969,7 +2133,85 @@ const MindMapApp = ({ user }: { user: User }) => {
       outlineDragOffset.current = { x: coords.x - outline.x, y: coords.y - outline.y };
       setDraggingOutlineId(outlineId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
-  }, [outlines, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, mindMap, images, stickies]);
+  }, [outlines, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, stickies, stamps]);
+
+  const handleMouseDownOnStamp = useCallback((e: ReactMouseEvent, stampId: string) => {
+    if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
+    const stamp = stamps.find(s => s.id === stampId); if (!stamp) return;
+    const container = scrollContainerRef.current; if (!container) return;
+    const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
+    const targetGroupId = yStampsRef.current?.get(stampId)?.groupId;
+    let isMulti = false;
+    const newSelectedNodeIds = new Set<string>();
+    const newSelectedImageIds = new Set<string>();
+    const newSelectedStickyIds = new Set<string>();
+    const newSelectedOutlineIds = new Set<string>();
+    const newSelectedStampIds = new Set<string>();
+
+    if (e.ctrlKey || e.metaKey) {
+      isMulti = true;
+      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
+      selectedImageIds.forEach(id => newSelectedImageIds.add(id));
+      selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
+      selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+      if (newSelectedStampIds.has(stampId)) newSelectedStampIds.delete(stampId);
+      else newSelectedStampIds.add(stampId);
+      setSelectedStampIds(Array.from(newSelectedStampIds));
+    } else {
+      if (selectedStampIds.includes(stampId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 1)) {
+        isMulti = true;
+        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
+        selectedImageIds.forEach(id => newSelectedImageIds.add(id));
+        selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
+        selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
+        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+      } else if (targetGroupId) {
+        isMulti = true;
+        yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
+        yImagesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedImageIds.add(k); });
+        yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
+        yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
+        yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
+        setSelectedNodeIds(Array.from(newSelectedNodeIds));
+        setSelectedImageIds(Array.from(newSelectedImageIds));
+        setSelectedStickyIds(Array.from(newSelectedStickyIds));
+        setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
+        setSelectedStampIds(Array.from(newSelectedStampIds));
+      } else {
+        newSelectedStampIds.add(stampId);
+        setSelectedStampIds([stampId]);
+        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+      }
+    }
+
+    if (isMulti) {
+      groupDragStartMouse.current = { x: coords.x, y: coords.y };
+      const initNodePos: Record<string, { x: number; y: number }> = {};
+      const initImgPos: Record<string, { x: number; y: number }> = {};
+      const initStickyPos: Record<string, { x: number; y: number }> = {};
+      const initOutlinePos: Record<string, { x: number; y: number }> = {};
+      const initStampPos: Record<string, { x: number; y: number }> = {};
+      
+      newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
+      newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
+      newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
+      newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
+      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
+      
+      initialGroupDragPositions.current = initNodePos;
+      initialGroupImagePositions.current = initImgPos;
+      initialGroupStickyPositions.current = initStickyPos;
+      initialGroupOutlinePositions.current = initOutlinePos;
+      initialGroupStampPositions.current = initStampPos;
+      
+      setMultiDragOffsets({ dx: 0, dy: 0 });
+      setDraggingStampId(null); setSelectedEdgeId(null);
+    } else {
+      stampDragOffset.current = { x: coords.x - stamp.x, y: coords.y - stamp.y };
+      setDraggingStampId(stampId); setSelectedEdgeId(null); setMultiDragOffsets(null);
+    }
+  }, [stamps, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, stickies, outlines]);
 
   const handleResizeHandleMouseDown = useCallback((e: ReactMouseEvent, imageId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingImageHandle({ imageId, handle }); }, []);
   const handleStickyResizeHandleMouseDown = useCallback((e: ReactMouseEvent, stickyId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingStickyHandle({ stickyId, handle }); }, []);
@@ -1984,20 +2226,19 @@ const MindMapApp = ({ user }: { user: User }) => {
       return;
     }
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-
     if (currentTool !== 'select') {
       e.stopPropagation();
       addOutline(currentTool as 'rectangle'|'circle'|'triangle'|'text', coords.x, coords.y);
       setCurrentTool('select');
       return;
     }
-
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
     if (!nodeUnder) {
       setSelectedNodeIds([]);
       setSelectedImageIds([]);
       setSelectedStickyIds([]);
       setSelectedOutlineIds([]);
+      setSelectedStampIds([]);
       setSelectedEdgeId(null);
       closeContextMenu();
       wasDraggingRef.current = true;
@@ -2042,6 +2283,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (draggingImageId) { updateImagePosition(draggingImageId, coords.x - imageDragOffset.current.x, coords.y - imageDragOffset.current.y); return; }
     if (draggingStickyId) { updateStickyPosition(draggingStickyId, coords.x - stickyDragOffset.current.x, coords.y - stickyDragOffset.current.y); return; }
     if (draggingOutlineId) { updateOutlinePosition(draggingOutlineId, coords.x - outlineDragOffset.current.x, coords.y - outlineDragOffset.current.y); return; }
+    if (draggingStampId) { updateStampPosition(draggingStampId, coords.x - stampDragOffset.current.x, coords.y - stampDragOffset.current.y); return; }
     
     if (resizingImageHandle) {
       const image = images.find((img: ImageData) => img.id === resizingImageHandle.imageId); if (!image) return;
@@ -2090,7 +2332,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedNodeIds.forEach(id => { const init = initialGroupDragPositions.current[id]; if(init) newPositions[id] = { x: init.x + deltaX, y: init.y + deltaY }; });
       setDragPositions(newPositions);
     }
-  }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, images, stickies, outlines, isCanvasPanning]);
+  }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, updateStampPosition, images, stickies, outlines, isCanvasPanning]);
 
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
@@ -2113,6 +2355,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (draggingImageId) { setDraggingImageId(null); return; }
     if (draggingStickyId) { setDraggingStickyId(null); return; }
     if (draggingOutlineId) { setDraggingOutlineId(null); return; }
+    if (draggingStampId) { setDraggingStampId(null); return; }
     if (resizingImageHandle) { setResizingImageHandle(null); return; }
     if (resizingStickyHandle) { setResizingStickyHandle(null); return; }
     if (resizingOutlineHandle) { setResizingOutlineHandle(null); return; }
@@ -2131,10 +2374,14 @@ const MindMapApp = ({ user }: { user: User }) => {
         const _selOutlines: string[] = [];
         outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); });
 
+        const _selStamps: string[] = [];
+        stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); });
+
         setSelectedNodeIds(_selNodes);
         setSelectedImageIds(_selImages);
         setSelectedStickyIds(_selStickies);
         setSelectedOutlineIds(_selOutlines);
+        setSelectedStampIds(_selStamps);
       }
       setSelectionRect(null); return;
     }
@@ -2149,16 +2396,18 @@ const MindMapApp = ({ user }: { user: User }) => {
         selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } });
         selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } });
         selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } });
+        selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } });
       });
       setDragPositions({}); 
       initialGroupDragPositions.current = {};
       initialGroupImagePositions.current = {};
       initialGroupStickyPositions.current = {};
       initialGroupOutlinePositions.current = {};
+      initialGroupStampPositions.current = {};
       setMultiDragOffsets(null);
       return;
     }
-  }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, dragPositions, dragTargetNodeId, mindMap, addEdge, updatePosition, reparentNode, isCanvasPanning, images, stickies, outlines]);
+  }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, dragPositions, dragTargetNodeId, mindMap, addEdge, updatePosition, reparentNode, isCanvasPanning, images, stickies, outlines, stamps]);
 
   useEffect(() => {
     if (isAnyDragging) { 
@@ -2183,9 +2432,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) { e.preventDefault(); changeZoom(e.key === '-' ? -0.1 : 0.1); return; }
     
     if ((e.key === 'Delete' || e.key === 'Backspace')) {
-      if (selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId && !selectedOutlineId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
+      if (selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId && !selectedOutlineId && !selectedStampId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
       
-      if (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0) {
+      if (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
         e.preventDefault();
         ydocRef.current?.transact(() => {
           selectedNodeIds.forEach(id => {
@@ -2197,8 +2446,9 @@ const MindMapApp = ({ user }: { user: User }) => {
           selectedImageIds.forEach(id => yImagesRef.current?.delete(id));
           selectedStickyIds.forEach(id => yStickiesRef.current?.delete(id));
           selectedOutlineIds.forEach(id => yOutlinesRef.current?.delete(id));
+          selectedStampIds.forEach(id => yStampsRef.current?.delete(id));
         });
-        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
         return;
       }
     }
@@ -2264,13 +2514,14 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addParentNode(selectedNodeId); return; }
     if (e.key === 'Tab') { e.preventDefault(); addChildNode(selectedNodeId); return; }
-  }, [editingNodeId, editingStickyId, editingOutlineId, editingMapId, showHelpModal, selectedNodeId, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedEdgeId, selectedImageId, selectedStickyId, selectedOutlineId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteEdge, changeZoom]);
+  }, [editingNodeId, editingStickyId, editingOutlineId, editingMapId, showHelpModal, selectedNodeId, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, selectedEdgeId, selectedImageId, selectedStickyId, selectedOutlineId, selectedStampId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteEdge, changeZoom]);
 
   const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'node', nodeId }); setShowColorPalette(null); }, []);
   const handleCanvasContextMenu = useCallback((e: ReactMouseEvent) => { e.preventDefault(); const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'canvas', canvasX: coords.x, canvasY: coords.y }); }, [zoomLevel]);
   const handleImageContextMenu = useCallback((e: ReactMouseEvent, imageId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedImageIds([imageId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'image', imageId }); }, []);
   const handleStickyContextMenu = useCallback((e: ReactMouseEvent, stickyId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedStickyIds([stickyId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'sticky', stickyId }); }, []);
   const handleOutlineContextMenu = useCallback((e: ReactMouseEvent, outlineId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedOutlineIds([outlineId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'outline', outlineId }); }, []);
+  const handleStampContextMenu = useCallback((e: ReactMouseEvent, stampId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedStampIds([stampId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'stamp', stampId }); }, []);
 
   const executeContextAction = useCallback((action: string) => {
     closeContextMenu();
@@ -2293,9 +2544,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         case 'alignHorizontal': alignNodes('horizontal'); break;
         case 'bringToFront': bringToFront(); break;
         case 'sendToBack': sendToBack(); break;
-        case 'toggleCollapse': 
-          if (nodeId !== yRootRef.current) toggleNodeCollapse(nodeId);
-          break;
+        case 'toggleCollapse': if (nodeId !== yRootRef.current) toggleNodeCollapse(nodeId); break;
       }
     } else if (contextMenu.type === 'edge' && contextMenu.edgeId) {
       switch (action) { case 'deleteEdge': deleteEdge(contextMenu.edgeId); break; case 'arrowNone': updateEdgeArrow(contextMenu.edgeId, 'none'); break; case 'arrowStart': updateEdgeArrow(contextMenu.edgeId, 'start'); break; case 'arrowEnd': updateEdgeArrow(contextMenu.edgeId, 'end'); break; case 'arrowBoth': updateEdgeArrow(contextMenu.edgeId, 'both'); break; }
@@ -2320,13 +2569,22 @@ const MindMapApp = ({ user }: { user: User }) => {
         case 'sendToBack': sendToBack(); break;
       }
     }
+    else if (contextMenu.type === 'stamp' && contextMenu.stampId) {
+      switch (action) {
+        case 'deleteStamp': deleteStamp(contextMenu.stampId); break;
+        case 'changeColor': setShowColorPalette({ stampId: contextMenu.stampId, x: contextMenu.x, y: contextMenu.y }); break;
+        case 'bringToFront': bringToFront(); break;
+        case 'sendToBack': sendToBack(); break;
+      }
+    }
     else if (contextMenu.type === 'canvas') { 
       if (action === 'addNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addNodeAtPosition(contextMenu.canvasX, contextMenu.canvasY, false); 
       else if (action === 'addImageNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addImageNodeWithUpload(contextMenu.canvasX, contextMenu.canvasY);
       else if (action === 'addSticky' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addSticky(contextMenu.canvasX, contextMenu.canvasY); 
+      else if (action === 'addStamp' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addStamp(contextMenu.canvasX, contextMenu.canvasY);
       else if (action === 'addImage') fileInputRef.current?.click(); 
     }
-  }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, alignNodes, deleteImage, deleteSticky, deleteOutline, bringToFront, sendToBack, toggleNodeCollapse]);
+  }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => {
     e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
@@ -2338,7 +2596,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       }); 
     } else { 
       setSelectedNodeIds([nodeId]); 
-      setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+      setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
     }
     setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu, showColorPalette]);
@@ -2349,7 +2607,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]);
     } else {
       setSelectedImageIds([imageId]);
-      setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+      setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
     }
     setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu, showColorPalette]);
@@ -2360,7 +2618,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]);
     } else {
       setSelectedStickyIds([stickyId]);
-      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]);
+      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
     }
     setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu, showColorPalette]);
@@ -2371,7 +2629,18 @@ const MindMapApp = ({ user }: { user: User }) => {
       setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]);
     } else {
       setSelectedOutlineIds([outlineId]);
-      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]);
+      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
+    }
+    setSelectedEdgeId(null); closeContextMenu();
+  }, [closeContextMenu, showColorPalette]);
+
+  const handleStampClick = useCallback((e: ReactMouseEvent, stampId: string) => {
+    e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedStampIds(prev => prev.includes(stampId) ? prev.filter(id => id !== stampId) : [...prev, stampId]);
+    } else {
+      setSelectedStampIds([stampId]);
+      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
     }
     setSelectedEdgeId(null); closeContextMenu();
   }, [closeContextMenu, showColorPalette]);
@@ -2387,7 +2656,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [mindMap]);
   const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
-  const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); }, [closeContextMenu]);
+  const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); }, []);
   const handleEdgeEndpointMouseDown = useCallback((e: ReactMouseEvent, edgeId: string, endpoint: 'source' | 'target') => { e.stopPropagation(); e.preventDefault(); setEditingEdgeEndpoint({ edgeId, endpoint }); }, []);
 
@@ -2527,6 +2796,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const canvasScrollClass = `w-full h-full overflow-auto pt-14 relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
 
+  // ==================== レンダリング（JSX） ====================
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -2534,17 +2804,17 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       
+      {/* 画像ポップアップモーダル */}
       {imageModalUrl && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}>
           <div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setImageModalUrl(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-1 shadow-lg hover:bg-slate-100 transition-colors z-10">
-              <CloseIcon />
-            </button>
+            <button onClick={() => setImageModalUrl(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-1 shadow-lg hover:bg-slate-100 transition-colors z-10"><CloseIcon /></button>
             <img src={imageModalUrl} alt="拡大画像" className="max-w-full max-h-[85vh] object-contain rounded" />
           </div>
         </div>
       )}
       
+      {/* 招待モーダル */}
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}>
@@ -2590,6 +2860,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
+      {/* ヘルプモーダル（更新済み） */}
       {showHelpModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -2608,7 +2879,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li>
                   <li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック</kbd></li>
                   <li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン</kbd></li>
-                  <li className="flex justify-between items-center"><span className="text-slate-600">画像を拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li>
+                  <li className="flex justify-between items-center"><span className="text-slate-600">画像拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li>
                 </ul>
               </div>
               <div>
@@ -2623,12 +2894,14 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </ul>
               </div>
               <div className="md:col-span-2 pt-4 border-t border-slate-100">
-                <h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム・グループ</h4>
+                <h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム・グループ・その他</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <ul className="space-y-3 text-sm">
                     <li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li>
                     <li className="flex justify-between items-center"><span className="text-slate-600">レイヤー変更</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右クリックメニュー</kbd></li>
                     <li className="flex justify-between items-center"><span className="text-slate-600">画像ドロップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像を直接ドラッグ</kbd></li>
+                    <li className="flex justify-between items-center"><span className="text-slate-600">印鑑を配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + Shift + S</kbd></li>
+                    <li className="flex justify-between items-center"><span className="text-slate-600">テキスト図形の文字サイズ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">選択中にサイズメニュー</kbd></li>
                   </ul>
                   <ul className="space-y-3 text-sm">
                     <li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li>
@@ -2642,6 +2915,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
+      {/* 左サイドバー */}
       <div className="w-[280px] flex-shrink-0 h-full bg-white border-r border-slate-200 shadow-sm z-[100] flex flex-col relative">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
           <h2 className="font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
@@ -2726,6 +3000,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       </div>
 
+      {/* 右側キャンバスエリア */}
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50">
         {!zenMode && (
           <div className="absolute top-0 left-0 right-0 z-50 flex items-center bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-2 shadow-sm">
@@ -2752,14 +3027,15 @@ const MindMapApp = ({ user }: { user: User }) => {
               {selectedNodeIds.length >= 2 && (<><button onClick={() => alignNodes('vertical')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="垂直に整列"><AlignVIcon /></button><button onClick={() => alignNodes('horizontal')} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-slate-600 transition-all" title="水平に整列"><AlignHIcon /></button><div className="w-px h-4 bg-slate-300 mx-1" /></>)}
               {totalSelectedCount >= 2 && (<><button onClick={handleGroup} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-indigo-600 transition-all" title="グループ化"><GroupIcon /></button><button onClick={handleUngroup} className="p-1.5 rounded-md hover:bg-white hover:shadow-sm text-indigo-600 transition-all" title="グループ解除"><UngroupIcon /></button><div className="w-px h-4 bg-slate-300 mx-1" /></>)}
               <button onClick={() => { 
-                if (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0) {
+                if (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
                   ydocRef.current?.transact(() => {
                     selectedNodeIds.forEach(id => { if (id !== yRootRef.current) { yNodesRef.current?.forEach((v, k) => { if (v.children?.includes(id)) yNodesRef.current?.set(k, { ...v, children: v.children.filter(cid => cid !== id) }); }); yNodesRef.current?.delete(id); } });
                     selectedImageIds.forEach(id => yImagesRef.current?.delete(id));
                     selectedStickyIds.forEach(id => yStickiesRef.current?.delete(id));
                     selectedOutlineIds.forEach(id => yOutlinesRef.current?.delete(id));
+                    selectedStampIds.forEach(id => yStampsRef.current?.delete(id));
                   });
-                  setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+                  setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
                 } else if (selectedNodeId) {
                   deleteNode(selectedNodeId);
                 }
@@ -2788,6 +3064,37 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <option value="step">直角</option>
                 <option value="straight">直線</option>
               </select>
+            </div>
+            {/* ★ スタンプ設定UI */}
+            <div className="flex items-center gap-1 ml-2 border-l border-slate-200 pl-3">
+              <input
+                type="text"
+                value={stampText}
+                onChange={e => setStampText(e.target.value.slice(0, 12))}
+                className="text-xs w-20 border border-slate-300 rounded px-1 py-0.5"
+                placeholder="印鑑名"
+                title="印鑑に表示する名前"
+              />
+              <button
+                onClick={() => {
+                  const container = scrollContainerRef.current;
+                  if (container) {
+                    const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
+                    const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
+                    addStamp(x, y);
+                  }
+                }}
+                className="p-1.5 rounded-md hover:bg-slate-100 text-indigo-600 transition-all"
+                title="自分の印鑑を配置 (Ctrl+Shift+S)"
+              >
+                <StampIcon />
+              </button>
+              <button
+                onClick={() => setShowColorPalette({ stampId: 'preview', x: 0, y: 0 })}
+                className="w-5 h-5 rounded-full border border-slate-300 shadow-sm"
+                style={{ backgroundColor: stampColor }}
+                title="印鑑の色を変更"
+              />
             </div>
             <div className="flex items-center gap-2 ml-4">
               {isDirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>未保存</span>}
@@ -2847,6 +3154,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         
         {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-4 right-4 z-50 bg-slate-900/80 backdrop-blur text-white border border-slate-700 rounded-full px-5 py-2 text-xs font-bold shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105">ZEN解除 (Alt+Cmd+F)</button>}
         
+        {/* コンテキストメニュー */}
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
             {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('toggleCollapse')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">折りたたみ/展開</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
@@ -2854,7 +3162,8 @@ const MindMapApp = ({ user }: { user: User }) => {
             {contextMenu.type === 'image' && (<><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">画像を削除</button></>)}
             {contextMenu.type === 'sticky' && contextMenu.stickyId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteSticky')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">付箋を削除</button></>)}
             {contextMenu.type === 'outline' && contextMenu.outlineId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteOutline')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">図形/テキストを削除</button></>)}
-            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addImageNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像専用ノードを追加</button><button onClick={() => executeContextAction('addSticky')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">付箋を追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像を添付（自由配置）</button></>)}
+            {contextMenu.type === 'stamp' && contextMenu.stampId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteStamp')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">印鑑を削除</button></>)}
+            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addImageNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像専用ノードを追加</button><button onClick={() => executeContextAction('addSticky')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">付箋を追加</button><button onClick={() => executeContextAction('addStamp')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">印鑑を追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像を添付（自由配置）</button></>)}
           </div>
         )}
         {showColorPalette && (
@@ -2865,6 +3174,8 @@ const MindMapApp = ({ user }: { user: User }) => {
               else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); 
               else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); 
               else if(showColorPalette.outlineId) updateOutlineColor(showColorPalette.outlineId, cp.text);
+              else if(showColorPalette.stampId && showColorPalette.stampId !== 'preview') updateStampColors(showColorPalette.stampId, cp.bg, cp.text);
+              else if(showColorPalette.stampId === 'preview') { setStampColor(cp.bg); setStampTextColor(cp.text); }
               setShowColorPalette(null); closeContextMenu(); 
             }} />))}</div>
             <button onClick={() => setShowColorPalette(null)} className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">キャンセル</button>
@@ -2897,6 +3208,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             }} 
             onContextMenu={handleCanvasContextMenu}
           >
+            {/* フローティングツールバー */}
             {showFloatingToolbar && floatingToolbarPos && (
               <div 
                 className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5"
@@ -2921,6 +3233,20 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">
                     {mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}
                   </button>
+                )}
+                {selectedOutlineId && outlines.find(o => o.id === selectedOutlineId)?.type === 'text' && (
+                  <div className="relative group">
+                    <button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300" title="文字サイズ">
+                      <span className="text-xs">Aa</span>
+                    </button>
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg p-1 z-50">
+                      {FONT_SIZES.map(size => (
+                        <button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 rounded">
+                          {size}px
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
                   <>
@@ -2953,6 +3279,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             {outlines.map((outline: OutlineData) => {
               const isEditing = editingOutlineId === outline.id;
               const isSelected = selectedOutlineIds.includes(outline.id);
+              const fontSize = outline.fontSize ?? NODE_DEFAULT_FONT_SIZE;
               return (
                 <div
                   key={outline.id}
@@ -2972,9 +3299,9 @@ const MindMapApp = ({ user }: { user: User }) => {
                   {outline.type === 'text' && (
                     <div className="w-full h-full flex items-start">
                       {isEditing ? (
-                        <textarea autoFocus className="w-full h-full resize-none bg-transparent border-none outline-none font-bold text-lg pointer-events-auto" style={{ color: outline.color }} defaultValue={outline.text} onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateOutlineText(outline.id, trimmed || 'テキスト'); setEditingOutlineId(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEditingOutlineId(null); }} onMouseDown={(e) => e.stopPropagation()} />
+                        <textarea autoFocus className="w-full h-full resize-none bg-transparent border-none outline-none font-bold text-lg pointer-events-auto" style={{ color: outline.color, fontSize }} defaultValue={outline.text} onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateOutlineText(outline.id, trimmed || 'テキスト'); setEditingOutlineId(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEditingOutlineId(null); }} onMouseDown={(e) => e.stopPropagation()} />
                       ) : (
-                        <div className="w-full h-full whitespace-pre-wrap overflow-auto font-bold text-lg cursor-text select-none pointer-events-none" style={{ color: outline.color }}>{outline.text}</div>
+                        <div className="w-full h-full whitespace-pre-wrap overflow-auto font-bold text-lg cursor-text select-none pointer-events-none" style={{ color: outline.color, fontSize }}>{outline.text}</div>
                       )}
                     </div>
                   )}
@@ -3056,6 +3383,21 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </div>
               );
             })}
+
+            {/* ★ 印鑑（スタンプ）描画 ★ */}
+            {stamps.map((stamp) => (
+              <div
+                key={stamp.id}
+                className={`absolute cursor-move rounded-md shadow-md flex items-center justify-center font-bold transition-all ${selectedStampIds.includes(stamp.id) ? 'ring-2 ring-indigo-500 ring-offset-2' : 'hover:shadow-lg'}`}
+                style={{ left: stamp.x, top: stamp.y, width: stamp.width, height: stamp.height, backgroundColor: stamp.color, color: stamp.textColor, zIndex: stamp.zIndex ?? 3 }}
+                onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)}
+                onContextMenu={(e) => handleStampContextMenu(e, stamp.id)}
+                onClick={(e) => handleStampClick(e, stamp.id)}
+                title={`${stamp.email} の印鑑`}
+              >
+                <span className="text-sm font-bold truncate px-2">{stamp.text}</span>
+              </div>
+            ))}
 
             <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
               <defs>
@@ -3192,7 +3534,8 @@ interface RecursiveNodeProps {
 const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeWidth, updateNodeFontSize, toggleCollapse }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
-  const isEditing = editingNodeId === node.id, isSingleDragging = draggingNodeId === node.id;
+  const isEditing = editingNodeId === node.id;
+  const isSingleDragging = draggingNodeId === node.id;
   const isTarget = dragTargetNodeId === node.id;
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -3250,18 +3593,14 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         }}
         onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}
       >
-        {/* 折りたたみボタン（子がある場合のみ、かつルートノードでない場合） */}
-        {node.children.length > 0 && (() => {
-          // ルートノードかどうかの判定は外部から渡せないので、ここでは node.id がグローバルの yRootRef と一致するかは無理。しかし toggleCollapse が内部でルートをガードしているので、ボタンを表示してもクリックしても無効になる。ユーザーに混乱を与えないため、ここではすべてのノードにボタンを表示する。実際の機能は toggleCollapse で制御。
-          return (
-            <div 
-              className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
-              onClick={(e) => { e.stopPropagation(); toggleCollapse(node.id); }}
-            >
-              {node.collapsed ? <ExpandIcon /> : <CollapseIcon />}
-            </div>
-          );
-        })()}
+        {node.children.length > 0 && (
+          <div 
+            className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
+            onClick={(e) => { e.stopPropagation(); toggleCollapse(node.id); }}
+          >
+            {node.collapsed ? <ExpandIcon /> : <CollapseIcon />}
+          </div>
+        )}
         {node.imageUrl ? (
           <div className="w-full h-full flex flex-col items-center justify-center p-1">
             <img src={node.imageUrl} alt="node image" className="max-w-full max-h-full object-contain rounded" />
