@@ -109,7 +109,7 @@ export interface MapRecord {
   data: MindNode;
   room_id: string;
   user_id: string;
-  owner_email?: string;        // ★ オーナーのメールアドレス
+  owner_email?: string;
   created_at: string;
   updated_at?: string;
   sort_order?: number;
@@ -1211,7 +1211,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       data: initialTree, 
       room_id: newRoom, 
       user_id: user.id, 
-      owner_email: user.email,   // ★ owner_email 保存
+      owner_email: user.email,
       updated_at: new Date().toISOString() 
     }]).select();
 
@@ -1353,7 +1353,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         data: tree, 
         room_id: roomId, 
         user_id: user.id, 
-        owner_email: user.email,   // ★ owner_email 保存
+        owner_email: user.email,
         updated_at: new Date().toISOString() 
       }]).select();
       resultData = data;
@@ -1409,16 +1409,30 @@ const MindMapApp = ({ user }: { user: User }) => {
     await fetchMaps();
   }, [mapId, handleResetMap, fetchMaps, user.id]);
 
+  // ★ 退出処理を修正（確実に削除されるように）
   const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
     if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
     
-    const { error } = await supabase.from('map_members').delete().match({ map_id: map.id, user_id: user.id });
-    if (error) { alert(`退出に失敗しました: ${error.message}`); return; }
+    const { error, count } = await supabase
+      .from('map_members')
+      .delete()
+      .eq('map_id', map.id)
+      .eq('user_id', user.id);
+    if (error) {
+      alert(`退出に失敗しました: ${error.message}`);
+      return;
+    }
+    if (count === 0) {
+      alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。');
+      return;
+    }
     
+    // 現在開いているマップが退出したマップと同じならリセット
     if (mapId === map.id) {
       handleResetMap();
     }
+    // マップ一覧を再取得
     await fetchMaps();
   }, [mapId, handleResetMap, fetchMaps, user.id]);
 
@@ -2441,7 +2455,6 @@ const MindMapApp = ({ user }: { user: User }) => {
           <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg shadow-sm w-full font-medium transition-colors"><PlusIcon /> 新規マップ作成</button>
           <div className="flex gap-2">
             <button onClick={handleSave} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm"><SaveIcon /> 保存</button>
-            {/* ★ 共有ボタンの有効条件を canShare に変更 */}
             <button onClick={handleShare} disabled={!canShare} className="flex-1 flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 py-2 rounded-lg text-sm font-medium text-slate-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"><LinkIcon /> 共有</button>
           </div>
         </div>
@@ -2483,9 +2496,15 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <div className="flex flex-col px-3 pb-2.5 pt-1 cursor-default">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
-                        {/* ★ オーナーメールを表示 */}
+                        {/* ★ アイコン表示に変更（メールアドレス非表示） */}
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
-                          {map.user_id === user.id ? '👑 オーナー' : `🤝 オーナー: ${map.owner_email || '不明'}`}
+                          {map.user_id === user.id ? (
+                            <span className="flex items-center gap-1">👑 オーナー</span>
+                          ) : (
+                            <span title={`オーナー: ${map.owner_email || '不明'}`} className="flex items-center gap-1">
+                              🤝 共有
+                            </span>
+                          )}
                         </span>
                         <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
                           <button onClick={(e) => handleCopyMap(map, e)} className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors" title="コピー"><CopyIcon /></button>
