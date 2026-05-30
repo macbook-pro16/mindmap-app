@@ -3511,7 +3511,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       </div>
     </div>
-  </>
   );
 };
 
