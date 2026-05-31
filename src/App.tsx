@@ -434,7 +434,6 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId
   return convert(rootId);
 };
 
-// 修復関数: ydoc を引数で受け取る
 const repairTree = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, ydoc: Y.Doc) => {
   ydoc.transact(() => {
     yParentMap.clear();
@@ -1394,123 +1393,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
-  const inviteAcceptedRef = useRef(false);
-  useEffect(() => {
-    const processInvite = async () => {
-      if (inviteAcceptedRef.current || !user) return;
-      const urlParams = new URLSearchParams(window.location.search);
-      const inviteCode = urlParams.get('invite');
-      if (!inviteCode) return;
-      inviteAcceptedRef.current = true;
-
-      try {
-        const { data: invitation, error } = await supabase
-          .from('map_invitations')
-          .select('*, maps:maps!inner(id, title, room_id, data, user_id, owner_email, updated_at)')
-          .eq('invite_code', inviteCode)
-          .single();
-        if (error || !invitation) {
-          alert('招待が無効か、既に削除されています。');
-          return;
-        }
-        if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) {
-          alert('この招待は別のメールアドレス宛です。');
-          return;
-        }
-        const { error: memberError } = await supabase.from('map_members').upsert({
-          map_id: invitation.map_id,
-          user_id: user.id,
-          role: 'editor',
-          email: user.email
-        }, { onConflict: 'map_id,user_id' });
-        if (memberError) throw memberError;
-        await supabase.from('map_invitations').delete().eq('id', invitation.id);
-        window.history.replaceState(null, '', window.location.pathname);
-        handleLoadMap(invitation.maps);
-      } catch (err) {
-        console.error('招待の受け入れに失敗しました:', err);
-        alert('招待の受け入れに失敗しました。');
-      }
-    };
-    processInvite();
-  }, [user]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const init = async () => {
-      if (initialLoadDone) return;
-      setInitialLoadDone(true);
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const inviteCode = urlParams.get('invite');
-      if (inviteCode) return;
-
-      const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
-      const hash = rawHash.includes('error=') ? '' : rawHash;
-
-      if (hash) {
-        const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single();
-        if (!isMounted) return;
-        if (error || !data) {
-          handleNewMap();
-        } else {
-          setMapId(data.id);
-          setMapTitle(data.title);
-          setMapOwnerId(data.user_id);
-          initYjs(hash, data.data as MindNode);
-        }
-      }
-    };
-    init();
-    return () => { isMounted = false; };
-  }, []);
-
-  const initialScrollDone = useRef(false);
-  useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
-  
-  // カーソル位置ブロードキャスト
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !channelRef.current) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (cursorBroadcastTimerRef.current) return;
-      cursorBroadcastTimerRef.current = window.setTimeout(() => {
-        cursorBroadcastTimerRef.current = null;
-        const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-        broadcastAwareness(channelRef.current!, myUserId, {
-          email: myEmail,
-          color: myColor,
-          selectedNodeId: selectedNodeIds[0] || null,
-          editingNodeId,
-          cursorX: coords.x,
-          cursorY: coords.y,
-          mouseInCanvas: true
-        });
-      }, 50);
-    };
-
-    const handleMouseLeave = () => {
-      broadcastAwareness(channelRef.current!, myUserId, {
-        email: myEmail,
-        color: myColor,
-        selectedNodeId: selectedNodeIds[0] || null,
-        editingNodeId,
-        mouseInCanvas: false
-      });
-    };
-
-    container.addEventListener('mousemove', handleMouseMove);
-    container.addEventListener('mouseleave', handleMouseLeave);
-    return () => {
-      container.removeEventListener('mousemove', handleMouseMove);
-      container.removeEventListener('mouseleave', handleMouseLeave);
-      if (cursorBroadcastTimerRef.current) clearTimeout(cursorBroadcastTimerRef.current);
-    };
-  }, [myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, broadcastAwareness, zoomLevel]);
-
-  useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness]);
-
   // ==================== 保存/その他 ====================
   const handleSave = useCallback(async () => {
     if (!yNodesRef.current || !yRootRef.current || !yParentMapRef.current || !roomId) {
@@ -1600,82 +1482,122 @@ const MindMapApp = ({ user }: { user: User }) => {
     initYjs(map.room_id, map.data);
   }, []);
 
-  const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
-    e.stopPropagation();
-    const newRoom = crypto.randomUUID();
-    const { error: insertError } = await supabase.from('maps').insert({
-      title: `${map.title} のコピー`,
-      data: map.data,
-      room_id: newRoom,
-      user_id: user.id,
-      owner_email: user.email,
-      updated_at: new Date().toISOString()
-    });
-    if (insertError) { alert('コピーに失敗しました'); return; }
-    await fetchMaps();
-  }, [user.id, user.email, fetchMaps]);
+  const inviteAcceptedRef = useRef(false);
+  useEffect(() => {
+    const processInvite = async () => {
+      if (inviteAcceptedRef.current || !user) return;
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteCode = urlParams.get('invite');
+      if (!inviteCode) return;
+      inviteAcceptedRef.current = true;
 
-  const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
-    e.stopPropagation();
-    if (map.user_id !== user.id) {
-      alert('エラー：共有マップは削除できません。退出機能を利用してください。');
-      return;
-    }
-    if (typeof window !== 'undefined' && !window.confirm('マップを削除してもよろしいですか？')) return;
-    const { error } = await supabase.from('maps').delete().eq('id', map.id);
-    if (error) { alert('削除に失敗しました'); return; }
-    if (mapId === map.id) handleResetMap();
-    await fetchMaps();
-  }, [mapId, handleResetMap, fetchMaps, user.id]);
+      try {
+        const { data: invitation, error } = await supabase
+          .from('map_invitations')
+          .select('*, maps:maps!inner(id, title, room_id, data, user_id, owner_email, updated_at)')
+          .eq('invite_code', inviteCode)
+          .single();
+        if (error || !invitation) {
+          alert('招待が無効か、既に削除されています。');
+          return;
+        }
+        if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) {
+          alert('この招待は別のメールアドレス宛です。');
+          return;
+        }
+        const { error: memberError } = await supabase.from('map_members').upsert({
+          map_id: invitation.map_id,
+          user_id: user.id,
+          role: 'editor',
+          email: user.email
+        }, { onConflict: 'map_id,user_id' });
+        if (memberError) throw memberError;
+        await supabase.from('map_invitations').delete().eq('id', invitation.id);
+        window.history.replaceState(null, '', window.location.pathname);
+        handleLoadMap(invitation.maps);
+      } catch (err) {
+        console.error('招待の受け入れに失敗しました:', err);
+        alert('招待の受け入れに失敗しました。');
+      }
+    };
+    processInvite();
+  }, [user, handleLoadMap]);
 
-  const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
-    e.stopPropagation();
-    if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
-    const { error, count } = await supabase.from('map_members').delete({ count: 'exact' }).eq('map_id', map.id).eq('user_id', user.id);
-    if (error) { alert(`退出に失敗しました: ${error.message}`); return; }
-    if (count === 0) { alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。'); return; }
-    if (mapId === map.id) handleResetMap();
-    await fetchMaps();
-    alert('マップから退出しました');
-  }, [mapId, handleResetMap, fetchMaps, user.id]);
+  useEffect(() => {
+    let isMounted = true;
+    const init = async () => {
+      if (initialLoadDone) return;
+      setInitialLoadDone(true);
 
-  const dragMapItemIndex = useRef<number | null>(null);
-  const dragOverMapItemIndex = useRef<number | null>(null);
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteCode = urlParams.get('invite');
+      if (inviteCode) return;
 
-  const handleMapDragStart = useCallback((e: DragEvent<HTMLDivElement>, index: number) => {
-    dragMapItemIndex.current = index;
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+      const hash = rawHash.includes('error=') ? '' : rawHash;
+
+      if (hash) {
+        const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single();
+        if (!isMounted) return;
+        if (error || !data) {
+          handleNewMap();
+        } else {
+          setMapId(data.id);
+          setMapTitle(data.title);
+          setMapOwnerId(data.user_id);
+          initYjs(hash, data.data as MindNode);
+        }
+      }
+    };
+    init();
+    return () => { isMounted = false; };
   }, []);
 
-  const handleMapDragEnter = useCallback((_e: DragEvent<HTMLDivElement>, index: number) => {
-    dragOverMapItemIndex.current = index;
-  }, []);
+  const initialScrollDone = useRef(false);
+  useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
+  
+  // カーソル位置ブロードキャスト
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !channelRef.current) return;
 
-  const handleMapDragEnd = useCallback(async () => {
-    if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) {
-      const newSavedMaps = [...savedMaps];
-      const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0];
-      newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem);
-      setSavedMaps(newSavedMaps);
-      try { await Promise.all(newSavedMaps.map((map, index) => supabase.from('maps').update({ sort_order: index }).eq('id', map.id))); } catch (err) { console.error('並び替え保存エラー', err); }
-    }
-    dragMapItemIndex.current = null; dragOverMapItemIndex.current = null;
-  }, [savedMaps]);
+    const handleMouseMove = (e: MouseEvent) => {
+      if (cursorBroadcastTimerRef.current) return;
+      cursorBroadcastTimerRef.current = window.setTimeout(() => {
+        cursorBroadcastTimerRef.current = null;
+        const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
+        broadcastAwareness(channelRef.current!, myUserId, {
+          email: myEmail,
+          color: myColor,
+          selectedNodeId: selectedNodeIds[0] || null,
+          editingNodeId,
+          cursorX: coords.x,
+          cursorY: coords.y,
+          mouseInCanvas: true
+        });
+      }, 50);
+    };
 
-  const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
-  const handleInviteSubmit = useCallback(async () => {
-    if (!inviteEmail.trim() || !mapId) { if (!mapId) setInviteMessage('マップを保存してから招待してください'); return; }
-    setInviteLoading(true); setInviteMessage(''); setInviteLink('');
-    try {
-      const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() });
-      if (error) throw error;
-      if (data.status === 'added') { setInviteMessage('招待しました！'); setInviteEmail(''); await fetchMapMembers(); }
-      else if (data.status === 'invited') { const link = `${window.location.origin}?invite=${data.invite_code}`; setInviteLink(link); setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setInviteMessage('エラーが発生しました: ' + errorMessage);
-    } finally { setInviteLoading(false); }
-  }, [inviteEmail, mapId, fetchMapMembers]);
+    const handleMouseLeave = () => {
+      broadcastAwareness(channelRef.current!, myUserId, {
+        email: myEmail,
+        color: myColor,
+        selectedNodeId: selectedNodeIds[0] || null,
+        editingNodeId,
+        mouseInCanvas: false
+      });
+    };
+
+    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('mouseleave', handleMouseLeave);
+    return () => {
+      container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+      if (cursorBroadcastTimerRef.current) clearTimeout(cursorBroadcastTimerRef.current);
+    };
+  }, [myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, broadcastAwareness, zoomLevel]);
+
+  useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness]);
 
   // ==================== マウスイベントハンドラ ====================
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
@@ -2239,6 +2161,83 @@ const MindMapApp = ({ user }: { user: User }) => {
       ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: coords.x - w / 2, y: coords.y - h / 2, width: w, height: h }); });
     };
   }, [zoomLevel]);
+
+  const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    const newRoom = crypto.randomUUID();
+    const { error: insertError } = await supabase.from('maps').insert({
+      title: `${map.title} のコピー`,
+      data: map.data,
+      room_id: newRoom,
+      user_id: user.id,
+      owner_email: user.email,
+      updated_at: new Date().toISOString()
+    });
+    if (insertError) { alert('コピーに失敗しました'); return; }
+    await fetchMaps();
+  }, [user.id, user.email, fetchMaps]);
+
+  const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (map.user_id !== user.id) {
+      alert('エラー：共有マップは削除できません。退出機能を利用してください。');
+      return;
+    }
+    if (typeof window !== 'undefined' && !window.confirm('マップを削除してもよろしいですか？')) return;
+    const { error } = await supabase.from('maps').delete().eq('id', map.id);
+    if (error) { alert('削除に失敗しました'); return; }
+    if (mapId === map.id) handleResetMap();
+    await fetchMaps();
+  }, [mapId, handleResetMap, fetchMaps, user.id]);
+
+  const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
+    const { error, count } = await supabase.from('map_members').delete({ count: 'exact' }).eq('map_id', map.id).eq('user_id', user.id);
+    if (error) { alert(`退出に失敗しました: ${error.message}`); return; }
+    if (count === 0) { alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。'); return; }
+    if (mapId === map.id) handleResetMap();
+    await fetchMaps();
+    alert('マップから退出しました');
+  }, [mapId, handleResetMap, fetchMaps, user.id]);
+
+  const dragMapItemIndex = useRef<number | null>(null);
+  const dragOverMapItemIndex = useRef<number | null>(null);
+
+  const handleMapDragStart = useCallback((e: DragEvent<HTMLDivElement>, index: number) => {
+    dragMapItemIndex.current = index;
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handleMapDragEnter = useCallback((_e: DragEvent<HTMLDivElement>, index: number) => {
+    dragOverMapItemIndex.current = index;
+  }, []);
+
+  const handleMapDragEnd = useCallback(async () => {
+    if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) {
+      const newSavedMaps = [...savedMaps];
+      const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0];
+      newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem);
+      setSavedMaps(newSavedMaps);
+      try { await Promise.all(newSavedMaps.map((map, index) => supabase.from('maps').update({ sort_order: index }).eq('id', map.id))); } catch (err) { console.error('並び替え保存エラー', err); }
+    }
+    dragMapItemIndex.current = null; dragOverMapItemIndex.current = null;
+  }, [savedMaps]);
+
+  const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
+  const handleInviteSubmit = useCallback(async () => {
+    if (!inviteEmail.trim() || !mapId) { if (!mapId) setInviteMessage('マップを保存してから招待してください'); return; }
+    setInviteLoading(true); setInviteMessage(''); setInviteLink('');
+    try {
+      const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() });
+      if (error) throw error;
+      if (data.status === 'added') { setInviteMessage('招待しました！'); setInviteEmail(''); await fetchMapMembers(); }
+      else if (data.status === 'invited') { const link = `${window.location.origin}?invite=${data.invite_code}`; setInviteLink(link); setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setInviteMessage('エラーが発生しました: ' + errorMessage);
+    } finally { setInviteLoading(false); }
+  }, [inviteEmail, mapId, fetchMapMembers]);
 
   // ==================== JSX レンダリング ====================
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
