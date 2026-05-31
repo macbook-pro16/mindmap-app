@@ -144,6 +144,9 @@ export interface AwarenessState {
   color: string;
   selectedNodeId: string | null;
   editingNodeId: string | null;
+  cursorX?: number;
+  cursorY?: number;
+  mouseInCanvas?: boolean;
 }
 
 export interface Participant {
@@ -154,6 +157,9 @@ export interface Participant {
   isSelf: boolean;
   selectedNodeId: string | null;
   editingNodeId: string | null;
+  cursorX?: number;
+  cursorY?: number;
+  mouseInCanvas?: boolean;
 }
 
 export interface ContextMenuInfo {
@@ -750,6 +756,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const name = myEmail.split('@')[0];
     return name.length > 8 ? name.substring(0, 8) : name;
   });
+
+  // カーソルブロードキャスト用のスロットルタイマー
+  const cursorBroadcastTimerRef = useRef<number | null>(null);
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1601,6 +1610,47 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const initialScrollDone = useRef(false);
   useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
+  
+  // カーソル位置のブロードキャスト（50msスロットル）
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !channelRef.current) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (cursorBroadcastTimerRef.current) return;
+      cursorBroadcastTimerRef.current = window.setTimeout(() => {
+        cursorBroadcastTimerRef.current = null;
+        const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
+        broadcastAwareness(channelRef.current!, myUserId, {
+          email: myEmail,
+          color: myColor,
+          selectedNodeId: selectedNodeIds[0] || null,
+          editingNodeId,
+          cursorX: coords.x,
+          cursorY: coords.y,
+          mouseInCanvas: true
+        });
+      }, 50);
+    };
+
+    const handleMouseLeave = () => {
+      broadcastAwareness(channelRef.current!, myUserId, {
+        email: myEmail,
+        color: myColor,
+        selectedNodeId: selectedNodeIds[0] || null,
+        editingNodeId,
+        mouseInCanvas: false
+      });
+    };
+
+    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('mouseleave', handleMouseLeave);
+    return () => {
+      container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, broadcastAwareness, zoomLevel]);
+
   useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness]);
 
   const handleSave = useCallback(async () => {
@@ -2674,7 +2724,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
   const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId!, mindMap, dragPositions, draggingNodeId) : null;
 
-  // ここに statusColor を移動
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
 
   if (!mindMap) {
@@ -2756,15 +2805,18 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
-  participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null });
+  participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
   mapMembers.forEach((member) => { if (member.user_id !== myUserId) participantsMap.set(member.user_id, { user_id: member.user_id, email: member.email, color: stringToColor(member.email), isOnline: false, isSelf: false, selectedNodeId: null, editingNodeId: null }); });
-  Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId }); });
+  Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId, cursorX: state.cursorX, cursorY: state.cursorY, mouseInCanvas: state.mouseInCanvas }); });
   const allParticipants = Array.from(participantsMap.values());
 
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
 
   const canvasScrollClass = `w-full h-full overflow-auto relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
+
+  // リモートカーソルを描画
+  const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
@@ -3152,6 +3204,16 @@ const MindMapApp = ({ user }: { user: User }) => {
             }} 
             onContextMenu={handleCanvasContextMenu}
           >
+            {/* リモートカーソルの描画 */}
+            {remoteCursors.map((p) => (
+              <div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5">
+                  <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+                </svg>
+                <span className="ml-5 text-xs font-bold px-1.5 py-0.5 rounded text-white shadow" style={{ backgroundColor: p.color }}>{getInitial(p.email)}</span>
+              </div>
+            ))}
+
             {showFloatingToolbar && floatingToolbarPos && (
               <div 
                 className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5"
