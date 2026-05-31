@@ -267,7 +267,7 @@ const NODE_DEFAULT_FONT_SIZE = 14;
 const NODE_MIN_WIDTH = 80;
 const NODE_PADDING_HORIZONTAL = 40;
 const IMAGE_NODE_MAX_INITIAL_SIZE = 300;
-const STAMP_DEFAULT_WIDTH = 60;   // サイズを縮小
+const STAMP_DEFAULT_WIDTH = 60;
 const STAMP_DEFAULT_HEIGHT = 60;
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
@@ -730,7 +730,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  // ★ 背景グリッド表示切り替え
   const [showGrid, setShowGrid] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('mindmap-show-grid');
@@ -772,7 +771,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
 
-  // 印鑑名を localStorage に保存
   const [stampText, setStampText] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('mindmap-stamp-text');
@@ -789,7 +787,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [stampText]);
 
   const cursorBroadcastTimerRef = useRef<number | null>(null);
-  const lastMindMapRef = useRef<MindNode | null>(null); // ノード消失時のフォールバック
+  const lastMindMapRef = useRef<MindNode | null>(null);
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1171,7 +1169,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const deleteNode = useCallback((nodeId: string) => {
     const nodes = yNodesRef.current;
     if (!nodes || !yRootRef.current) return;
-    // ★ ルートノードは絶対に削除しない
     if (nodeId === yRootRef.current) return;
     ydocRef.current?.transact(() => {
       nodes.forEach((value: YjsNodeData, key: string) => {
@@ -1437,12 +1434,54 @@ const MindMapApp = ({ user }: { user: User }) => {
 
     const updateReact = () => {
       if (yRootRef.current) {
+        // ★ ルートノードが完全に欠落した場合（リモート削除等）の自動復元
+        const rootData = yNodes.get(yRootRef.current);
+        if (!rootData) {
+          const lastRoot = lastMindMapRef.current;
+          ydoc.transact(() => {
+            if (lastRoot) {
+              yNodes.set(yRootRef.current!, {
+                text: lastRoot.text,
+                x: lastRoot.x,
+                y: lastRoot.y,
+                children: lastRoot.children.map(c => c.id),
+                independent: false,
+                bgColor: lastRoot.bgColor ?? '#f8fafc',
+                textColor: lastRoot.textColor ?? '#334155',
+                width: lastRoot.width,
+                height: lastRoot.height,
+                fontSize: lastRoot.fontSize ?? NODE_DEFAULT_FONT_SIZE,
+                collapsed: false,
+                imageUrl: lastRoot.imageUrl,
+                imageWidth: lastRoot.imageWidth,
+                imageHeight: lastRoot.imageHeight,
+                imageScale: lastRoot.imageScale ?? 1.0,
+              });
+            } else {
+              yNodes.set(yRootRef.current!, {
+                text: '中心テーマ',
+                x: 5000,
+                y: 5000,
+                children: [],
+                independent: false,
+                bgColor: '#f8fafc',
+                textColor: '#334155',
+                width: computeNodeWidth('中心テーマ', NODE_DEFAULT_FONT_SIZE),
+                height: NODE_HEIGHT,
+                fontSize: NODE_DEFAULT_FONT_SIZE,
+                collapsed: false,
+              });
+            }
+          });
+          // 次の observe で正しいツリーが構築されるのでここでは return
+          return;
+        }
+
         const tree = yMapToTree(yNodes, yRootRef.current);
         if (tree) {
           setMindMap(tree);
-          lastMindMapRef.current = tree; // 正常時は常に更新
+          lastMindMapRef.current = tree;
         } else if (lastMindMapRef.current) {
-          // ルートが一時的に消えたときは前回の状態を維持（ノード消失防止）
           setMindMap(lastMindMapRef.current);
         }
       }
@@ -1666,7 +1705,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const initialScrollDone = useRef(false);
   useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
   
-  // カーソル位置のブロードキャスト
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || !channelRef.current) return;
@@ -2502,7 +2540,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     
     if ((e.key === 'Delete' || e.key === 'Backspace')) {
       if (selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId && !selectedOutlineId && !selectedStampId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
-      // ルートノード削除を防止
       if (selectedNodeIds.includes(yRootRef.current!)) {
         e.preventDefault();
         return;
@@ -3083,12 +3120,10 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       </div>
 
-      {/* キャンバスエリア (フローティングUI含む) */}
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50 overflow-hidden">
         
         {!zenMode && (
           <>
-            {/* Top Left: Title & Status */}
             <div className="absolute top-4 left-4 z-40 flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
               <input 
                 value={mapTitle} 
@@ -3108,7 +3143,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             </div>
 
-            {/* Top Center: Main Toolbar */}
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-white/95 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
               <button onClick={() => setCurrentTool('select')} className={`p-2 rounded-lg transition-colors ${currentTool === 'select' ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="選択ツール"><CursorIcon /></button>
               <div className="w-px h-6 bg-slate-200 mx-0.5" />
@@ -3160,7 +3194,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               </select>
             </div>
 
-            {/* Top Right: Participants */}
             <div className="absolute top-4 right-4 z-40 flex items-center">
               <div className="relative bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
                 <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1 transition-colors" title="参加者一覧">
@@ -3196,7 +3229,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             </div>
 
-            {/* Bottom Right: Zoom & Nav + Grid Toggle */}
             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-2">
               <div className="flex items-center gap-1 bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
                 <button onClick={() => setShowHelpModal(true)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="ショートカット一覧"><HelpIcon /></button>
@@ -3272,7 +3304,6 @@ const MindMapApp = ({ user }: { user: User }) => {
             }} 
             onContextMenu={handleCanvasContextMenu}
           >
-            {/* リモートカーソル */}
             {remoteCursors.map((p) => (
               <div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5">
@@ -3282,7 +3313,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             ))}
 
-            {/* フローティングツールバー */}
             {showFloatingToolbar && floatingToolbarPos && (
               <div 
                 className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5"
@@ -3349,7 +3379,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             )}
 
-            {/* アウトライン */}
             {outlines.map((outline: OutlineData) => {
               const isEditing = editingOutlineId === outline.id;
               const isSelected = selectedOutlineIds.includes(outline.id);
@@ -3394,7 +3423,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               );
             })}
 
-            {/* 画像（自由配置） */}
             {images.map((image: ImageData) => {
               const isSelected = selectedImageIds.includes(image.id);
               return (
@@ -3417,7 +3445,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               );
             })}
 
-            {/* 付箋 */}
             {stickies.map((sticky: StickyData) => {
               const isEditing = editingStickyId === sticky.id;
               const isSelected = selectedStickyIds.includes(sticky.id);
@@ -3458,7 +3485,7 @@ const MindMapApp = ({ user }: { user: User }) => {
               );
             })}
 
-            {/* 印鑑（スタンプ） - デザイン修正済み */}
+            {/* ★ 印鑑のデザイン修正：影を内側の円形 div に移動 */}
             {stamps.map((stamp) => (
               <div
                 key={stamp.id}
@@ -3472,7 +3499,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                   color: stamp.color,
                   zIndex: stamp.zIndex ?? 3,
                   fontFamily: "'MS Mincho', 'Yu Mincho', serif",
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
                 }}
                 onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)}
                 onContextMenu={(e) => handleStampContextMenu(e, stamp.id)}
@@ -3481,21 +3507,18 @@ const MindMapApp = ({ user }: { user: User }) => {
               >
                 <div 
                   className="flex flex-col items-center justify-center w-full h-full rounded-full border-[2.5px] bg-white/90 backdrop-blur-sm relative overflow-hidden"
-                  style={{ borderColor: stamp.color }}
+                  style={{ borderColor: stamp.color, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}
                 >
-                  {/* 日付 */}
                   <div className="w-full text-center border-b-[1.5px] pb-1 pt-2" style={{ borderColor: stamp.color }}>
                     <span className="text-[8px] font-bold tracking-tighter leading-none block font-sans">
                       {new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}
                     </span>
                   </div>
-                  {/* 名前 */}
                   <div className="w-full text-center pt-1 flex-1 flex items-center justify-center">
                     <span className="text-[13px] font-extrabold tracking-widest leading-none block pb-1">
                       {stamp.text}
                     </span>
                   </div>
-                  {/* ノイズエフェクト */}
                   <div className="absolute inset-0 pointer-events-none rounded-full opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPgo8cGF0aCBkPSJNMCAwdjRoNFYweiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4=')]"></div>
                 </div>
               </div>
