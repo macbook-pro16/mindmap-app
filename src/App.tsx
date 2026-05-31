@@ -24,7 +24,7 @@ export interface YjsNodeData {
   imageWidth?: number;
   imageHeight?: number;
   imageScale?: number;
-  // children は削除し、親子関係は yParentMap で管理
+  // children は削除 → yParentMap で管理
 }
 
 export interface YjsEdgeData {
@@ -378,8 +378,15 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
   return { x, y };
 };
 
-// ==================== yParentMap を用いたツリー構築 ====================
+// ==================== yParentMap を用いたツリー構築（孤児修復付き） ====================
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId: string): MindNode | null => {
+  // 孤児修復：親が存在しない、または親IDが自分自身を指している場合はルートに繋ぎ変える
+  yParentMap.forEach((parentId, childId) => {
+    if (parentId === childId || !nodes.get(parentId)) {
+      yParentMap.set(childId, rootId);
+    }
+  });
+
   const childMap = new Map<string, string[]>();
   yParentMap.forEach((parentId, childId) => {
     if (!childMap.has(parentId)) childMap.set(parentId, []);
