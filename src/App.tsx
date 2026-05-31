@@ -378,20 +378,15 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
   return { x, y };
 };
 
-// ==================== yParentMap を用いたツリー構築（孤児修復付き） ====================
+// ==================== yParentMap を用いたツリー構築（孤児ノード自動表示） ====================
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId: string): MindNode | null => {
-  // 孤児修復：親が存在しない、または親IDが自分自身を指している場合はルートに繋ぎ変える
-  yParentMap.forEach((parentId, childId) => {
-    if (parentId === childId || !nodes.get(parentId)) {
-      yParentMap.set(childId, rootId);
-    }
-  });
-
+  // 親→子のマッピングを構築
   const childMap = new Map<string, string[]>();
   yParentMap.forEach((parentId, childId) => {
     if (!childMap.has(parentId)) childMap.set(parentId, []);
     childMap.get(parentId)!.push(childId);
   });
+
   const convert = (id: string): MindNode | null => {
     const data = nodes.get(id);
     if (!data) return null;
@@ -428,7 +423,32 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId
       children,
     };
   };
-  return convert(rootId);
+
+  const root = convert(rootId);
+  if (!root) return null;
+
+  // 孤児ノードをルート直下に追加（Yjsドキュメントは変更しない）
+  const visited = new Set<string>();
+  const collectIds = (node: MindNode) => {
+    visited.add(node.id);
+    for (const child of node.children) collectIds(child);
+  };
+  collectIds(root);
+
+  nodes.forEach((_, nodeId) => {
+    if (nodeId !== rootId && !visited.has(nodeId)) {
+      const orphanData = nodes.get(nodeId);
+      if (orphanData) {
+        const orphanNode = convert(nodeId);
+        if (orphanNode) {
+          root.children.push(orphanNode);
+          visited.add(nodeId);
+        }
+      }
+    }
+  });
+
+  return root;
 };
 
 const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>) => {
@@ -666,7 +686,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
-  const yParentMapRef = useRef<Y.Map<string> | null>(null); // ★ 親子マップ
+  const yParentMapRef = useRef<Y.Map<string> | null>(null);
 
   const [mindMap, setMindMap] = useState<MindNode | null>(null);
   const [edges, setEdges] = useState<EdgeData[]>([]);
@@ -1604,7 +1624,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     } finally { setInviteLoading(false); }
   }, [inviteEmail, mapId, fetchMapMembers]);
 
-  // ==================== マウスイベントハンドラ（変更なし）====================
+  // ==================== マウスイベントハンドラ ====================
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
