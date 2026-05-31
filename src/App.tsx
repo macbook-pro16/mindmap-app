@@ -728,7 +728,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (process.env.NODE_ENV === 'development') console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -2788,7 +2788,16 @@ const MindMapApp = ({ user }: { user: User }) => {
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null });
   mapMembers.forEach((member) => { if (member.user_id !== myUserId) participantsMap.set(member.user_id, { user_id: member.user_id, email: member.email, color: stringToColor(member.email), isOnline: false, isSelf: false, selectedNodeId: null, editingNodeId: null }); });
-  Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId }); });
+  const validMemberIds = new Set(mapMembers.map(m => m.user_id));
+  if (mapOwnerId) validMemberIds.add(mapOwnerId); // Map owner is always a valid participant
+  validMemberIds.add(myUserId); // Current user is always valid if they are accessing the map
+
+  Object.entries(awarenessStates).forEach(([userId, state]) => {
+    if (userId === myUserId) return;
+    // Only include awareness states from valid members of the current map
+    if (!validMemberIds.has(userId)) return;
+    participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId });
+  });
   const allParticipants = Array.from(participantsMap.values());
 
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
