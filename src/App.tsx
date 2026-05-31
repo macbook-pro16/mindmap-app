@@ -788,6 +788,8 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const cursorBroadcastTimerRef = useRef<number | null>(null);
   const lastMindMapRef = useRef<MindNode | null>(null);
+  // ★ ノードの親子関係を記憶するマップ（修復用）
+  const parentMapRef = useRef<Record<string, string>>({});
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1434,7 +1436,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
     const updateReact = () => {
       if (yRootRef.current) {
-        // ★ ルートノードが完全に欠落した場合（リモート削除等）の自動復元
+        // ★ ルートノードが完全に欠落した場合の復元
         const rootData = yNodes.get(yRootRef.current);
         if (!rootData) {
           const lastRoot = lastMindMapRef.current;
@@ -1473,18 +1475,80 @@ const MindMapApp = ({ user }: { user: User }) => {
               });
             }
           });
-          // 次の observe で正しいツリーが構築されるのでここでは return
           return;
         }
 
+        // ★ 孤立ノードの自動修復：マップ内の全ノードIDを収集
+        const allNodeIds = new Set<string>();
+        yNodes.forEach((_, key) => allNodeIds.add(key));
+
+        // 現在のツリーに含まれるノードを収集
+        const visited = new Set<string>();
+        const collectNodeIds = (node: MindNode) => {
+          visited.add(node.id);
+          for (const child of node.children) {
+            collectNodeIds(child);
+          }
+        };
+
         const tree = yMapToTree(yNodes, yRootRef.current);
         if (tree) {
-          setMindMap(tree);
-          lastMindMapRef.current = tree;
+          collectNodeIds(tree);
+
+          // 孤立ノードを探す（全ノードのうち、ツリーに含まれないもの。ルートは除く）
+          const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
+
+          if (orphanIds.length > 0) {
+            addLog(`孤立ノードを検出: ${orphanIds.join(', ')}`);
+            ydoc.transact(() => {
+              for (const orphanId of orphanIds) {
+                const orphanData = yNodes.get(orphanId);
+                if (!orphanData) continue;
+
+                // 記憶している親を優先、なければルートに追加
+                let targetParentId: string | null = parentMapRef.current[orphanId] || null;
+                if (targetParentId && !yNodes.get(targetParentId)) {
+                  targetParentId = null; // 親が存在しない場合
+                }
+                if (!targetParentId) {
+                  targetParentId = yRootRef.current!;
+                }
+
+                const parentData = yNodes.get(targetParentId);
+                if (parentData && !parentData.children.includes(orphanId)) {
+                  yNodes.set(targetParentId, {
+                    ...parentData,
+                    children: [...parentData.children, orphanId],
+                  });
+                  addLog(`${orphanId} を ${targetParentId} の子として復元`);
+                }
+              }
+            });
+          }
+
+          // 修復後のツリーを再構築
+          const repairedTree = yMapToTree(yNodes, yRootRef.current);
+          if (repairedTree) {
+            setMindMap(repairedTree);
+            lastMindMapRef.current = repairedTree;
+            // 親子マップを更新
+            const newParentMap: Record<string, string> = {};
+            const buildParentMap = (node: MindNode) => {
+              for (const child of node.children) {
+                newParentMap[child.id] = node.id;
+                buildParentMap(child);
+              }
+            };
+            buildParentMap(repairedTree);
+            parentMapRef.current = newParentMap;
+          } else if (lastMindMapRef.current) {
+            setMindMap(lastMindMapRef.current);
+          }
         } else if (lastMindMapRef.current) {
           setMindMap(lastMindMapRef.current);
         }
       }
+      // その他のデータ更新
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
       const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
