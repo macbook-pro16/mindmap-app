@@ -380,8 +380,7 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
 
 // ==================== yParentMap を用いたツリー構築 ====================
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId: string): MindNode | null => {
-  // yParentMap: childId -> parentId
-  const childMap = new Map<string, string[]>(); // parentId -> childId[]
+  const childMap = new Map<string, string[]>();
   yParentMap.forEach((parentId, childId) => {
     if (!childMap.has(parentId)) childMap.set(parentId, []);
     childMap.get(parentId)!.push(childId);
@@ -441,16 +440,11 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map
     imageWidth: root.imageWidth,
     imageHeight: root.imageHeight,
     imageScale: root.imageScale ?? 1.0,
-    // children は yParentMap で管理
   });
   for (const child of root.children) {
     yParentMap.set(child.id, root.id);
     treeToYMap(child, nodes, yParentMap);
   }
-};
-
-const findParentId = (yParentMap: Y.Map<string>, childId: string): string | undefined => {
-  return yParentMap.get(childId);
 };
 
 const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parentY?: number): FlatNode[] => {
@@ -1319,6 +1313,123 @@ const MindMapApp = ({ user }: { user: User }) => {
     
     channelRef.current = channel; setRoomId(room); return channel;
   };
+
+  const inviteAcceptedRef = useRef(false);
+  useEffect(() => {
+    const processInvite = async () => {
+      if (inviteAcceptedRef.current || !user) return;
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteCode = urlParams.get('invite');
+      if (!inviteCode) return;
+      inviteAcceptedRef.current = true;
+
+      try {
+        const { data: invitation, error } = await supabase
+          .from('map_invitations')
+          .select('*, maps:maps!inner(id, title, room_id, data, user_id, owner_email, updated_at)')
+          .eq('invite_code', inviteCode)
+          .single();
+        if (error || !invitation) {
+          alert('招待が無効か、既に削除されています。');
+          return;
+        }
+        if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) {
+          alert('この招待は別のメールアドレス宛です。');
+          return;
+        }
+        const { error: memberError } = await supabase.from('map_members').upsert({
+          map_id: invitation.map_id,
+          user_id: user.id,
+          role: 'editor',
+          email: user.email
+        }, { onConflict: 'map_id,user_id' });
+        if (memberError) throw memberError;
+        await supabase.from('map_invitations').delete().eq('id', invitation.id);
+        window.history.replaceState(null, '', window.location.pathname);
+        handleLoadMap(invitation.maps);
+      } catch (err) {
+        console.error('招待の受け入れに失敗しました:', err);
+        alert('招待の受け入れに失敗しました。');
+      }
+    };
+    processInvite();
+  }, [user]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const init = async () => {
+      if (initialLoadDone) return;
+      setInitialLoadDone(true);
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteCode = urlParams.get('invite');
+      if (inviteCode) return;
+
+      const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+      const hash = rawHash.includes('error=') ? '' : rawHash;
+
+      if (hash) {
+        const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single();
+        if (!isMounted) return;
+        if (error || !data) {
+          handleNewMap();
+        } else {
+          setMapId(data.id);
+          setMapTitle(data.title);
+          setMapOwnerId(data.user_id);
+          initYjs(hash, data.data as MindNode);
+        }
+      }
+    };
+    init();
+    return () => { isMounted = false; };
+  }, []);
+
+  const initialScrollDone = useRef(false);
+  useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
+  
+  // カーソル位置ブロードキャスト
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !channelRef.current) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (cursorBroadcastTimerRef.current) return;
+      cursorBroadcastTimerRef.current = window.setTimeout(() => {
+        cursorBroadcastTimerRef.current = null;
+        const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
+        broadcastAwareness(channelRef.current!, myUserId, {
+          email: myEmail,
+          color: myColor,
+          selectedNodeId: selectedNodeIds[0] || null,
+          editingNodeId,
+          cursorX: coords.x,
+          cursorY: coords.y,
+          mouseInCanvas: true
+        });
+      }, 50);
+    };
+
+    const handleMouseLeave = () => {
+      broadcastAwareness(channelRef.current!, myUserId, {
+        email: myEmail,
+        color: myColor,
+        selectedNodeId: selectedNodeIds[0] || null,
+        editingNodeId,
+        mouseInCanvas: false
+      });
+    };
+
+    container.addEventListener('mousemove', handleMouseMove);
+    container.addEventListener('mouseleave', handleMouseLeave);
+    return () => {
+      container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+      if (cursorBroadcastTimerRef.current) clearTimeout(cursorBroadcastTimerRef.current);
+    };
+  }, [myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, broadcastAwareness, zoomLevel]);
+
+  useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness]);
 
   // ==================== 保存/その他 ====================
   const handleSave = useCallback(async () => {
