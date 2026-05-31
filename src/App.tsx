@@ -24,7 +24,8 @@ export interface YjsNodeData {
   imageWidth?: number;
   imageHeight?: number;
   imageScale?: number;
-  // children は削除 → yParentMap で管理
+  // ★ children を復活（yParentMapと二重管理して自動修復）
+  children?: string[];
 }
 
 export interface YjsEdgeData {
@@ -378,13 +379,27 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
   return { x, y };
 };
 
-// ==================== yParentMap を用いたツリー構築（孤児ノード自動表示） ====================
+// ==================== ツリー構築（children 配列と yParentMap の二重管理・自動修復） ====================
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId: string): MindNode | null => {
   // 親→子のマッピングを構築
   const childMap = new Map<string, string[]>();
+  // まず yParentMap から収集
   yParentMap.forEach((parentId, childId) => {
     if (!childMap.has(parentId)) childMap.set(parentId, []);
-    childMap.get(parentId)!.push(childId);
+    if (!childMap.get(parentId)!.includes(childId)) {
+      childMap.get(parentId)!.push(childId);
+    }
+  });
+  // 次に各ノードの children 配列から補完
+  nodes.forEach((data, nodeId) => {
+    if (data.children) {
+      for (const childId of data.children) {
+        if (!childMap.has(nodeId)) childMap.set(nodeId, []);
+        if (!childMap.get(nodeId)!.includes(childId)) {
+          childMap.get(nodeId)!.push(childId);
+        }
+      }
+    }
   });
 
   const convert = (id: string): MindNode | null => {
@@ -424,31 +439,29 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId
     };
   };
 
-  const root = convert(rootId);
-  if (!root) return null;
+  return convert(rootId);
+};
 
-  // 孤児ノードをルート直下に追加（Yjsドキュメントは変更しない）
-  const visited = new Set<string>();
-  const collectIds = (node: MindNode) => {
-    visited.add(node.id);
-    for (const child of node.children) collectIds(child);
-  };
-  collectIds(root);
-
-  nodes.forEach((_, nodeId) => {
-    if (nodeId !== rootId && !visited.has(nodeId)) {
-      const orphanData = nodes.get(nodeId);
-      if (orphanData) {
-        const orphanNode = convert(nodeId);
-        if (orphanNode) {
-          root.children.push(orphanNode);
-          visited.add(nodeId);
-        }
+// ツリーから yParentMap と各ノードの children を再構築（自動修復）
+const repairTree = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>) => {
+  ydocRef.current?.transact(() => {
+    // いったん yParentMap をクリア
+    yParentMap.clear();
+    const rebuild = (node: MindNode) => {
+      const childIds = node.children.map(c => c.id);
+      // ノードの children を更新
+      const data = nodes.get(node.id);
+      if (data) {
+        nodes.set(node.id, { ...data, children: childIds });
       }
-    }
+      // yParentMap に登録
+      for (const child of node.children) {
+        yParentMap.set(child.id, node.id);
+        rebuild(child);
+      }
+    };
+    rebuild(root);
   });
-
-  return root;
 };
 
 const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>) => {
@@ -467,6 +480,7 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map
     imageWidth: root.imageWidth,
     imageHeight: root.imageHeight,
     imageScale: root.imageScale ?? 1.0,
+    children: root.children.map(c => c.id),
   });
   for (const child of root.children) {
     yParentMap.set(child.id, root.id);
@@ -686,7 +700,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
-  const yParentMapRef = useRef<Y.Map<string> | null>(null);
+  const yParentMapRef = useRef<Y.Map<string> | null>(null); // 親子マップ（補助）
 
   const [mindMap, setMindMap] = useState<MindNode | null>(null);
   const [edges, setEdges] = useState<EdgeData[]>([]);
@@ -899,7 +913,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     return () => { window.removeEventListener('keydown', handleGlobalKeyDown); window.removeEventListener('keyup', handleGlobalKeyUp); };
   }, [editingNodeId]);
 
-  // ==================== ノード操作 (yParentMap 完全対応) ====================
+  // ==================== ノード操作（children と yParentMap の二重管理） ====================
   const addChildNode = useCallback((parentId: string) => {
     const nodes = yNodesRef.current;
     const parentMap = yParentMapRef.current;
@@ -912,8 +926,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current.transact(() => {
-      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false, children: [] });
       parentMap.set(childId, parentId);
+      // 親の children 配列を更新
+      nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
     });
     setSelectedNodeIds([childId]);
   }, []);
@@ -924,6 +940,14 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (!nodes || !parentMap || !yRootRef.current || nodeId === yRootRef.current) return;
     ydocRef.current?.transact(() => {
       const deleteRecursive = (id: string) => {
+        // 親の children から削除
+        const parentId = parentMap.get(id);
+        if (parentId) {
+          const parentData = nodes.get(parentId);
+          if (parentData) {
+            nodes.set(parentId, { ...parentData, children: (parentData.children ?? []).filter(cid => cid !== id) });
+          }
+        }
         nodes.delete(id);
         parentMap.delete(id);
         parentMap.forEach((pid, cid) => {
@@ -950,8 +974,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false, children: [] });
       parentMap.set(siblingId, parentId);
+      const curChildren = parent.children ?? [];
+      const targetIndex = curChildren.indexOf(targetId);
+      const newChildren = [...curChildren];
+      newChildren.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, siblingId);
+      nodes.set(parentId, { ...parent, children: newChildren });
     });
     setSelectedNodeIds([siblingId]);
   }, []);
@@ -970,8 +999,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false, children: [] });
       parentMap.set(newId, rootId);
+      const root = nodes.get(rootId);
+      if (root) {
+        const curChildren = root.children ?? [];
+        const targetIndex = curChildren.indexOf(targetId);
+        const newChildren = [...curChildren];
+        newChildren.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, newId);
+        nodes.set(rootId, { ...root, children: newChildren });
+      }
     });
     setSelectedNodeIds([newId]);
   }, []);
@@ -992,20 +1029,37 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false, children: [targetId] });
       parentMap.set(newParentId, oldParentId);
       parentMap.set(targetId, newParentId);
+      // 古い親から外す
+      const updatedOldChildren = (oldParent.children ?? []).filter(id => id !== targetId);
+      updatedOldChildren.push(newParentId);
+      nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
+      // ターゲットの independent を false に
+      nodes.set(targetId, { ...targetNode, independent: false });
     });
     setSelectedNodeIds([newParentId]);
   }, []);
 
   const reparentNode = useCallback((nodeId: string, newParentId: string) => {
+    const nodes = yNodesRef.current;
     const parentMap = yParentMapRef.current;
-    if (!parentMap || !yRootRef.current || nodeId === yRootRef.current) return;
+    if (!nodes || !parentMap || !yRootRef.current || nodeId === yRootRef.current) return;
     const oldParentId = parentMap.get(nodeId);
     if (!oldParentId || oldParentId === newParentId) return;
+    const oldParent = nodes.get(oldParentId);
+    const newParent = nodes.get(newParentId);
+    if (!oldParent || !newParent) return;
     ydocRef.current?.transact(() => {
       parentMap.set(nodeId, newParentId);
+      // 古い親から外す
+      nodes.set(oldParentId, { ...oldParent, children: (oldParent.children ?? []).filter(cid => cid !== nodeId) });
+      // 新しい親に追加
+      nodes.set(newParentId, { ...newParent, children: [...(newParent.children ?? []), nodeId] });
+      // ノードの independent を false に
+      const nodeData = nodes.get(nodeId);
+      if (nodeData) nodes.set(nodeId, { ...nodeData, independent: false });
     });
   }, []);
 
@@ -1023,9 +1077,12 @@ const MindMapApp = ({ user }: { user: User }) => {
           bgColor: '#f8fafc', textColor: '#334155',
           width: imageWidth, height: imageHeight,
           collapsed: false,
-          imageUrl, imageWidth, imageHeight, imageScale: 1.0
+          imageUrl, imageWidth, imageHeight, imageScale: 1.0,
+          children: [],
         });
         parentMap.set(childId, rootId);
+        const root = nodes.get(rootId);
+        if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
       });
     } else {
       const defaultText = '独立トピック';
@@ -1036,9 +1093,12 @@ const MindMapApp = ({ user }: { user: User }) => {
           text: defaultText, x: safePos.x, y: safePos.y, independent: true,
           bgColor: '#f8fafc', textColor: '#334155',
           width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize,
-          collapsed: false
+          collapsed: false,
+          children: [],
         });
         parentMap.set(childId, rootId);
+        const root = nodes.get(rootId);
+        if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
       });
     }
     setSelectedNodeIds([childId]);
@@ -1125,6 +1185,12 @@ const MindMapApp = ({ user }: { user: User }) => {
           parentMap.set(childId, rootId);
           const nodeData = nodes.get(childId);
           if (nodeData) nodes.set(childId, { ...nodeData, independent: true });
+          // 親の children から削除
+          const parentData = nodes.get(parentId);
+          if (parentData) nodes.set(parentId, { ...parentData, children: (parentData.children ?? []).filter(cid => cid !== childId) });
+          // ルートの children に追加
+          const rootData = nodes.get(rootId);
+          if (rootData) nodes.set(rootId, { ...rootData, children: [...(rootData.children ?? []), childId] });
         }
       });
       setSelectedEdgeId(null); closeContextMenu(); return;
@@ -1221,7 +1287,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [mapId, mapOwnerId, user.id, mapMembers]);
 
   useEffect(() => {
-    if (!ydocRef.current || !yNodesRef.current || !yParentMapRef.current || !yRootRef.current || !roomId) return;
+    if (!ydocRef.current || !yNodesRef.current || !yRootRef.current || !roomId) return;
     const autoSave = async () => {
       const tree = yMapToTree(yNodesRef.current!, yParentMapRef.current!, yRootRef.current!);
       if (!tree) return;
@@ -1267,7 +1333,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         const defaultText = '中心テーマ';
         const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
         const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false }); 
+        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false, children: [] }); 
         yRootRef.current = rootId; 
       }
     });
@@ -1289,16 +1355,23 @@ const MindMapApp = ({ user }: { user: User }) => {
                 fontSize: lastRoot.fontSize ?? NODE_DEFAULT_FONT_SIZE,
                 collapsed: false,
                 imageUrl: lastRoot.imageUrl, imageWidth: lastRoot.imageWidth, imageHeight: lastRoot.imageHeight, imageScale: lastRoot.imageScale ?? 1.0,
+                children: lastRoot.children.map(c => c.id),
               });
             } else {
-              yNodes.set(yRootRef.current!, { text: '中心テーマ', x: 5000, y: 5000, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: computeNodeWidth('中心テーマ', NODE_DEFAULT_FONT_SIZE), height: NODE_HEIGHT, fontSize: NODE_DEFAULT_FONT_SIZE, collapsed: false });
+              yNodes.set(yRootRef.current!, { text: '中心テーマ', x: 5000, y: 5000, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: computeNodeWidth('中心テーマ', NODE_DEFAULT_FONT_SIZE), height: NODE_HEIGHT, fontSize: NODE_DEFAULT_FONT_SIZE, collapsed: false, children: [] });
             }
           });
           return;
         }
         const tree = yMapToTree(yNodes, yParentMap, yRootRef.current);
-        if (tree) { setMindMap(tree); lastMindMapRef.current = tree; }
-        else if (lastMindMapRef.current) setMindMap(lastMindMapRef.current);
+        if (tree) {
+          // ★ ツリーに基づいて全ノードの children と yParentMap を修復
+          repairTree(tree, yNodes, yParentMap);
+          setMindMap(tree);
+          lastMindMapRef.current = tree;
+        } else if (lastMindMapRef.current) {
+          setMindMap(lastMindMapRef.current);
+        }
       }
       const edgeList: EdgeData[] = []; yEdges.forEach((value, key) => edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' })); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value, key) => imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex })); setImages(imageList);
