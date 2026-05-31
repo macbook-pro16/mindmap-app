@@ -24,7 +24,6 @@ export interface YjsNodeData {
   imageWidth?: number;
   imageHeight?: number;
   imageScale?: number;
-  // ★ children を復活（yParentMapと二重管理して自動修復）
   children?: string[];
 }
 
@@ -379,25 +378,18 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
   return { x, y };
 };
 
-// ==================== ツリー構築（children 配列と yParentMap の二重管理・自動修復） ====================
+// ==================== ツリー構築・修復（children + yParentMap 二重管理） ====================
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId: string): MindNode | null => {
-  // 親→子のマッピングを構築
   const childMap = new Map<string, string[]>();
-  // まず yParentMap から収集
   yParentMap.forEach((parentId, childId) => {
     if (!childMap.has(parentId)) childMap.set(parentId, []);
-    if (!childMap.get(parentId)!.includes(childId)) {
-      childMap.get(parentId)!.push(childId);
-    }
+    if (!childMap.get(parentId)!.includes(childId)) childMap.get(parentId)!.push(childId);
   });
-  // 次に各ノードの children 配列から補完
   nodes.forEach((data, nodeId) => {
     if (data.children) {
       for (const childId of data.children) {
         if (!childMap.has(nodeId)) childMap.set(nodeId, []);
-        if (!childMap.get(nodeId)!.includes(childId)) {
-          childMap.get(nodeId)!.push(childId);
-        }
+        if (!childMap.get(nodeId)!.includes(childId)) childMap.get(nodeId)!.push(childId);
       }
     }
   });
@@ -442,19 +434,16 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId
   return convert(rootId);
 };
 
-// ツリーから yParentMap と各ノードの children を再構築（自動修復）
-const repairTree = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>) => {
-  ydocRef.current?.transact(() => {
-    // いったん yParentMap をクリア
+// 修復関数: ydoc を引数で受け取る
+const repairTree = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, ydoc: Y.Doc) => {
+  ydoc.transact(() => {
     yParentMap.clear();
     const rebuild = (node: MindNode) => {
       const childIds = node.children.map(c => c.id);
-      // ノードの children を更新
       const data = nodes.get(node.id);
       if (data) {
         nodes.set(node.id, { ...data, children: childIds });
       }
-      // yParentMap に登録
       for (const child of node.children) {
         yParentMap.set(child.id, node.id);
         rebuild(child);
@@ -700,7 +689,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
-  const yParentMapRef = useRef<Y.Map<string> | null>(null); // 親子マップ（補助）
+  const yParentMapRef = useRef<Y.Map<string> | null>(null);
 
   const [mindMap, setMindMap] = useState<MindNode | null>(null);
   const [edges, setEdges] = useState<EdgeData[]>([]);
@@ -913,7 +902,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     return () => { window.removeEventListener('keydown', handleGlobalKeyDown); window.removeEventListener('keyup', handleGlobalKeyUp); };
   }, [editingNodeId]);
 
-  // ==================== ノード操作（children と yParentMap の二重管理） ====================
+  // ==================== ノード操作（children + yParentMap 二重管理） ====================
   const addChildNode = useCallback((parentId: string) => {
     const nodes = yNodesRef.current;
     const parentMap = yParentMapRef.current;
@@ -928,7 +917,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     ydocRef.current.transact(() => {
       nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false, children: [] });
       parentMap.set(childId, parentId);
-      // 親の children 配列を更新
       nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
     });
     setSelectedNodeIds([childId]);
@@ -940,7 +928,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (!nodes || !parentMap || !yRootRef.current || nodeId === yRootRef.current) return;
     ydocRef.current?.transact(() => {
       const deleteRecursive = (id: string) => {
-        // 親の children から削除
         const parentId = parentMap.get(id);
         if (parentId) {
           const parentData = nodes.get(parentId);
@@ -1032,11 +1019,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false, children: [targetId] });
       parentMap.set(newParentId, oldParentId);
       parentMap.set(targetId, newParentId);
-      // 古い親から外す
       const updatedOldChildren = (oldParent.children ?? []).filter(id => id !== targetId);
       updatedOldChildren.push(newParentId);
       nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
-      // ターゲットの independent を false に
       nodes.set(targetId, { ...targetNode, independent: false });
     });
     setSelectedNodeIds([newParentId]);
@@ -1053,11 +1038,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (!oldParent || !newParent) return;
     ydocRef.current?.transact(() => {
       parentMap.set(nodeId, newParentId);
-      // 古い親から外す
       nodes.set(oldParentId, { ...oldParent, children: (oldParent.children ?? []).filter(cid => cid !== nodeId) });
-      // 新しい親に追加
       nodes.set(newParentId, { ...newParent, children: [...(newParent.children ?? []), nodeId] });
-      // ノードの independent を false に
       const nodeData = nodes.get(nodeId);
       if (nodeData) nodes.set(nodeId, { ...nodeData, independent: false });
     });
@@ -1185,10 +1167,8 @@ const MindMapApp = ({ user }: { user: User }) => {
           parentMap.set(childId, rootId);
           const nodeData = nodes.get(childId);
           if (nodeData) nodes.set(childId, { ...nodeData, independent: true });
-          // 親の children から削除
           const parentData = nodes.get(parentId);
           if (parentData) nodes.set(parentId, { ...parentData, children: (parentData.children ?? []).filter(cid => cid !== childId) });
-          // ルートの children に追加
           const rootData = nodes.get(rootId);
           if (rootData) nodes.set(rootId, { ...rootData, children: [...(rootData.children ?? []), childId] });
         }
@@ -1366,7 +1346,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         const tree = yMapToTree(yNodes, yParentMap, yRootRef.current);
         if (tree) {
           // ★ ツリーに基づいて全ノードの children と yParentMap を修復
-          repairTree(tree, yNodes, yParentMap);
+          repairTree(tree, yNodes, yParentMap, ydoc);
           setMindMap(tree);
           lastMindMapRef.current = tree;
         } else if (lastMindMapRef.current) {
