@@ -6,12 +6,11 @@ import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
 import type { RealtimeChannel, User } from '@supabase/supabase-js';
 
-// --------------------- 型定義 ---------------------
+// ==================== 型定義 ====================
 export interface YjsNodeData {
   text: string;
   x: number;
   y: number;
-  children: string[];
   independent?: boolean;
   bgColor?: string;
   textColor?: string;
@@ -25,6 +24,7 @@ export interface YjsNodeData {
   imageWidth?: number;
   imageHeight?: number;
   imageScale?: number;
+  // children は削除し、親子関係は yParentMap で管理
 }
 
 export interface YjsEdgeData {
@@ -258,7 +258,6 @@ const COLOR_PALETTE = [
 ];
 
 const STAMP_RED = '#ea5550';
-
 const DEFAULT_STICKY_WIDTH = 200;
 const DEFAULT_STICKY_HEIGHT = 160;
 const NODE_WIDTH = 160;
@@ -269,7 +268,6 @@ const NODE_PADDING_HORIZONTAL = 40;
 const IMAGE_NODE_MAX_INITIAL_SIZE = 300;
 const STAMP_DEFAULT_WIDTH = 60;
 const STAMP_DEFAULT_HEIGHT = 60;
-
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
 const IMAGE_SCALE_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
 
@@ -299,7 +297,7 @@ const computeNodeWidth = (text: string, fontSize: number = NODE_DEFAULT_FONT_SIZ
   return NODE_MIN_WIDTH;
 };
 
-// --------------------- 幾何学・座標・描画ユーティリティ ---------------------
+// ==================== 幾何学ユーティリティ ====================
 const getConnectionPoint = (x: number, y: number, point: ConnectionPoint, width: number, height: number): { x: number; y: number } => {
   switch (point) {
     case 'top':    return { x, y: y - height / 2 };
@@ -380,71 +378,19 @@ const getUnoccupiedPosition = (startX: number, startY: number, yNodes: Y.Map<Yjs
   return { x, y };
 };
 
-const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parentY?: number): FlatNode[] => {
-  const current: FlatNode = {
-    id: node.id, x: node.x, y: node.y,
-    parentId, parentX, parentY,
-    independent: node.independent,
-    bgColor: node.bgColor,
-    textColor: node.textColor,
-    groupId: node.groupId,
-    zIndex: node.zIndex,
-    width: node.width ?? NODE_WIDTH,
-    height: node.height ?? NODE_HEIGHT,
-  };
-  if (node.collapsed) {
-    return [current];
-  }
-  const children = node.children.flatMap((c: MindNode) => flattenTree(c, node.id, node.x, node.y));
-  return [current, ...children];
-};
-
-const getAllNodes = (root: MindNode): MindNode[] => {
-  let result: MindNode[] = [root];
-  for (const child of root.children) {
-    result = result.concat(getAllNodes(child));
-  }
-  return result;
-};
-
-// --------------------- アイコン ---------------------
-const UndoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" /></svg> );
-const RedoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4" /></svg> );
-const PlusIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg> );
-const SaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v11a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V4m0 3h4m-4 0H8" /></svg> );
-const LinkIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828m6.364-6.364a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828" /></svg> );
-const HomeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> );
-const PaletteIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg> );
-const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
-const LeaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> );
-const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
-const SiblingNodeIcon = ({ className = '' }: { className?: string }) => ( <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
-const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
-const StickyIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> );
-const ImageIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> );
-const PencilIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> );
-const HelpIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> );
-const GripVerticalIcon = () => ( <svg className="w-4 h-4 text-slate-300 cursor-move" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5v14M15 5v14" /></svg> );
-const CursorIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg> );
-const SquareIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} /></svg> );
-const CircleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" strokeWidth={2} /></svg> );
-const TriangleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,4 20,20 4,20" strokeWidth={2} strokeLinejoin="round" /></svg> );
-const TextOutlineIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V4h16v3M9 20h6M12 4v16" /></svg> );
-const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
-const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
-const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth={2} /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth={2} /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
-const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16M8 4v16M16 4v16" /></svg> );
-const CloseIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> );
-const StampIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 0v14M12 7v10M7 12h10" /></svg> );
-const GridIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} /><line x1="3" y1="9" x2="21" y2="9" strokeWidth={2} /><line x1="3" y1="15" x2="21" y2="15" strokeWidth={2} /><line x1="9" y1="3" x2="9" y2="21" strokeWidth={2} /><line x1="15" y1="3" x2="15" y2="21" strokeWidth={2} /></svg> );
-
-// --------------------- データ変換ユーティリティ ---------------------
-const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
+// ==================== yParentMap を用いたツリー構築 ====================
+const yMapToTree = (nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>, rootId: string): MindNode | null => {
+  // yParentMap: childId -> parentId
+  const childMap = new Map<string, string[]>(); // parentId -> childId[]
+  yParentMap.forEach((parentId, childId) => {
+    if (!childMap.has(parentId)) childMap.set(parentId, []);
+    childMap.get(parentId)!.push(childId);
+  });
   const convert = (id: string): MindNode | null => {
     const data = nodes.get(id);
     if (!data) return null;
-    const childIds = (data.children || []) as string[];
-    const children = childIds.map(convert).filter((c): c is MindNode => c !== null);
+    const childrenIds = childMap.get(id) || [];
+    const children = childrenIds.map(convert).filter((c): c is MindNode => c !== null);
     const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
     let width = data.width;
     let height = data.height;
@@ -479,7 +425,7 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
   return convert(rootId);
 };
 
-const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
+const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>, yParentMap: Y.Map<string>) => {
   nodes.set(root.id, {
     text: root.text, x: root.x, y: root.y,
     independent: root.independent ?? false,
@@ -495,19 +441,86 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     imageWidth: root.imageWidth,
     imageHeight: root.imageHeight,
     imageScale: root.imageScale ?? 1.0,
-    children: root.children.map((c: MindNode) => c.id),
+    // children は yParentMap で管理
   });
-  root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
+  for (const child of root.children) {
+    yParentMap.set(child.id, root.id);
+    treeToYMap(child, nodes, yParentMap);
+  }
 };
 
-const uint8ArrayToBase64 = (u8: Uint8Array): string => { let binary = ''; for (let i = 0; i < u8.byteLength; i++) binary += String.fromCharCode(u8[i]); return btoa(binary); };
-const base64ToUint8Array = (b64: string): Uint8Array => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-const stringToColor = (str: string): string => { let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash); return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`; };
-const getInitial = (email: string): string => email.split('@')[0].substring(0, 2).toUpperCase();
-const findParentId = (nodes: Y.Map<YjsNodeData>, childId: string): string | null => {
-  let result: string | null = null;
-  nodes.forEach((value: YjsNodeData, key: string) => { if (value.children?.includes(childId)) result = key; });
+const findParentId = (yParentMap: Y.Map<string>, childId: string): string | undefined => {
+  return yParentMap.get(childId);
+};
+
+const flattenTree = (node: MindNode, parentId?: string, parentX?: number, parentY?: number): FlatNode[] => {
+  const current: FlatNode = {
+    id: node.id, x: node.x, y: node.y,
+    parentId, parentX, parentY,
+    independent: node.independent,
+    bgColor: node.bgColor,
+    textColor: node.textColor,
+    groupId: node.groupId,
+    zIndex: node.zIndex,
+    width: node.width ?? NODE_WIDTH,
+    height: node.height ?? NODE_HEIGHT,
+  };
+  if (node.collapsed) {
+    return [current];
+  }
+  const children = node.children.flatMap((c: MindNode) => flattenTree(c, node.id, node.x, node.y));
+  return [current, ...children];
+};
+
+const getAllNodes = (root: MindNode): MindNode[] => {
+  let result: MindNode[] = [root];
+  for (const child of root.children) {
+    result = result.concat(getAllNodes(child));
+  }
   return result;
+};
+
+const isNodeInRect = (node: MindNode, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
+  const w = node.width ?? NODE_WIDTH;
+  const h = node.height ?? NODE_HEIGHT;
+  const left = node.x - w / 2, right = node.x + w / 2, top = node.y - h / 2, bottom = node.y + h / 2;
+  const rx1 = Math.min(rect.x1, rect.x2);
+  const rx2 = Math.max(rect.x1, rect.x2);
+  const ry1 = Math.min(rect.y1, rect.y2);
+  const ry2 = Math.max(rect.y1, rect.y2);
+  return !(right < rx1 || left > rx2 || bottom < ry1 || top > ry2);
+};
+const isImageInRect = (img: ImageData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
+  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
+  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
+  return !(img.x + img.width < rx1 || img.x > rx2 || img.y + img.height < ry1 || img.y > ry2);
+};
+const isStickyInRect = (sticky: StickyData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
+  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
+  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
+  return !(sticky.x + sticky.width < rx1 || sticky.x > rx2 || sticky.y + sticky.height < ry1 || sticky.y > ry2);
+};
+const isOutlineInRect = (outline: OutlineData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
+  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
+  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
+  return !(outline.x + outline.width < rx1 || outline.x > rx2 || outline.y + outline.height < ry1 || outline.y > ry2);
+};
+const isStampInRect = (stamp: StampData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
+  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
+  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
+  return !(stamp.x + stamp.width < rx1 || stamp.x > rx2 || stamp.y + stamp.height < ry1 || stamp.y > ry2);
+};
+
+const getCanvasCoords = (clientX: number, clientY: number, container: HTMLDivElement, zoomLevel: number): { x: number; y: number } => {
+  const rect = container.getBoundingClientRect();
+  const style = window.getComputedStyle(container);
+  const padLeft = parseFloat(style.paddingLeft) || 0;
+  const padTop = parseFloat(style.paddingTop) || 0;
+  const borderLeft = container.clientLeft;
+  const borderTop = container.clientTop;
+  const x = (clientX - rect.left - borderLeft - padLeft + container.scrollLeft) / zoomLevel;
+  const y = (clientY - rect.top - borderTop - padTop + container.scrollTop) / zoomLevel;
+  return { x, y };
 };
 
 const findNodeAtPoint = (root: MindNode, x: number, y: number, excludeId?: string): MindNode | null => {
@@ -549,54 +562,43 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
   return { x: node.x, y: node.y, width: w, height: h };
 };
 
-const getCanvasCoords = (clientX: number, clientY: number, container: HTMLDivElement, zoomLevel: number): { x: number; y: number } => {
-  const rect = container.getBoundingClientRect();
-  const style = window.getComputedStyle(container);
-  const padLeft = parseFloat(style.paddingLeft) || 0;
-  const padTop = parseFloat(style.paddingTop) || 0;
-  const borderLeft = container.clientLeft;
-  const borderTop = container.clientTop;
-  const x = (clientX - rect.left - borderLeft - padLeft + container.scrollLeft) / zoomLevel;
-  const y = (clientY - rect.top - borderTop - padTop + container.scrollTop) / zoomLevel;
-  return { x, y };
-};
+const uint8ArrayToBase64 = (u8: Uint8Array): string => { let binary = ''; for (let i = 0; i < u8.byteLength; i++) binary += String.fromCharCode(u8[i]); return btoa(binary); };
+const base64ToUint8Array = (b64: string): Uint8Array => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const stringToColor = (str: string): string => { let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash); return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`; };
+const getInitial = (email: string): string => email.split('@')[0].substring(0, 2).toUpperCase();
 
-const isNodeInRect = (node: MindNode, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
-  const w = node.width ?? NODE_WIDTH;
-  const h = node.height ?? NODE_HEIGHT;
-  const left = node.x - w / 2, right = node.x + w / 2, top = node.y - h / 2, bottom = node.y + h / 2;
-  const rx1 = Math.min(rect.x1, rect.x2);
-  const rx2 = Math.max(rect.x1, rect.x2);
-  const ry1 = Math.min(rect.y1, rect.y2);
-  const ry2 = Math.max(rect.y1, rect.y2);
-  return !(right < rx1 || left > rx2 || bottom < ry1 || top > ry2);
-};
+// ==================== アイコン ====================
+const UndoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" /></svg> );
+const RedoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4" /></svg> );
+const PlusIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg> );
+const SaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v11a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V4m0 3h4m-4 0H8" /></svg> );
+const LinkIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828m6.364-6.364a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828" /></svg> );
+const HomeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> );
+const PaletteIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg> );
+const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
+const LeaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> );
+const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
+const SiblingNodeIcon = ({ className = '' }: { className?: string }) => ( <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
+const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
+const StickyIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> );
+const ImageIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> );
+const PencilIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> );
+const HelpIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> );
+const GripVerticalIcon = () => ( <svg className="w-4 h-4 text-slate-300 cursor-move" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5v14M15 5v14" /></svg> );
+const CursorIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg> );
+const SquareIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} /></svg> );
+const CircleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" strokeWidth={2} /></svg> );
+const TriangleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,4 20,20 4,20" strokeWidth={2} strokeLinejoin="round" /></svg> );
+const TextOutlineIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V4h16v3M9 20h6M12 4v16" /></svg> );
+const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
+const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
+const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth={2} /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth={2} /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
+const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16M8 4v16M16 4v16" /></svg> );
+const CloseIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> );
+const StampIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 0v14M12 7v10M7 12h10" /></svg> );
+const GridIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} /><line x1="3" y1="9" x2="21" y2="9" strokeWidth={2} /><line x1="3" y1="15" x2="21" y2="15" strokeWidth={2} /><line x1="9" y1="3" x2="9" y2="21" strokeWidth={2} /><line x1="15" y1="3" x2="15" y2="21" strokeWidth={2} /></svg> );
 
-const isImageInRect = (img: ImageData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
-  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
-  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
-  return !(img.x + img.width < rx1 || img.x > rx2 || img.y + img.height < ry1 || img.y > ry2);
-};
-
-const isStickyInRect = (sticky: StickyData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
-  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
-  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
-  return !(sticky.x + sticky.width < rx1 || sticky.x > rx2 || sticky.y + sticky.height < ry1 || sticky.y > ry2);
-};
-
-const isOutlineInRect = (outline: OutlineData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
-  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
-  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
-  return !(outline.x + outline.width < rx1 || outline.x > rx2 || outline.y + outline.height < ry1 || outline.y > ry2);
-};
-
-const isStampInRect = (stamp: StampData, rect: { x1: number; y1: number; x2: number; y2: number }): boolean => {
-  const rx1 = Math.min(rect.x1, rect.x2), rx2 = Math.max(rect.x1, rect.x2);
-  const ry1 = Math.min(rect.y1, rect.y2), ry2 = Math.max(rect.y1, rect.y2);
-  return !(stamp.x + stamp.width < rx1 || stamp.x > rx2 || stamp.y + stamp.height < ry1 || stamp.y > ry2);
-};
-
-// --------------------- 認証画面 ---------------------
+// ==================== 認証画面 ====================
 const AuthScreen = () => (
   <div className="flex items-center justify-center h-screen bg-slate-50">
     <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 text-center max-w-sm w-full">
@@ -617,7 +619,7 @@ const AuthScreen = () => (
   </div>
 );
 
-// --------------------- メイン ---------------------
+// ==================== メイン ====================
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -631,7 +633,7 @@ const App = () => {
   return <MindMapApp user={user} />;
 };
 
-// --------------------- 共同編集マインドマップ ---------------------
+// ==================== 共同編集マインドマップ ====================
 const MindMapApp = ({ user }: { user: User }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -650,7 +652,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [currentTool, setCurrentTool] = useState<ToolType>('select');
-
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
 
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -664,6 +665,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const yRootRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
+  const yParentMapRef = useRef<Y.Map<string> | null>(null); // ★ 親子マップ
 
   const [mindMap, setMindMap] = useState<MindNode | null>(null);
   const [edges, setEdges] = useState<EdgeData[]>([]);
@@ -741,9 +743,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
       const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('mindmap-show-grid', String(next));
-      }
+      if (typeof window !== 'undefined') localStorage.setItem('mindmap-show-grid', String(next));
       return next;
     });
   }, []);
@@ -781,15 +781,11 @@ const MindMapApp = ({ user }: { user: User }) => {
   });
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('mindmap-stamp-text', stampText);
-    }
+    if (typeof window !== 'undefined') localStorage.setItem('mindmap-stamp-text', stampText);
   }, [stampText]);
 
   const cursorBroadcastTimerRef = useRef<number | null>(null);
   const lastMindMapRef = useRef<MindNode | null>(null);
-  // ★ ノードの親子関係を記憶するマップ（修復用）
-  const parentMapRef = useRef<Record<string, string>>({});
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -798,7 +794,6 @@ const MindMapApp = ({ user }: { user: User }) => {
            selectionRect !== null || isCanvasPanning || isMultiDragging;
   }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
 
-  // --- Layer Management ---
   const getMaxZIndex = useCallback(() => {
     let max = 10;
     yNodesRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
@@ -808,7 +803,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     yStampsRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
     return max;
   }, []);
-
   const getMinZIndex = useCallback(() => {
     let min = 4;
     yNodesRef.current?.forEach(v => { if (v.zIndex && v.zIndex < min) min = v.zIndex; });
@@ -829,7 +823,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       selectedStampIds.forEach(id => { const n = yStampsRef.current?.get(id); if (n) yStampsRef.current?.set(id, { ...n, zIndex: newZ }); });
     });
   }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, getMaxZIndex]);
-
   const sendToBack = useCallback(() => {
     const newZ = getMinZIndex() - 1;
     ydocRef.current?.transact(() => {
@@ -885,6 +878,174 @@ const MindMapApp = ({ user }: { user: User }) => {
     return () => { window.removeEventListener('keydown', handleGlobalKeyDown); window.removeEventListener('keyup', handleGlobalKeyUp); };
   }, [editingNodeId]);
 
+  // ==================== ノード操作 (yParentMap 完全対応) ====================
+  const addChildNode = useCallback((parentId: string) => {
+    const nodes = yNodesRef.current;
+    const parentMap = yParentMapRef.current;
+    if (!nodes || !parentMap || !ydocRef.current) return;
+    const parent = nodes.get(parentId);
+    if (!parent) return;
+    const childId = crypto.randomUUID();
+    const safePos = getUnoccupiedPosition(parent.x + NODE_WIDTH + 40, parent.y, nodes);
+    const defaultText = '新しいトピック';
+    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
+    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    ydocRef.current.transact(() => {
+      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      parentMap.set(childId, parentId);
+    });
+    setSelectedNodeIds([childId]);
+  }, []);
+
+  const deleteNode = useCallback((nodeId: string) => {
+    const nodes = yNodesRef.current;
+    const parentMap = yParentMapRef.current;
+    if (!nodes || !parentMap || !yRootRef.current || nodeId === yRootRef.current) return;
+    ydocRef.current?.transact(() => {
+      const deleteRecursive = (id: string) => {
+        nodes.delete(id);
+        parentMap.delete(id);
+        parentMap.forEach((pid, cid) => {
+          if (pid === id) deleteRecursive(cid);
+        });
+      };
+      deleteRecursive(nodeId);
+    });
+    setSelectedNodeIds(prev => prev.filter(id => id !== nodeId));
+  }, []);
+
+  const addSiblingNode = useCallback((targetId: string, position: 'before' | 'after') => {
+    const nodes = yNodesRef.current;
+    const parentMap = yParentMapRef.current;
+    if (!nodes || !parentMap || !yRootRef.current || targetId === yRootRef.current) return;
+    const parentId = parentMap.get(targetId);
+    if (!parentId) return;
+    const parent = nodes.get(parentId);
+    if (!parent) return;
+    const siblingId = crypto.randomUUID();
+    const targetNode = nodes.get(targetId);
+    const safePos = getUnoccupiedPosition(targetNode ? targetNode.x : parent.x + NODE_WIDTH + 40, targetNode ? targetNode.y + (position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20)) : parent.y, nodes);
+    const defaultText = '新しいトピック';
+    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
+    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    ydocRef.current?.transact(() => {
+      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      parentMap.set(siblingId, parentId);
+    });
+    setSelectedNodeIds([siblingId]);
+  }, []);
+
+  const addIndependentSibling = useCallback((targetId: string, position: 'before' | 'after') => {
+    const nodes = yNodesRef.current;
+    const parentMap = yParentMapRef.current;
+    if (!nodes || !parentMap || !yRootRef.current) return;
+    const targetNode = nodes.get(targetId);
+    if (!targetNode) return;
+    const newId = crypto.randomUUID();
+    const offsetY = position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20);
+    const safePos = getUnoccupiedPosition(targetNode.x, targetNode.y + offsetY, nodes);
+    const rootId = yRootRef.current;
+    const defaultText = '独立トピック';
+    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
+    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    ydocRef.current?.transact(() => {
+      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      parentMap.set(newId, rootId);
+    });
+    setSelectedNodeIds([newId]);
+  }, []);
+
+  const addParentNode = useCallback((targetId: string) => {
+    const nodes = yNodesRef.current;
+    const parentMap = yParentMapRef.current;
+    if (!nodes || !parentMap || !yRootRef.current || targetId === yRootRef.current) return;
+    const oldParentId = parentMap.get(targetId);
+    if (!oldParentId) return;
+    const oldParent = nodes.get(oldParentId);
+    if (!oldParent) return;
+    const targetNode = nodes.get(targetId);
+    if (!targetNode) return;
+    const newParentId = crypto.randomUUID();
+    const safePos = getUnoccupiedPosition(targetNode.x - NODE_WIDTH - 40, targetNode.y, nodes);
+    const defaultText = '新しいトピック';
+    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
+    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    ydocRef.current?.transact(() => {
+      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      parentMap.set(newParentId, oldParentId);
+      parentMap.set(targetId, newParentId);
+    });
+    setSelectedNodeIds([newParentId]);
+  }, []);
+
+  const reparentNode = useCallback((nodeId: string, newParentId: string) => {
+    const parentMap = yParentMapRef.current;
+    if (!parentMap || !yRootRef.current || nodeId === yRootRef.current) return;
+    const oldParentId = parentMap.get(nodeId);
+    if (!oldParentId || oldParentId === newParentId) return;
+    ydocRef.current?.transact(() => {
+      parentMap.set(nodeId, newParentId);
+    });
+  }, []);
+
+  const addNodeAtPosition = useCallback((x: number, y: number, isImageNode: boolean = false, imageUrl?: string, imageWidth?: number, imageHeight?: number) => {
+    const nodes = yNodesRef.current;
+    const parentMap = yParentMapRef.current;
+    const rootId = yRootRef.current;
+    if (!nodes || !parentMap || !rootId) return;
+    const childId = crypto.randomUUID();
+    const safePos = getUnoccupiedPosition(x, y, nodes);
+    if (isImageNode && imageUrl && imageWidth && imageHeight) {
+      ydocRef.current?.transact(() => {
+        nodes.set(childId, {
+          text: '', x: safePos.x, y: safePos.y, independent: true,
+          bgColor: '#f8fafc', textColor: '#334155',
+          width: imageWidth, height: imageHeight,
+          collapsed: false,
+          imageUrl, imageWidth, imageHeight, imageScale: 1.0
+        });
+        parentMap.set(childId, rootId);
+      });
+    } else {
+      const defaultText = '独立トピック';
+      const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
+      const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+      ydocRef.current?.transact(() => {
+        nodes.set(childId, {
+          text: defaultText, x: safePos.x, y: safePos.y, independent: true,
+          bgColor: '#f8fafc', textColor: '#334155',
+          width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize,
+          collapsed: false
+        });
+        parentMap.set(childId, rootId);
+      });
+    }
+    setSelectedNodeIds([childId]);
+  }, []);
+
+  const addSticky = useCallback((x: number, y: number) => {
+    const yStickies = yStickiesRef.current; if (!yStickies || !ydocRef.current) return;
+    const id = crypto.randomUUID();
+    ydocRef.current.transact(() => {
+      yStickies.set(id, { x, y, width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT, text: '', bgColor: '#fefce8', textColor: '#a16207' });
+    });
+    setSelectedStickyIds([id]);
+    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
+  }, []);
+
+  const addOutline = useCallback((type: 'rectangle' | 'circle' | 'triangle' | 'text', x: number, y: number) => {
+    const yOutlines = yOutlinesRef.current; if (!yOutlines || !ydocRef.current) return;
+    const id = crypto.randomUUID();
+    const width = type === 'text' ? 150 : 100;
+    const height = type === 'text' ? 50 : 100;
+    ydocRef.current.transact(() => {
+      yOutlines.set(id, { type, x, y, width, height, text: type === 'text' ? 'テキスト' : '', color: '#475569', fontSize: NODE_DEFAULT_FONT_SIZE });
+    });
+    setSelectedOutlineIds([id]);
+    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
+    if (type === 'text') setEditingOutlineId(id);
+  }, []);
+
   const addStamp = useCallback((x: number, y: number) => {
     const yStamps = yStampsRef.current; if (!yStamps || !ydocRef.current) return;
     const id = crypto.randomUUID();
@@ -904,64 +1065,45 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedStampIds([id]);
   }, [stampText, myUserId, myEmail]);
 
-  const deleteStamp = useCallback((stampId: string) => {
-    const yStamps = yStampsRef.current; if (!yStamps) return;
-    ydocRef.current?.transact(() => {
-      yStamps.delete(stampId);
-    });
-    setSelectedStampIds(prev => prev.filter(id => id !== stampId));
-  }, []);
+  const deleteSticky = useCallback((stickyId: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; ydocRef.current?.transact(() => { yStickies.delete(stickyId); }); setSelectedStickyIds(prev => prev.filter(id => id !== stickyId)); }, []);
+  const deleteOutline = useCallback((outlineId: string) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; ydocRef.current?.transact(() => { yOutlines.delete(outlineId); }); setSelectedOutlineIds(prev => prev.filter(id => id !== outlineId)); }, []);
+  const deleteStamp = useCallback((stampId: string) => { const yStamps = yStampsRef.current; if (!yStamps) return; ydocRef.current?.transact(() => { yStamps.delete(stampId); }); setSelectedStampIds(prev => prev.filter(id => id !== stampId)); }, []);
+  const deleteImage = useCallback((imageId: string) => { const yImages = yImagesRef.current; if (!yImages) return; const image = yImages.get(imageId); if (image) { supabase.storage.from('images').remove([image.storagePath]); } ydocRef.current?.transact(() => { yImages.delete(imageId); }); setSelectedImageIds(prev => prev.filter(id => id !== imageId)); closeContextMenu(); }, [closeContextMenu]);
 
-  const updateStampPosition = useCallback((stampId: string, x: number, y: number) => {
-    const yStamps = yStampsRef.current; if (!yStamps) return;
-    const data = yStamps.get(stampId);
-    if (data) yStamps.set(stampId, { ...data, x, y });
-  }, []);
-
-  const updateOutlineFontSize = useCallback((outlineId: string, fontSize: number) => {
-    const yOutlines = yOutlinesRef.current; if (!yOutlines) return;
-    const data = yOutlines.get(outlineId);
-    if (data && data.type === 'text') {
-      ydocRef.current?.transact(() => {
-        yOutlines.set(outlineId, { ...data, fontSize });
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    const handleGlobalStampShortcut = (e: globalThis.KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
-        e.preventDefault();
-        const container = scrollContainerRef.current;
-        if (container) {
-          const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
-          const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
-          addStamp(x, y);
-        }
-      }
-    };
-    window.addEventListener('keydown', handleGlobalStampShortcut);
-    return () => window.removeEventListener('keydown', handleGlobalStampShortcut);
-  }, [addStamp, zoomLevel]);
+  const updateText = useCallback((nodeId: string, text: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, text }); }, []);
+  const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
+  const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
+  const updateMultipleNodeColors = useCallback((nodeIds: string[], bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; ydocRef.current?.transact(() => { nodeIds.forEach(id => { const data = nodes.get(id); if (data) nodes.set(id, { ...data, bgColor, textColor }); }); }); }, []);
+  const updateNodeFontSize = useCallback((nodeId: string, fontSize: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data && !data.imageUrl) { const newWidth = computeNodeWidth(data.text, fontSize); nodes.set(nodeId, { ...data, fontSize, width: newWidth }); } }, []);
+  const updateNodeWidth = useCallback((nodeId: string, width: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, width }); }, []);
+  const toggleNodeCollapse = useCallback((nodeId: string) => { if (nodeId === yRootRef.current) return; const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) { ydocRef.current?.transact(() => { nodes.set(nodeId, { ...data, collapsed: !data.collapsed }); }); } }, []);
+  const resizeImageNode = useCallback((nodeId: string, scale: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data && data.imageUrl && data.imageWidth && data.imageHeight) { ydocRef.current?.transact(() => { const newWidth = data.imageWidth! * scale; const newHeight = data.imageHeight! * scale; nodes.set(nodeId, { ...data, imageScale: scale, width: newWidth, height: newHeight }); }); } }, []);
+  const updateStickyColors = useCallback((stickyId: string, bgColor: string, textColor: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, bgColor, textColor }); }, []);
+  const updateStickyText = useCallback((stickyId: string, text: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, text }); }, []);
+  const updateStickyPosition = useCallback((stickyId: string, x: number, y: number) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, x, y }); }, []);
+  const updateStickySize = useCallback((stickyId: string, width: number, height: number) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, width, height }); }, []);
+  const updateOutlineColor = useCallback((outlineId: string, color: string) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, color }); }, []);
+  const updateOutlineText = useCallback((outlineId: string, text: string) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, text }); }, []);
+  const updateOutlinePosition = useCallback((outlineId: string, x: number, y: number) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, x, y }); }, []);
+  const updateOutlineSize = useCallback((outlineId: string, width: number, height: number) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, width, height }); }, []);
+  const updateOutlineFontSize = useCallback((outlineId: string, fontSize: number) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data && data.type === 'text') { ydocRef.current?.transact(() => { yOutlines.set(outlineId, { ...data, fontSize }); }); } }, []);
+  const updateImagePosition = useCallback((imageId: string, x: number, y: number) => { const yImages = yImagesRef.current; if (!yImages) return; const data = yImages.get(imageId); if (data) yImages.set(imageId, { ...data, x, y }); }, []);
+  const updateStampPosition = useCallback((stampId: string, x: number, y: number) => { const yStamps = yStampsRef.current; if (!yStamps) return; const data = yStamps.get(stampId); if (data) yStamps.set(stampId, { ...data, x, y }); }, []);
 
   const addEdge = useCallback((sourceNodeId: string, sourcePoint: ConnectionPoint, targetNodeId: string, targetPoint: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges || !ydocRef.current) return; const edgeId = crypto.randomUUID(); ydocRef.current.transact(() => { yEdges.set(edgeId, { sourceNodeId, sourcePoint, targetNodeId, targetPoint, arrow: 'none' }); }); }, []);
   const deleteEdge = useCallback((edgeId: string) => {
     if (edgeId.startsWith('parent-edge-')) {
       const childId = edgeId.replace('parent-edge-', '');
       const nodes = yNodesRef.current;
+      const parentMap = yParentMapRef.current;
       const rootId = yRootRef.current;
-      if (!nodes || !rootId) return;
+      if (!nodes || !parentMap || !rootId) return;
       ydocRef.current?.transact(() => {
-        const childNode = nodes.get(childId);
-        const parentId = findParentId(nodes, childId);
-        const rootNode = nodes.get(rootId);
-        if (childNode && rootNode && parentId) {
-          if (parentId !== rootId) {
-            const parentNode = nodes.get(parentId);
-            if (parentNode) nodes.set(parentId, { ...parentNode, children: (parentNode.children as string[]).filter((id: string) => id !== childId) });
-            nodes.set(childId, { ...childNode, independent: true });
-            nodes.set(rootId, { ...rootNode, children: [...(rootNode.children as string[]), childId] });
-          } else { nodes.set(childId, { ...childNode, independent: true }); }
+        const parentId = parentMap.get(childId);
+        if (parentId && parentId !== rootId) {
+          parentMap.set(childId, rootId);
+          const nodeData = nodes.get(childId);
+          if (nodeData) nodes.set(childId, { ...nodeData, independent: true });
         }
       });
       setSelectedEdgeId(null); closeContextMenu(); return;
@@ -970,260 +1112,15 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [closeContextMenu]);
   const updateEdgeEndpoint = useCallback((edgeId: string, endpoint: 'source' | 'target', point: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { if (endpoint === 'source') yEdges.set(edgeId, { ...edge, sourcePoint: point }); else yEdges.set(edgeId, { ...edge, targetPoint: point }); }); }, []);
   const updateEdgeArrow = useCallback((edgeId: string, arrow: 'none' | 'start' | 'end' | 'both') => { const yEdges = yEdgesRef.current; if (!yEdges) return; const edge = yEdges.get(edgeId); if (!edge) return; ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, arrow }); }); }, []);
-  const reparentNode = useCallback((nodeId: string, newParentId: string) => {
-    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current || nodeId === yRootRef.current) return;
-    const oldParentId = findParentId(nodes, nodeId); if (!oldParentId || oldParentId === newParentId) return;
-    const oldParent = nodes.get(oldParentId), newParent = nodes.get(newParentId); if (!oldParent || !newParent) return;
-    ydocRef.current?.transact(() => {
-      nodes.set(oldParentId, { ...oldParent, children: (oldParent.children as string[]).filter((id: string) => id !== nodeId) });
-      const nodeData = nodes.get(nodeId); nodes.set(nodeId, { ...nodeData!, independent: false });
-      nodes.set(newParentId, { ...newParent, children: [...(newParent.children as string[]), nodeId] });
-    });
-  }, []);
 
-  const updateNodeWidth = useCallback((nodeId: string, width: number) => {
-    const nodes = yNodesRef.current; if (!nodes) return;
-    const data = nodes.get(nodeId);
-    if (data) nodes.set(nodeId, { ...data, width });
-  }, []);
-
-  const toggleNodeCollapse = useCallback((nodeId: string) => {
-    if (nodeId === yRootRef.current) return;
-    const nodes = yNodesRef.current; if (!nodes) return;
-    const data = nodes.get(nodeId);
-    if (data) {
-      ydocRef.current?.transact(() => {
-        nodes.set(nodeId, { ...data, collapsed: !data.collapsed });
-      });
-    }
-  }, []);
-
-  const resizeImageNode = useCallback((nodeId: string, scale: number) => {
-    const nodes = yNodesRef.current; if (!nodes) return;
-    const data = nodes.get(nodeId);
-    if (data && data.imageUrl && data.imageWidth && data.imageHeight) {
-      ydocRef.current?.transact(() => {
-        const newWidth = data.imageWidth! * scale;
-        const newHeight = data.imageHeight! * scale;
-        nodes.set(nodeId, { ...data, imageScale: scale, width: newWidth, height: newHeight });
-      });
-    }
-  }, []);
-
-  const addChildNode = useCallback((parentId: string) => {
-    const nodes = yNodesRef.current; if (!nodes) return; const parent = nodes.get(parentId); if (!parent) return;
-    const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(parent.x + NODE_WIDTH + 40, parent.y, nodes);
-    const defaultText = '新しいトピック';
-    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
-    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
-      nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
-    });
-    setSelectedNodeIds([childId]);
-  }, []);
-
-  const addSiblingNode = useCallback((targetId: string, position: 'before' | 'after') => {
-    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return; if (targetId === yRootRef.current) return;
-    const parentId = findParentId(nodes, targetId); if (!parentId) return; const parent = nodes.get(parentId); if (!parent) return;
-    const siblingId = crypto.randomUUID(); const targetNode = nodes.get(targetId);
-    const safePos = getUnoccupiedPosition(targetNode ? targetNode.x : parent.x + NODE_WIDTH + 40, targetNode ? targetNode.y + (position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20)) : parent.y, nodes);
-    const curChildren: string[] = parent.children ?? []; const targetIndex = curChildren.indexOf(targetId); const newChildren = [...curChildren]; newChildren.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, siblingId);
-    const defaultText = '新しいトピック';
-    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
-    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    ydocRef.current?.transact(() => {
-      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
-      nodes.set(parentId, { ...parent, children: newChildren });
-    });
-    setSelectedNodeIds([siblingId]);
-  }, []);
-
-  const addParentNode = useCallback((targetId: string) => {
-    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return; if (targetId === yRootRef.current) return;
-    const oldParentId = findParentId(nodes, targetId); if (!oldParentId) return; const oldParent = nodes.get(oldParentId); if (!oldParent) return;
-    const targetNode = nodes.get(targetId); if (!targetNode) return;
-    const newParentId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(targetNode.x - NODE_WIDTH - 40, targetNode.y, nodes);
-    const defaultText = '新しいトピック';
-    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
-    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
-      const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
-    });
-    setSelectedNodeIds([newParentId]);
-  }, []);
-
-  const addNodeAtPosition = useCallback((x: number, y: number, isImageNode: boolean = false, imageUrl?: string, imageWidth?: number, imageHeight?: number) => {
-    const nodes = yNodesRef.current, rootId = yRootRef.current; if (!nodes || !rootId) return;
-    const childId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(x, y, nodes);
-    if (isImageNode && imageUrl && imageWidth && imageHeight) {
-      ydocRef.current?.transact(() => {
-        nodes.set(childId, {
-          text: '', x: safePos.x, y: safePos.y, children: [], independent: true,
-          bgColor: '#f8fafc', textColor: '#334155',
-          width: imageWidth, height: imageHeight,
-          collapsed: false,
-          imageUrl, imageWidth, imageHeight, imageScale: 1.0
-        });
-        const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
-      });
-    } else {
-      const defaultText = '独立トピック';
-      const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
-      const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-      ydocRef.current?.transact(() => {
-        nodes.set(childId, {
-          text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true,
-          bgColor: '#f8fafc', textColor: '#334155',
-          width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize,
-          collapsed: false
-        });
-        const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
-      });
-    }
-    setSelectedNodeIds([childId]);
-  }, []);
-
-  const addImageNodeWithUpload = useCallback(async (x: number, y: number) => {
-    if (!imageFileInputRef.current) return;
-    imageFileInputRef.current.onchange = async (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      const file = target.files?.[0];
-      if (!file) return;
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
-      const { data, error } = await supabase.storage.from('images').upload(fileName, file);
-      if (error) { alert('画像のアップロードに失敗しました'); return; }
-      const publicUrl = supabase.storage.from('images').getPublicUrl(data.path).data.publicUrl;
-      const img = new Image();
-      img.onload = () => {
-        let w = img.width;
-        let h = img.height;
-        const maxDim = IMAGE_NODE_MAX_INITIAL_SIZE;
-        if (w > maxDim || h > maxDim) {
-          const ratio = Math.min(maxDim / w, maxDim / h);
-          w = Math.round(w * ratio);
-          h = Math.round(h * ratio);
-        }
-        addNodeAtPosition(x, y, true, publicUrl, w, h);
-      };
-      img.src = publicUrl;
-      target.value = '';
-    };
-    imageFileInputRef.current.click();
-  }, [addNodeAtPosition]);
-
-  const addIndependentSibling = useCallback((targetId: string, position: 'before' | 'after') => {
-    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return;
-    const targetNode = nodes.get(targetId); if (!targetNode) return;
-    const newId = crypto.randomUUID();
-    const offsetY = position === 'after' ? (NODE_HEIGHT + 20) : -(NODE_HEIGHT + 20);
-    const safePos = getUnoccupiedPosition(targetNode.x, targetNode.y + offsetY, nodes);
-    const rootId = yRootRef.current;
-    const defaultText = '独立トピック';
-    const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
-    const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    ydocRef.current?.transact(() => {
-      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
-      const root = nodes.get(rootId); if (root) {
-        const curChildren: string[] = root.children ?? [];
-        const targetIndex = curChildren.indexOf(targetId);
-        const newChildren = [...curChildren];
-        newChildren.splice(position === 'before' ? targetIndex : targetIndex + 1, 0, newId);
-        nodes.set(rootId, { ...root, children: newChildren });
-      }
-    });
-    setSelectedNodeIds([newId]);
-  }, []);
-
-  const addSticky = useCallback((x: number, y: number) => {
-    const yStickies = yStickiesRef.current; if (!yStickies || !ydocRef.current) return;
-    const id = crypto.randomUUID();
-    ydocRef.current.transact(() => {
-      yStickies.set(id, {
-        x, y, width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
-        text: '', bgColor: '#fefce8', textColor: '#a16207'
-      });
-    });
-    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
-    setSelectedStickyIds([id]);
-  }, []);
-
-  const addOutline = useCallback((type: 'rectangle' | 'circle' | 'triangle' | 'text', x: number, y: number) => {
-    const yOutlines = yOutlinesRef.current; if (!yOutlines || !ydocRef.current) return;
-    const id = crypto.randomUUID();
-    const width = type === 'text' ? 150 : 100;
-    const height = type === 'text' ? 50 : 100;
-    ydocRef.current.transact(() => {
-      yOutlines.set(id, {
-        type, x, y, width, height,
-        text: type === 'text' ? 'テキスト' : '',
-        color: '#475569',
-        fontSize: NODE_DEFAULT_FONT_SIZE
-      });
-    });
-    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
-    setSelectedOutlineIds([id]);
-    if (type === 'text') setEditingOutlineId(id);
-  }, []);
-
-  const deleteNode = useCallback((nodeId: string) => {
-    const nodes = yNodesRef.current;
-    if (!nodes || !yRootRef.current) return;
-    if (nodeId === yRootRef.current) return;
-    ydocRef.current?.transact(() => {
-      nodes.forEach((value: YjsNodeData, key: string) => {
-        if (value.children?.includes(nodeId)) {
-          nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) });
-        }
-      });
-      nodes.delete(nodeId);
-    });
-    setSelectedNodeIds(prev => prev.filter(id => id !== nodeId));
-  }, []);
-
-  const handleHeaderAddSticky = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
-    const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
-    addSticky(x, y);
-  }, [addSticky, zoomLevel]);
-
-  const updateText = useCallback((nodeId: string, text: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, text }); }, []);
-  const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
-  const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
-
-  const updateMultipleNodeColors = useCallback((nodeIds: string[], bgColor: string, textColor: string) => {
-    const nodes = yNodesRef.current; if (!nodes) return;
-    ydocRef.current?.transact(() => {
-      nodeIds.forEach((id: string) => { const data = nodes.get(id); if (data) nodes.set(id, { ...data, bgColor, textColor }); });
-    });
-  }, []);
-
-  const updateStickyColors = useCallback((stickyId: string, bgColor: string, textColor: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, bgColor, textColor }); }, []);
-  const deleteSticky = useCallback((stickyId: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; ydocRef.current?.transact(() => { yStickies.delete(stickyId); }); setSelectedStickyIds(prev => prev.filter(id => id !== stickyId)); }, []);
-  const updateStickyText = useCallback((stickyId: string, text: string) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, text }); }, []);
-  const updateStickyPosition = useCallback((stickyId: string, x: number, y: number) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, x, y }); }, []);
-  const updateStickySize = useCallback((stickyId: string, width: number, height: number) => { const yStickies = yStickiesRef.current; if (!yStickies) return; const data = yStickies.get(stickyId); if (data) yStickies.set(stickyId, { ...data, width, height }); }, []);
-
-  const updateOutlineColor = useCallback((outlineId: string, color: string) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, color }); }, []);
-  const deleteOutline = useCallback((outlineId: string) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; ydocRef.current?.transact(() => { yOutlines.delete(outlineId); }); setSelectedOutlineIds(prev => prev.filter(id => id !== outlineId)); }, []);
-  const updateOutlineText = useCallback((outlineId: string, text: string) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, text }); }, []);
-  const updateOutlinePosition = useCallback((outlineId: string, x: number, y: number) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, x, y }); }, []);
-  const updateOutlineSize = useCallback((outlineId: string, width: number, height: number) => { const yOutlines = yOutlinesRef.current; if (!yOutlines) return; const data = yOutlines.get(outlineId); if (data) yOutlines.set(outlineId, { ...data, width, height }); }, []);
-
-  const updateNodeFontSize = useCallback((nodeId: string, fontSize: number) => {
-    const nodes = yNodesRef.current; if (!nodes) return;
-    const data = nodes.get(nodeId);
-    if (data && !data.imageUrl) {
-      const newWidth = computeNodeWidth(data.text, fontSize);
-      nodes.set(nodeId, { ...data, fontSize, width: newWidth });
-    }
-  }, []);
-
-  const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { const nodes = yNodesRef.current; if (!nodes || selectedNodeIds.length < 2) return; const refNodeId = selectedNodeIds[0]; const refNode = nodes.get(refNodeId); if (!refNode) return; const targetX = axis === 'vertical' ? refNode.x : undefined; const targetY = axis === 'horizontal' ? refNode.y : undefined; const idsToAlign = selectedNodeIds.slice(1); ydocRef.current?.transact(() => { idsToAlign.forEach((id: string) => { const data = nodes.get(id); if (!data) return; const updated = { ...data }; if (targetX !== undefined) updated.x = targetX; if (targetY !== undefined) updated.y = targetY; nodes.set(id, updated); }); }); }, [selectedNodeIds]);
+  const handleHeaderAddSticky = useCallback(() => { const container = scrollContainerRef.current; if (!container) return; const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel; const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel; addSticky(x, y); }, [addSticky, zoomLevel]);
+  const handleHeaderColorSelect = useCallback((bgColor: string, textColor: string) => {
+    if (selectedNodeIds.length > 0) updateMultipleNodeColors(selectedNodeIds, bgColor, textColor);
+    if (selectedStickyIds.length > 0) selectedStickyIds.forEach(id => updateStickyColors(id, bgColor, textColor));
+    if (selectedOutlineIds.length > 0) selectedOutlineIds.forEach(id => updateOutlineColor(id, textColor));
+  }, [selectedNodeIds, selectedStickyIds, selectedOutlineIds, updateMultipleNodeColors, updateStickyColors, updateOutlineColor]);
+  const handleEdgeStyleChange = useCallback((newStyle: EdgeStyle) => { if (!ydocRef.current) return; const settings = ySettingsRef.current; if (settings) { ydocRef.current.transact(() => { settings.set('edgeStyle', newStyle); }); } setEdgeStyle(newStyle); }, []);
+  const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { const nodes = yNodesRef.current; if (!nodes || selectedNodeIds.length < 2) return; const refNodeId = selectedNodeIds[0]; const refNode = nodes.get(refNodeId); if (!refNode) return; const targetX = axis === 'vertical' ? refNode.x : undefined; const targetY = axis === 'horizontal' ? refNode.y : undefined; const idsToAlign = selectedNodeIds.slice(1); ydocRef.current?.transact(() => { idsToAlign.forEach(id => { const data = nodes.get(id); if (!data) return; const updated = { ...data }; if (targetX !== undefined) updated.x = targetX; if (targetY !== undefined) updated.y = targetY; nodes.set(id, updated); }); }); }, [selectedNodeIds]);
 
   const handleImageUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1236,112 +1133,65 @@ const MindMapApp = ({ user }: { user: User }) => {
     img.onload = () => {
       const MAX_DIM = 200;
       let w = img.width, h = img.height;
-      if (w > MAX_DIM || h > MAX_DIM) {
-        const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
-      const yImages = yImagesRef.current;
-      if (!yImages || !ydocRef.current) return;
+      if (w > MAX_DIM || h > MAX_DIM) { const ratio = Math.min(MAX_DIM / w, MAX_DIM / h); w = Math.round(w * ratio); h = Math.round(h * ratio); }
+      const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return;
       const imageId = crypto.randomUUID();
       const container = scrollContainerRef.current;
       const centerX = container ? container.scrollLeft + container.clientWidth / 2 : 5000;
       const centerY = container ? container.scrollTop + container.clientHeight / 2 : 5000;
-      ydocRef.current.transact(() => {
-        yImages.set(imageId, {
-          storagePath: path,
-          x: centerX - w / 2,
-          y: centerY - h / 2,
-          width: w,
-          height: h
-        });
-      });
+      ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: centerX - w / 2, y: centerY - h / 2, width: w, height: h }); });
     };
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
-  const deleteImage = useCallback((imageId: string) => { const yImages = yImagesRef.current; if (!yImages) return; const image = yImages.get(imageId); if (image) { supabase.storage.from('images').remove([image.storagePath]); } ydocRef.current?.transact(() => { yImages.delete(imageId); }); setSelectedImageIds(prev => prev.filter(id => id !== imageId)); closeContextMenu(); }, [closeContextMenu]);
-  const updateImagePosition = useCallback((imageId: string, x: number, y: number) => { const yImages = yImagesRef.current; if (!yImages) return; const data = yImages.get(imageId); if (data) yImages.set(imageId, { ...data, x, y }); }, []);
-
-  const handleHeaderColorSelect = useCallback((bgColor: string, textColor: string) => {
-    if (selectedNodeIds.length > 0) {
-      updateMultipleNodeColors(selectedNodeIds, bgColor, textColor);
-    }
-    if (selectedStickyIds.length > 0) {
-      selectedStickyIds.forEach(id => updateStickyColors(id, bgColor, textColor));
-    }
-    if (selectedOutlineIds.length > 0) {
-      selectedOutlineIds.forEach(id => updateOutlineColor(id, textColor));
-    }
-  }, [selectedNodeIds, selectedStickyIds, selectedOutlineIds, updateMultipleNodeColors, updateStickyColors, updateOutlineColor]);
-
-  const handleEdgeStyleChange = useCallback((newStyle: EdgeStyle) => {
-    if (!ydocRef.current) return;
-    const settings = ySettingsRef.current;
-    if (settings) {
-      ydocRef.current.transact(() => {
-        settings.set('edgeStyle', newStyle);
-      });
-    }
-    setEdgeStyle(newStyle);
-  }, []);
+  const addImageNodeWithUpload = useCallback(async (x: number, y: number) => {
+    if (!imageFileInputRef.current) return;
+    imageFileInputRef.current.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0]; if (!file) return;
+      const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const { data, error } = await supabase.storage.from('images').upload(fileName, file);
+      if (error) { alert('画像のアップロードに失敗しました'); return; }
+      const publicUrl = supabase.storage.from('images').getPublicUrl(data.path).data.publicUrl;
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const maxDim = IMAGE_NODE_MAX_INITIAL_SIZE;
+        if (w > maxDim || h > maxDim) { const ratio = Math.min(maxDim / w, maxDim / h); w = Math.round(w * ratio); h = Math.round(h * ratio); }
+        addNodeAtPosition(x, y, true, publicUrl, w, h);
+      };
+      img.src = publicUrl;
+      target.value = '';
+    };
+    imageFileInputRef.current.click();
+  }, [addNodeAtPosition]);
 
   const fetchMaps = useCallback(async () => {
-    const { data: ownMaps, error: ownError } = await supabase
-      .from('maps')
-      .select('*')
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: false });
+    const { data: ownMaps, error: ownError } = await supabase.from('maps').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: false });
     if (ownError) { console.error('マップ一覧の取得に失敗しました:', ownError); return; }
-
-    const { data: memberMaps, error: memberError } = await supabase
-      .from('map_members')
-      .select('map_id')
-      .eq('user_id', user.id);
+    const { data: memberMaps, error: memberError } = await supabase.from('map_members').select('map_id').eq('user_id', user.id);
     if (memberError) { console.error('共有マップの取得に失敗しました:', memberError); return; }
-
     const sharedMapIds = (memberMaps || []).map(m => m.map_id);
     let sharedMaps: MapRecord[] = [];
     if (sharedMapIds.length > 0) {
-      const { data: sharedData, error: sharedError } = await supabase
-        .from('maps')
-        .select('*')
-        .in('id', sharedMapIds)
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: false });
+      const { data: sharedData, error: sharedError } = await supabase.from('maps').select('*').in('id', sharedMapIds).order('sort_order', { ascending: true }).order('created_at', { ascending: false });
       if (sharedError) { console.error('共有マップ詳細の取得に失敗しました:', sharedError); return; }
       sharedMaps = (sharedData || []) as MapRecord[];
     }
-
     const allMaps = [...(ownMaps || [])] as MapRecord[];
-    for (const sm of sharedMaps) {
-      if (!allMaps.find(m => m.id === sm.id)) {
-        allMaps.push(sm);
-      }
-    }
+    for (const sm of sharedMaps) { if (!allMaps.find(m => m.id === sm.id)) allMaps.push(sm); }
     setSavedMaps(allMaps);
   }, [user.id]);
 
   const fetchMapMembers = useCallback(async () => {
     if (!mapId) { setMapMembers([]); return; }
-    const { data, error } = await supabase
-      .from('map_members')
-      .select('user_id, email')
-      .eq('map_id', mapId);
-    if (error) {
-      console.error('メンバー取得エラー:', error);
-      return;
-    }
+    const { data, error } = await supabase.from('map_members').select('user_id, email').eq('map_id', mapId);
+    if (error) { console.error('メンバー取得エラー:', error); return; }
     setMapMembers(data || []);
   }, [mapId]);
 
-  useEffect(() => {
-    fetchMaps();
-  }, [fetchMaps]);
-
-  useEffect(() => {
-    fetchMapMembers();
-  }, [fetchMapMembers, mapId]);
+  useEffect(() => { fetchMaps(); }, [fetchMaps]);
+  useEffect(() => { fetchMapMembers(); }, [fetchMapMembers, mapId]);
 
   const canShare = useMemo(() => {
     if (!mapId) return false;
@@ -1350,61 +1200,27 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [mapId, mapOwnerId, user.id, mapMembers]);
 
   useEffect(() => {
-    if (!ydocRef.current || !yNodesRef.current || !yRootRef.current || !roomId) return;
-    
+    if (!ydocRef.current || !yNodesRef.current || !yParentMapRef.current || !yRootRef.current || !roomId) return;
     const autoSave = async () => {
-      const tree = yMapToTree(yNodesRef.current!, yRootRef.current!);
+      const tree = yMapToTree(yNodesRef.current!, yParentMapRef.current!, yRootRef.current!);
       if (!tree) return;
-      
       try {
         if (mapId) {
-          const { error } = await supabase
-            .from('maps')
-            .update({ data: tree, updated_at: new Date().toISOString() })
-            .eq('id', mapId);
-          if (!error) {
-            setIsDirty(false);
-            if (roomId) {
-              localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
-            }
-          }
+          const { error } = await supabase.from('maps').update({ data: tree, updated_at: new Date().toISOString() }).eq('id', mapId);
+          if (!error) { setIsDirty(false); if (roomId) localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); }
         } else if (roomId) {
-          const { data, error } = await supabase
-            .from('maps')
-            .insert({
-              title: mapTitle,
-              data: tree,
-              room_id: roomId,
-              user_id: user.id,
-              owner_email: user.email,
-              updated_at: new Date().toISOString()
-            })
-            .select();
-          if (!error && data && data[0]) {
-            setMapId(data[0].id);
-            setMapOwnerId(data[0].user_id);
-            setIsDirty(false);
-            localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
-          }
+          const { data, error } = await supabase.from('maps').insert({ title: mapTitle, data: tree, room_id: roomId, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }).select();
+          if (!error && data && data[0]) { setMapId(data[0].id); setMapOwnerId(data[0].user_id); setIsDirty(false); localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); }
         }
-      } catch (err) {
-        console.error('自動保存エラー:', err);
-      }
+      } catch (err) { console.error('自動保存エラー:', err); }
     };
-    
-    const handleUpdate = () => {
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = setTimeout(autoSave, 500);
-    };
-    
+    const handleUpdate = () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); autoSaveTimerRef.current = setTimeout(autoSave, 500); };
     const doc = ydocRef.current;
     doc.on('update', handleUpdate);
-    return () => {
-      doc.off('update', handleUpdate);
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    };
+    return () => { doc.off('update', handleUpdate); if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
   }, [mapId, mapTitle, roomId, user.id, user.email]);
 
+  // ==================== initYjs ====================
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1419,34 +1235,31 @@ const MindMapApp = ({ user }: { user: User }) => {
     const yOutlines = ydoc.getMap<YjsOutlineData>('outlines'); yOutlinesRef.current = yOutlines;
     const ySettings = ydoc.getMap<string>('settings'); ySettingsRef.current = ySettings;
     const yStamps = ydoc.getMap<YjsStampData>('stamps'); yStampsRef.current = yStamps;
+    const yParentMap = ydoc.getMap<string>('parentMap'); yParentMapRef.current = yParentMap;
     
     ydoc.transact(() => {
       if (initialTree) { 
-        treeToYMap(initialTree, yNodes); 
+        treeToYMap(initialTree, yNodes, yParentMap); 
         yRootRef.current = initialTree.id; 
       } else { 
         const rootId = crypto.randomUUID(); 
         const defaultText = '中心テーマ';
         const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
         const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false }); 
+        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false }); 
         yRootRef.current = rootId; 
       }
     });
 
     const updateReact = () => {
       if (yRootRef.current) {
-        // ★ ルートノードが完全に欠落した場合の復元
         const rootData = yNodes.get(yRootRef.current);
         if (!rootData) {
           const lastRoot = lastMindMapRef.current;
           ydoc.transact(() => {
             if (lastRoot) {
               yNodes.set(yRootRef.current!, {
-                text: lastRoot.text,
-                x: lastRoot.x,
-                y: lastRoot.y,
-                children: lastRoot.children.map(c => c.id),
+                text: lastRoot.text, x: lastRoot.x, y: lastRoot.y,
                 independent: false,
                 bgColor: lastRoot.bgColor ?? '#f8fafc',
                 textColor: lastRoot.textColor ?? '#334155',
@@ -1454,137 +1267,51 @@ const MindMapApp = ({ user }: { user: User }) => {
                 height: lastRoot.height,
                 fontSize: lastRoot.fontSize ?? NODE_DEFAULT_FONT_SIZE,
                 collapsed: false,
-                imageUrl: lastRoot.imageUrl,
-                imageWidth: lastRoot.imageWidth,
-                imageHeight: lastRoot.imageHeight,
-                imageScale: lastRoot.imageScale ?? 1.0,
+                imageUrl: lastRoot.imageUrl, imageWidth: lastRoot.imageWidth, imageHeight: lastRoot.imageHeight, imageScale: lastRoot.imageScale ?? 1.0,
               });
             } else {
-              yNodes.set(yRootRef.current!, {
-                text: '中心テーマ',
-                x: 5000,
-                y: 5000,
-                children: [],
-                independent: false,
-                bgColor: '#f8fafc',
-                textColor: '#334155',
-                width: computeNodeWidth('中心テーマ', NODE_DEFAULT_FONT_SIZE),
-                height: NODE_HEIGHT,
-                fontSize: NODE_DEFAULT_FONT_SIZE,
-                collapsed: false,
-              });
+              yNodes.set(yRootRef.current!, { text: '中心テーマ', x: 5000, y: 5000, independent: false, bgColor: '#f8fafc', textColor: '#334155', width: computeNodeWidth('中心テーマ', NODE_DEFAULT_FONT_SIZE), height: NODE_HEIGHT, fontSize: NODE_DEFAULT_FONT_SIZE, collapsed: false });
             }
           });
           return;
         }
-
-        // ★ 孤立ノードの自動修復：マップ内の全ノードIDを収集
-        const allNodeIds = new Set<string>();
-        yNodes.forEach((_, key) => allNodeIds.add(key));
-
-        // 現在のツリーに含まれるノードを収集
-        const visited = new Set<string>();
-        const collectNodeIds = (node: MindNode) => {
-          visited.add(node.id);
-          for (const child of node.children) {
-            collectNodeIds(child);
-          }
-        };
-
-        const tree = yMapToTree(yNodes, yRootRef.current);
-        if (tree) {
-          collectNodeIds(tree);
-
-          // 孤立ノードを探す（全ノードのうち、ツリーに含まれないもの。ルートは除く）
-          const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
-
-          if (orphanIds.length > 0) {
-            addLog(`孤立ノードを検出: ${orphanIds.join(', ')}`);
-            ydoc.transact(() => {
-              for (const orphanId of orphanIds) {
-                const orphanData = yNodes.get(orphanId);
-                if (!orphanData) continue;
-
-                // 記憶している親を優先、なければルートに追加
-                let targetParentId: string | null = parentMapRef.current[orphanId] || null;
-                if (targetParentId && !yNodes.get(targetParentId)) {
-                  targetParentId = null; // 親が存在しない場合
-                }
-                if (!targetParentId) {
-                  targetParentId = yRootRef.current!;
-                }
-
-                const parentData = yNodes.get(targetParentId);
-                if (parentData && !parentData.children.includes(orphanId)) {
-                  yNodes.set(targetParentId, {
-                    ...parentData,
-                    children: [...parentData.children, orphanId],
-                  });
-                  addLog(`${orphanId} を ${targetParentId} の子として復元`);
-                }
-              }
-            });
-          }
-
-          // 修復後のツリーを再構築
-          const repairedTree = yMapToTree(yNodes, yRootRef.current);
-          if (repairedTree) {
-            setMindMap(repairedTree);
-            lastMindMapRef.current = repairedTree;
-            // 親子マップを更新
-            const newParentMap: Record<string, string> = {};
-            const buildParentMap = (node: MindNode) => {
-              for (const child of node.children) {
-                newParentMap[child.id] = node.id;
-                buildParentMap(child);
-              }
-            };
-            buildParentMap(repairedTree);
-            parentMapRef.current = newParentMap;
-          } else if (lastMindMapRef.current) {
-            setMindMap(lastMindMapRef.current);
-          }
-        } else if (lastMindMapRef.current) {
-          setMindMap(lastMindMapRef.current);
-        }
+        const tree = yMapToTree(yNodes, yParentMap, yRootRef.current);
+        if (tree) { setMindMap(tree); lastMindMapRef.current = tree; }
+        else if (lastMindMapRef.current) setMindMap(lastMindMapRef.current);
       }
-      // その他のデータ更新
-      const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
-      const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
-      const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
-      const outlineList: OutlineData[] = []; yOutlines.forEach((value: YjsOutlineData, key: string) => { outlineList.push({ id: key, ...value, fontSize: value.fontSize ?? NODE_DEFAULT_FONT_SIZE }); }); setOutlines(outlineList);
-      const stampList: StampData[] = []; yStamps.forEach((value: YjsStampData, key: string) => { stampList.push({ id: key, ...value }); }); setStamps(stampList);
-      const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined;
-      if (currentStyle) setEdgeStyle(currentStyle);
+      const edgeList: EdgeData[] = []; yEdges.forEach((value, key) => edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' })); setEdges(edgeList);
+      const imageList: ImageData[] = []; yImages.forEach((value, key) => imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex })); setImages(imageList);
+      const stickyList: StickyData[] = []; yStickies.forEach((value, key) => stickyList.push({ id: key, ...value })); setStickies(stickyList);
+      const outlineList: OutlineData[] = []; yOutlines.forEach((value, key) => outlineList.push({ id: key, ...value, fontSize: value.fontSize ?? NODE_DEFAULT_FONT_SIZE })); setOutlines(outlineList);
+      const stampList: StampData[] = []; yStamps.forEach((value, key) => stampList.push({ id: key, ...value })); setStamps(stampList);
+      const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined; if (currentStyle) setEdgeStyle(currentStyle);
     };
     
-    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); yOutlines.observe(updateReact); ySettings.observe(updateReact); yStamps.observe(updateReact); updateReact();
+    yNodes.observe(updateReact); yParentMap.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); yOutlines.observe(updateReact); ySettings.observe(updateReact); yStamps.observe(updateReact); updateReact();
     
-    const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, yOutlines, ySettings, yStamps]);
+    const undoManager = new Y.UndoManager([yNodes, yParentMap, yEdges, yImages, yStickies, yOutlines, ySettings, yStamps]);
     undoManagerRef.current = undoManager;
     const updateUndoRedoState = () => { setCanUndo(undoManager.undoStack.length > 0); setCanRedo(undoManager.redoStack.length > 0); };
     undoManager.on('stack-item-added', updateUndoRedoState); undoManager.on('stack-item-popped', updateUndoRedoState); updateUndoRedoState();
     
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
-    ydoc.on('update', (update: Uint8Array, origin: string) => {
+    ydoc.on('update', (update, origin) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
       setIsDirty(true); if (origin === 'supabase' || origin === 'local') return;
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
-    if(typeof window !== 'undefined') {
-        try { const draft = localStorage.getItem(`mindmap-draft-${room}`); if (draft) { Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local'); addLog('未保存のバックアップを復元'); setIsDirty(true); } } catch(e) {}
-    }
+    if(typeof window !== 'undefined') { try { const draft = localStorage.getItem(`mindmap-draft-${room}`); if (draft) { Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local'); addLog('未保存のバックアップを復元'); setIsDirty(true); } } catch(e) {} }
     
-    channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
-    channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
-    channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
-    channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { const { userId, state } = msg.payload; if (userId === myUserId) return; if (state === null) setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; }); else setAwarenessStates(prev => ({ ...prev, [userId]: state })); });
+    channel.on('broadcast', { event: 'yjs-update' }, (msg) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
+    channel.on('broadcast', { event: 'sync-step-1' }, (msg) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
+    channel.on('broadcast', { event: 'sync-step-2' }, (msg) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
+    channel.on('broadcast', { event: 'awareness-update' }, (msg) => { const { userId, state } = msg.payload; if (userId === myUserId) return; if (state === null) setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; }); else setAwarenessStates(prev => ({ ...prev, [userId]: state })); });
     
     const removeSelf = () => channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId: myUserId, state: null } }); 
-    if(typeof window !== 'undefined') { window.addEventListener('beforeunload', removeSelf); }
+    if(typeof window !== 'undefined') window.addEventListener('beforeunload', removeSelf);
     
-    channel.subscribe((status: string, err?: Error) => {
+    channel.subscribe((status, err) => {
       if (status === 'SUBSCRIBED') setConnectionStatus('接続済み'); else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断'); else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト'); else setConnectionStatus('接続中...');
       if (err) console.error('Supabase Error:', err);
       if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'sync-step-1', payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) } }); broadcastAwareness(channel, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }
@@ -1593,86 +1320,75 @@ const MindMapApp = ({ user }: { user: User }) => {
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
-  const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
-    if (!newTitle.trim()) {
-      setEditingMapId(null);
+  // ==================== 保存/その他 ====================
+  const handleSave = useCallback(async () => {
+    if (!yNodesRef.current || !yRootRef.current || !yParentMapRef.current || !roomId) {
+      alert('保存に必要なデータが不足しています');
       return;
     }
-    const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
-    if (error) {
-      alert(`タイトルの更新に失敗しました: ${error.message}`);
-    } else {
-      if (mapId === id) setMapTitle(newTitle.trim());
-      await fetchMaps();
+    const tree = yMapToTree(yNodesRef.current, yParentMapRef.current, yRootRef.current);
+    if (!tree) { alert('マップデータの変換に失敗しました'); return; }
+    setSaveMessage('保存中...');
+    try {
+      let resultData;
+      if (mapId) {
+        const { data, error } = await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: new Date().toISOString() }).eq('id', mapId).select();
+        resultData = data; if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from('maps').insert([{ title: mapTitle, data: tree, room_id: roomId, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }]).select();
+        resultData = data; if (error) throw error;
+      }
+      if (resultData && resultData.length > 0) {
+        setMapId(resultData[0].id); setMapOwnerId(resultData[0].user_id);
+        setSaveMessage('保存完了'); setIsDirty(false);
+        if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} }
+        setTimeout(() => setSaveMessage(''), 2500);
+        await fetchMaps();
+      }
+    } catch (err: any) {
+      alert(`保存エラー: ${err.message}`);
+      setSaveMessage(`保存に失敗: ${err.message}`);
     }
+  }, [mapId, mapTitle, roomId, user.id, user.email, fetchMaps]);
+
+  const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
+    if (!newTitle.trim()) { setEditingMapId(null); return; }
+    const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
+    if (error) { alert(`タイトルの更新に失敗しました: ${error.message}`); }
+    else { if (mapId === id) setMapTitle(newTitle.trim()); await fetchMaps(); }
     setEditingMapId(null);
   }, [mapId, fetchMaps]);
 
   const handleHeaderTitleBlur = useCallback(() => {
-    if (mapId && mapTitle.trim()) {
-      handleSaveTitleOnly(mapId, mapTitle);
-    }
+    if (mapId && mapTitle.trim()) { handleSaveTitleOnly(mapId, mapTitle); }
   }, [mapId, mapTitle, handleSaveTitleOnly]);
 
   const handleResetMap = useCallback(() => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     if(typeof window !== 'undefined') window.history.replaceState(null, '', ' ');
-    setMapId(null);
-    setMapTitle('NEW');
-    setMapMembers([]);
-    setMapOwnerId(null);
-    setMindMap(null);
-    setEdges([]);
-    setImages([]);
-    setStickies([]);
-    setOutlines([]);
-    setStamps([]);
-    setSelectedNodeIds([]);
-    setSelectedImageIds([]);
-    setSelectedStickyIds([]);
-    setSelectedOutlineIds([]);
-    setSelectedStampIds([]);
+    setMapId(null); setMapTitle('NEW'); setMapMembers([]); setMapOwnerId(null);
+    setMindMap(null); setEdges([]); setImages([]); setStickies([]); setOutlines([]); setStamps([]);
+    setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
   }, []);
 
   const handleNewMap = useCallback(async () => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     const newRoom = crypto.randomUUID();
     if(typeof window !== 'undefined') window.history.replaceState(null, '', `#${newRoom}`);
-    
     const newTitle = 'NEW';
     const rootId = crypto.randomUUID();
     const defaultText = '中心テーマ';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false };
-    
     initYjs(newRoom, initialTree);
-    
-    setMapId(null);
-    setMapTitle(newTitle);
-    setMapMembers([]);
-    setMapOwnerId(user.id);
+    setMapId(null); setMapTitle(newTitle); setMapMembers([]); setMapOwnerId(user.id);
     setSaveMessage('保存中...');
-    
-    const { data, error } = await supabase.from('maps').insert([{ 
-      title: newTitle, 
-      data: initialTree, 
-      room_id: newRoom, 
-      user_id: user.id, 
-      owner_email: user.email,
-      updated_at: new Date().toISOString() 
-    }]).select();
-
-    if (error) {
-      alert(`新規作成エラー: ${error.message}`);
-      setSaveMessage(`作成に失敗: ${error.message}`);
-      return;
-    }
+    const { data, error } = await supabase.from('maps').insert([{ title: newTitle, data: initialTree, room_id: newRoom, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }]).select();
+    if (error) { alert(`新規作成エラー: ${error.message}`); setSaveMessage(`作成に失敗: ${error.message}`); return; }
     if (data && data.length > 0) {
-      setMapId(data[0].id);
-      setMapOwnerId(data[0].user_id);
-      setSaveMessage('保存完了');
-      setIsDirty(false);
+      setMapId(data[0].id); setMapOwnerId(data[0].user_id);
+      setSaveMessage('保存完了'); setIsDirty(false);
       setTimeout(() => setSaveMessage(''), 2500);
       await fetchMaps();
     }
@@ -1689,181 +1405,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleLoadMap = useCallback((map: MapRecord) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     if(typeof window !== 'undefined') window.location.hash = map.room_id;
-    setMapId(map.id);
-    setMapTitle(map.title);
-    setMapOwnerId(map.user_id);
+    setMapId(map.id); setMapTitle(map.title); setMapOwnerId(map.user_id);
     initYjs(map.room_id, map.data);
   }, []);
-
-  const inviteAcceptedRef = useRef(false);
-  useEffect(() => {
-    const processInvite = async () => {
-      if (inviteAcceptedRef.current || !user) return;
-      const urlParams = new URLSearchParams(window.location.search);
-      const inviteCode = urlParams.get('invite');
-      if (!inviteCode) return;
-      inviteAcceptedRef.current = true;
-
-      try {
-        const { data: invitation, error } = await supabase
-          .from('map_invitations')
-          .select('*, maps:maps!inner(id, title, room_id, data, user_id, owner_email, updated_at)')
-          .eq('invite_code', inviteCode)
-          .single();
-        if (error || !invitation) {
-          alert('招待が無効か、既に削除されています。');
-          return;
-        }
-        if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) {
-          alert('この招待は別のメールアドレス宛です。');
-          return;
-        }
-        const { error: memberError } = await supabase.from('map_members').upsert({
-          map_id: invitation.map_id,
-          user_id: user.id,
-          role: 'editor',
-          email: user.email
-        }, { onConflict: 'map_id,user_id' });
-        if (memberError) throw memberError;
-        await supabase.from('map_invitations').delete().eq('id', invitation.id);
-        window.history.replaceState(null, '', window.location.pathname);
-        handleLoadMap(invitation.maps);
-      } catch (err) {
-        console.error('招待の受け入れに失敗しました:', err);
-        alert('招待の受け入れに失敗しました。');
-      }
-    };
-    processInvite();
-  }, [user, handleLoadMap]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const init = async () => {
-      if (initialLoadDone) return;
-      setInitialLoadDone(true);
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const inviteCode = urlParams.get('invite');
-      if (inviteCode) return;
-
-      const rawHash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
-      const hash = rawHash.includes('error=') ? '' : rawHash;
-
-      if (hash) {
-        const { data, error } = await supabase.from('maps').select('*').eq('room_id', hash).single();
-        if (!isMounted) return;
-        if (error || !data) {
-          handleNewMap();
-        } else {
-          setMapId(data.id);
-          setMapTitle(data.title);
-          setMapOwnerId(data.user_id);
-          initYjs(hash, data.data as MindNode);
-        }
-      }
-    };
-    init();
-    return () => { isMounted = false; };
-  }, []);
-
-  const initialScrollDone = useRef(false);
-  useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
-  
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !channelRef.current) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (cursorBroadcastTimerRef.current) return;
-      cursorBroadcastTimerRef.current = window.setTimeout(() => {
-        cursorBroadcastTimerRef.current = null;
-        const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-        broadcastAwareness(channelRef.current!, myUserId, {
-          email: myEmail,
-          color: myColor,
-          selectedNodeId: selectedNodeIds[0] || null,
-          editingNodeId,
-          cursorX: coords.x,
-          cursorY: coords.y,
-          mouseInCanvas: true
-        });
-      }, 50);
-    };
-
-    const handleMouseLeave = () => {
-      broadcastAwareness(channelRef.current!, myUserId, {
-        email: myEmail,
-        color: myColor,
-        selectedNodeId: selectedNodeIds[0] || null,
-        editingNodeId,
-        mouseInCanvas: false
-      });
-    };
-
-    container.addEventListener('mousemove', handleMouseMove);
-    container.addEventListener('mouseleave', handleMouseLeave);
-    return () => {
-      container.removeEventListener('mousemove', handleMouseMove);
-      container.removeEventListener('mouseleave', handleMouseLeave);
-      if (cursorBroadcastTimerRef.current) clearTimeout(cursorBroadcastTimerRef.current);
-    };
-  }, [myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, broadcastAwareness, zoomLevel]);
-
-  useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness]);
-
-  const handleSave = useCallback(async () => {
-    if (!yNodesRef.current || !yRootRef.current || !roomId) {
-      alert('保存に必要なデータが不足しています（roomIdが未設定）');
-      return;
-    }
-    const tree = yMapToTree(yNodesRef.current, yRootRef.current);
-    if (!tree) {
-      alert('マップデータの変換に失敗しました');
-      return;
-    }
-    setSaveMessage('保存中...');
-    
-    let resultData;
-    let resultError;
-
-    if (mapId) {
-      const { data, error } = await supabase.from('maps').update({ 
-        title: mapTitle, 
-        data: tree, 
-        updated_at: new Date().toISOString() 
-      }).eq('id', mapId).select();
-      resultData = data;
-      resultError = error;
-    } else {
-      const { data, error } = await supabase.from('maps').insert([{ 
-        title: mapTitle, 
-        data: tree, 
-        room_id: roomId, 
-        user_id: user.id, 
-        owner_email: user.email,
-        updated_at: new Date().toISOString() 
-      }]).select();
-      resultData = data;
-      resultError = error;
-    }
-
-    if (resultError) {
-      alert(`保存エラー: ${resultError.message}`);
-      setSaveMessage(`保存に失敗: ${resultError.message}`);
-      return;
-    }
-    if (resultData && resultData.length > 0) {
-      setMapId(resultData[0].id);
-      setMapOwnerId(resultData[0].user_id);
-      setSaveMessage('保存完了');
-      setIsDirty(false);
-      if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} }
-      setTimeout(() => setSaveMessage(''), 2500);
-      await fetchMaps();
-    } else {
-      alert('保存に成功しましたが、データが返ってきませんでした');
-    }
-  }, [mapId, mapTitle, roomId, user.id, user.email, fetchMaps]);
 
   const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
@@ -1889,43 +1433,27 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (typeof window !== 'undefined' && !window.confirm('マップを削除してもよろしいですか？')) return;
     const { error } = await supabase.from('maps').delete().eq('id', map.id);
     if (error) { alert('削除に失敗しました'); return; }
-    
-    if (mapId === map.id) {
-      handleResetMap();
-    }
+    if (mapId === map.id) handleResetMap();
     await fetchMaps();
   }, [mapId, handleResetMap, fetchMaps, user.id]);
 
   const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => {
     e.stopPropagation();
     if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return;
-    
-    const { error, count } = await supabase
-      .from('map_members')
-      .delete({ count: 'exact' })
-      .eq('map_id', map.id)
-      .eq('user_id', user.id);
-    if (error) {
-      alert(`退出に失敗しました: ${error.message}`);
-      return;
-    }
-    if (count === 0) {
-      alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。');
-      return;
-    }
-    
-    if (mapId === map.id) {
-      handleResetMap();
-    }
+    const { error, count } = await supabase.from('map_members').delete({ count: 'exact' }).eq('map_id', map.id).eq('user_id', user.id);
+    if (error) { alert(`退出に失敗しました: ${error.message}`); return; }
+    if (count === 0) { alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。'); return; }
+    if (mapId === map.id) handleResetMap();
     await fetchMaps();
     alert('マップから退出しました');
   }, [mapId, handleResetMap, fetchMaps, user.id]);
 
+  const dragMapItemIndex = useRef<number | null>(null);
+  const dragOverMapItemIndex = useRef<number | null>(null);
+
   const handleMapDragStart = useCallback((e: DragEvent<HTMLDivElement>, index: number) => {
     dragMapItemIndex.current = index;
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-    }
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }, []);
 
   const handleMapDragEnter = useCallback((_e: DragEvent<HTMLDivElement>, index: number) => {
@@ -1937,61 +1465,28 @@ const MindMapApp = ({ user }: { user: User }) => {
       const newSavedMaps = [...savedMaps];
       const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0];
       newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem);
-      
       setSavedMaps(newSavedMaps);
-      
-      try {
-        await Promise.all(
-          newSavedMaps.map((map, index) => 
-            supabase.from('maps').update({ sort_order: index }).eq('id', map.id)
-          )
-        );
-      } catch (err) {
-        console.error('並び替え保存エラー', err);
-      }
+      try { await Promise.all(newSavedMaps.map((map, index) => supabase.from('maps').update({ sort_order: index }).eq('id', map.id))); } catch (err) { console.error('並び替え保存エラー', err); }
     }
-    dragMapItemIndex.current = null;
-    dragOverMapItemIndex.current = null;
+    dragMapItemIndex.current = null; dragOverMapItemIndex.current = null;
   }, [savedMaps]);
 
   const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
-
   const handleInviteSubmit = useCallback(async () => {
-    if (!inviteEmail.trim() || !mapId) {
-      if (!mapId) setInviteMessage('マップを保存してから招待してください');
-      return;
-    }
-    setInviteLoading(true);
-    setInviteMessage('');
-    setInviteLink('');
+    if (!inviteEmail.trim() || !mapId) { if (!mapId) setInviteMessage('マップを保存してから招待してください'); return; }
+    setInviteLoading(true); setInviteMessage(''); setInviteLink('');
     try {
-      const { data, error } = await supabase.rpc('create_invitation', {
-        p_map_id: mapId,
-        p_email: inviteEmail.trim()
-      });
+      const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() });
       if (error) throw error;
-
-      if (data.status === 'added') {
-        setInviteMessage('招待しました！');
-        setInviteEmail('');
-        await fetchMapMembers();
-      } else if (data.status === 'invited') {
-        const link = `${window.location.origin}?invite=${data.invite_code}`;
-        setInviteLink(link);
-        setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。');
-      }
+      if (data.status === 'added') { setInviteMessage('招待しました！'); setInviteEmail(''); await fetchMapMembers(); }
+      else if (data.status === 'invited') { const link = `${window.location.origin}?invite=${data.invite_code}`; setInviteLink(link); setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
       setInviteMessage('エラーが発生しました: ' + errorMessage);
-    } finally {
-      setInviteLoading(false);
-    }
+    } finally { setInviteLoading(false); }
   }, [inviteEmail, mapId, fetchMapMembers]);
 
-  const dragMapItemIndex = useRef<number | null>(null);
-  const dragOverMapItemIndex = useRef<number | null>(null);
-
-  // --------------------- マウスイベントハンドラ ---------------------
+  // ==================== マウスイベントハンドラ（変更なし）====================
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -1999,30 +1494,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
     const targetGroupId = node.groupId;
     let isMulti = false;
-    const newSelectedNodeIds = new Set<string>();
-    const newSelectedImageIds = new Set<string>();
-    const newSelectedStickyIds = new Set<string>();
-    const newSelectedOutlineIds = new Set<string>();
-    const newSelectedStampIds = new Set<string>();
-
+    const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
-      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-      selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-      selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-      selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
-      if (newSelectedNodeIds.has(nodeId)) newSelectedNodeIds.delete(nodeId);
-      else newSelectedNodeIds.add(nodeId);
+      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+      if (newSelectedNodeIds.has(nodeId)) newSelectedNodeIds.delete(nodeId); else newSelectedNodeIds.add(nodeId);
       setSelectedNodeIds(Array.from(newSelectedNodeIds));
     } else {
       if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
-        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-        selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-        selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-        selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
@@ -2030,47 +1511,24 @@ const MindMapApp = ({ user }: { user: User }) => {
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
         yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
-        setSelectedNodeIds(Array.from(newSelectedNodeIds));
-        setSelectedImageIds(Array.from(newSelectedImageIds));
-        setSelectedStickyIds(Array.from(newSelectedStickyIds));
-        setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
-        setSelectedStampIds(Array.from(newSelectedStampIds));
+        setSelectedNodeIds(Array.from(newSelectedNodeIds)); setSelectedImageIds(Array.from(newSelectedImageIds)); setSelectedStickyIds(Array.from(newSelectedStickyIds)); setSelectedOutlineIds(Array.from(newSelectedOutlineIds)); setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
-        newSelectedNodeIds.add(nodeId);
-        setSelectedNodeIds([nodeId]);
-        setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
+        newSelectedNodeIds.add(nodeId); setSelectedNodeIds([nodeId]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       }
     }
-
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
       const initNodePos: Record<string, { x: number; y: number }> = {};
-      const initImgPos: Record<string, { x: number; y: number }> = {};
-      const initStickyPos: Record<string, { x: number; y: number }> = {};
-      const initOutlinePos: Record<string, { x: number; y: number }> = {};
-      const initStampPos: Record<string, { x: number; y: number }> = {};
-      
       newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
-      newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
-      newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
-      newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
-      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
-      
       initialGroupDragPositions.current = initNodePos;
-      initialGroupImagePositions.current = initImgPos;
-      initialGroupStickyPositions.current = initStickyPos;
-      initialGroupOutlinePositions.current = initOutlinePos;
-      initialGroupStampPositions.current = initStampPos;
-      
-      setMultiDragOffsets({ dx: 0, dy: 0 });
-      setDraggingNodeId(null); setDragTargetNodeId(null); setSelectedEdgeId(null);
+      setMultiDragOffsets({ dx: 0, dy: 0 }); setDraggingNodeId(null); setDragTargetNodeId(null); setSelectedEdgeId(null);
     } else {
       dragOffset.current = { x: coords.x - node.x, y: coords.y - node.y };
       setDragPositions(prev => ({ ...prev, [nodeId]: { x: node.x, y: node.y } }));
       setDraggingNodeId(nodeId); setDragTargetNodeId(null); setSelectedEdgeId(null);
       setMultiDragOffsets(null);
     }
-  }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, isSpacePressed, images, stickies, outlines, stamps]);
+  }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, isSpacePressed]);
 
   const handleMouseDownOnImage = useCallback((e: ReactMouseEvent, imageId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
@@ -2079,30 +1537,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yImagesRef.current?.get(imageId)?.groupId;
     let isMulti = false;
-    const newSelectedNodeIds = new Set<string>();
-    const newSelectedImageIds = new Set<string>();
-    const newSelectedStickyIds = new Set<string>();
-    const newSelectedOutlineIds = new Set<string>();
-    const newSelectedStampIds = new Set<string>();
-
+    const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
-      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-      selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-      selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-      selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
-      if (newSelectedImageIds.has(imageId)) newSelectedImageIds.delete(imageId);
-      else newSelectedImageIds.add(imageId);
+      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+      if (newSelectedImageIds.has(imageId)) newSelectedImageIds.delete(imageId); else newSelectedImageIds.add(imageId);
       setSelectedImageIds(Array.from(newSelectedImageIds));
     } else {
       if (selectedImageIds.includes(imageId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 1 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
-        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-        selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-        selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-        selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
@@ -2110,45 +1554,22 @@ const MindMapApp = ({ user }: { user: User }) => {
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
         yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
-        setSelectedNodeIds(Array.from(newSelectedNodeIds));
-        setSelectedImageIds(Array.from(newSelectedImageIds));
-        setSelectedStickyIds(Array.from(newSelectedStickyIds));
-        setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
-        setSelectedStampIds(Array.from(newSelectedStampIds));
+        setSelectedNodeIds(Array.from(newSelectedNodeIds)); setSelectedImageIds(Array.from(newSelectedImageIds)); setSelectedStickyIds(Array.from(newSelectedStickyIds)); setSelectedOutlineIds(Array.from(newSelectedOutlineIds)); setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
-        newSelectedImageIds.add(imageId);
-        setSelectedImageIds([imageId]);
-        setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
+        newSelectedImageIds.add(imageId); setSelectedImageIds([imageId]); setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       }
     }
-
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
-      const initNodePos: Record<string, { x: number; y: number }> = {};
       const initImgPos: Record<string, { x: number; y: number }> = {};
-      const initStickyPos: Record<string, { x: number; y: number }> = {};
-      const initOutlinePos: Record<string, { x: number; y: number }> = {};
-      const initStampPos: Record<string, { x: number; y: number }> = {};
-      
-      newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
       newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
-      newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
-      newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
-      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
-      
-      initialGroupDragPositions.current = initNodePos;
       initialGroupImagePositions.current = initImgPos;
-      initialGroupStickyPositions.current = initStickyPos;
-      initialGroupOutlinePositions.current = initOutlinePos;
-      initialGroupStampPositions.current = initStampPos;
-      
-      setMultiDragOffsets({ dx: 0, dy: 0 });
-      setDraggingImageId(null); setSelectedEdgeId(null);
+      setMultiDragOffsets({ dx: 0, dy: 0 }); setDraggingImageId(null); setSelectedEdgeId(null);
     } else {
       imageDragOffset.current = { x: coords.x - image.x, y: coords.y - image.y };
       setDraggingImageId(imageId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
-  }, [images, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, stickies, outlines, stamps]);
+  }, [images, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
 
   const handleMouseDownOnSticky = useCallback((e: ReactMouseEvent, stickyId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
@@ -2157,30 +1578,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yStickiesRef.current?.get(stickyId)?.groupId;
     let isMulti = false;
-    const newSelectedNodeIds = new Set<string>();
-    const newSelectedImageIds = new Set<string>();
-    const newSelectedStickyIds = new Set<string>();
-    const newSelectedOutlineIds = new Set<string>();
-    const newSelectedStampIds = new Set<string>();
-
+    const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
-      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-      selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-      selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-      selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
-      if (newSelectedStickyIds.has(stickyId)) newSelectedStickyIds.delete(stickyId);
-      else newSelectedStickyIds.add(stickyId);
+      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+      if (newSelectedStickyIds.has(stickyId)) newSelectedStickyIds.delete(stickyId); else newSelectedStickyIds.add(stickyId);
       setSelectedStickyIds(Array.from(newSelectedStickyIds));
     } else {
       if (selectedStickyIds.includes(stickyId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 1 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
-        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-        selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-        selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-        selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
@@ -2188,45 +1595,22 @@ const MindMapApp = ({ user }: { user: User }) => {
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
         yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
-        setSelectedNodeIds(Array.from(newSelectedNodeIds));
-        setSelectedImageIds(Array.from(newSelectedImageIds));
-        setSelectedStickyIds(Array.from(newSelectedStickyIds));
-        setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
-        setSelectedStampIds(Array.from(newSelectedStampIds));
+        setSelectedNodeIds(Array.from(newSelectedNodeIds)); setSelectedImageIds(Array.from(newSelectedImageIds)); setSelectedStickyIds(Array.from(newSelectedStickyIds)); setSelectedOutlineIds(Array.from(newSelectedOutlineIds)); setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
-        newSelectedStickyIds.add(stickyId);
-        setSelectedStickyIds([stickyId]);
-        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
+        newSelectedStickyIds.add(stickyId); setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       }
     }
-
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
-      const initNodePos: Record<string, { x: number; y: number }> = {};
-      const initImgPos: Record<string, { x: number; y: number }> = {};
       const initStickyPos: Record<string, { x: number; y: number }> = {};
-      const initOutlinePos: Record<string, { x: number; y: number }> = {};
-      const initStampPos: Record<string, { x: number; y: number }> = {};
-      
-      newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
-      newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
       newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
-      newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
-      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
-      
-      initialGroupDragPositions.current = initNodePos;
-      initialGroupImagePositions.current = initImgPos;
       initialGroupStickyPositions.current = initStickyPos;
-      initialGroupOutlinePositions.current = initOutlinePos;
-      initialGroupStampPositions.current = initStampPos;
-      
-      setMultiDragOffsets({ dx: 0, dy: 0 });
-      setDraggingStickyId(null); setSelectedEdgeId(null);
+      setMultiDragOffsets({ dx: 0, dy: 0 }); setDraggingStickyId(null); setSelectedEdgeId(null);
     } else {
       stickyDragOffset.current = { x: coords.x - sticky.x, y: coords.y - sticky.y };
       setDraggingStickyId(stickyId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
-  }, [stickies, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, outlines, stamps]);
+  }, [stickies, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
 
   const handleMouseDownOnOutline = useCallback((e: ReactMouseEvent, outlineId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
@@ -2235,30 +1619,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yOutlinesRef.current?.get(outlineId)?.groupId;
     let isMulti = false;
-    const newSelectedNodeIds = new Set<string>();
-    const newSelectedImageIds = new Set<string>();
-    const newSelectedStickyIds = new Set<string>();
-    const newSelectedOutlineIds = new Set<string>();
-    const newSelectedStampIds = new Set<string>();
-
+    const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
-      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-      selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-      selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-      selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
-      if (newSelectedOutlineIds.has(outlineId)) newSelectedOutlineIds.delete(outlineId);
-      else newSelectedOutlineIds.add(outlineId);
+      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+      if (newSelectedOutlineIds.has(outlineId)) newSelectedOutlineIds.delete(outlineId); else newSelectedOutlineIds.add(outlineId);
       setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
     } else {
       if (selectedOutlineIds.includes(outlineId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 1 || selectedStampIds.length > 0)) {
         isMulti = true;
-        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-        selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-        selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-        selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
@@ -2266,45 +1636,22 @@ const MindMapApp = ({ user }: { user: User }) => {
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
         yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
-        setSelectedNodeIds(Array.from(newSelectedNodeIds));
-        setSelectedImageIds(Array.from(newSelectedImageIds));
-        setSelectedStickyIds(Array.from(newSelectedStickyIds));
-        setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
-        setSelectedStampIds(Array.from(newSelectedStampIds));
+        setSelectedNodeIds(Array.from(newSelectedNodeIds)); setSelectedImageIds(Array.from(newSelectedImageIds)); setSelectedStickyIds(Array.from(newSelectedStickyIds)); setSelectedOutlineIds(Array.from(newSelectedOutlineIds)); setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
-        newSelectedOutlineIds.add(outlineId);
-        setSelectedOutlineIds([outlineId]);
-        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
+        newSelectedOutlineIds.add(outlineId); setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
       }
     }
-
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
-      const initNodePos: Record<string, { x: number; y: number }> = {};
-      const initImgPos: Record<string, { x: number; y: number }> = {};
-      const initStickyPos: Record<string, { x: number; y: number }> = {};
       const initOutlinePos: Record<string, { x: number; y: number }> = {};
-      const initStampPos: Record<string, { x: number; y: number }> = {};
-      
-      newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
-      newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
-      newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
       newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
-      newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
-      
-      initialGroupDragPositions.current = initNodePos;
-      initialGroupImagePositions.current = initImgPos;
-      initialGroupStickyPositions.current = initStickyPos;
       initialGroupOutlinePositions.current = initOutlinePos;
-      initialGroupStampPositions.current = initStampPos;
-      
-      setMultiDragOffsets({ dx: 0, dy: 0 });
-      setDraggingOutlineId(null); setSelectedEdgeId(null);
+      setMultiDragOffsets({ dx: 0, dy: 0 }); setDraggingOutlineId(null); setSelectedEdgeId(null);
     } else {
       outlineDragOffset.current = { x: coords.x - outline.x, y: coords.y - outline.y };
       setDraggingOutlineId(outlineId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
-  }, [outlines, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, stickies, stamps]);
+  }, [outlines, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
 
   const handleMouseDownOnStamp = useCallback((e: ReactMouseEvent, stampId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
@@ -2313,30 +1660,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yStampsRef.current?.get(stampId)?.groupId;
     let isMulti = false;
-    const newSelectedNodeIds = new Set<string>();
-    const newSelectedImageIds = new Set<string>();
-    const newSelectedStickyIds = new Set<string>();
-    const newSelectedOutlineIds = new Set<string>();
-    const newSelectedStampIds = new Set<string>();
-
+    const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
-      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-      selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-      selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-      selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-      selectedStampIds.forEach(id => newSelectedStampIds.add(id));
-      if (newSelectedStampIds.has(stampId)) newSelectedStampIds.delete(stampId);
-      else newSelectedStampIds.add(stampId);
+      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+      if (newSelectedStampIds.has(stampId)) newSelectedStampIds.delete(stampId); else newSelectedStampIds.add(stampId);
       setSelectedStampIds(Array.from(newSelectedStampIds));
     } else {
       if (selectedStampIds.includes(stampId) && (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 1)) {
         isMulti = true;
-        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id));
-        selectedImageIds.forEach(id => newSelectedImageIds.add(id));
-        selectedStickyIds.forEach(id => newSelectedStickyIds.add(id));
-        selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id));
-        selectedStampIds.forEach(id => newSelectedStampIds.add(id));
+        selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
       } else if (targetGroupId) {
         isMulti = true;
         yNodesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedNodeIds.add(k); });
@@ -2344,45 +1677,22 @@ const MindMapApp = ({ user }: { user: User }) => {
         yStickiesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStickyIds.add(k); });
         yOutlinesRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedOutlineIds.add(k); });
         yStampsRef.current?.forEach((v, k) => { if(v.groupId === targetGroupId) newSelectedStampIds.add(k); });
-        setSelectedNodeIds(Array.from(newSelectedNodeIds));
-        setSelectedImageIds(Array.from(newSelectedImageIds));
-        setSelectedStickyIds(Array.from(newSelectedStickyIds));
-        setSelectedOutlineIds(Array.from(newSelectedOutlineIds));
-        setSelectedStampIds(Array.from(newSelectedStampIds));
+        setSelectedNodeIds(Array.from(newSelectedNodeIds)); setSelectedImageIds(Array.from(newSelectedImageIds)); setSelectedStickyIds(Array.from(newSelectedStickyIds)); setSelectedOutlineIds(Array.from(newSelectedOutlineIds)); setSelectedStampIds(Array.from(newSelectedStampIds));
       } else {
-        newSelectedStampIds.add(stampId);
-        setSelectedStampIds([stampId]);
-        setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
+        newSelectedStampIds.add(stampId); setSelectedStampIds([stampId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
       }
     }
-
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
-      const initNodePos: Record<string, { x: number; y: number }> = {};
-      const initImgPos: Record<string, { x: number; y: number }> = {};
-      const initStickyPos: Record<string, { x: number; y: number }> = {};
-      const initOutlinePos: Record<string, { x: number; y: number }> = {};
       const initStampPos: Record<string, { x: number; y: number }> = {};
-      
-      newSelectedNodeIds.forEach(id => { const n = mindMap ? findNodeById(mindMap, id) : null; if (n) initNodePos[id] = { x: n.x, y: n.y }; });
-      newSelectedImageIds.forEach(id => { const i = images.find(img=>img.id===id); if (i) initImgPos[id] = { x: i.x, y: i.y }; });
-      newSelectedStickyIds.forEach(id => { const s = stickies.find(st=>st.id===id); if (s) initStickyPos[id] = { x: s.x, y: s.y }; });
-      newSelectedOutlineIds.forEach(id => { const o = outlines.find(ol=>ol.id===id); if (o) initOutlinePos[id] = { x: o.x, y: o.y }; });
       newSelectedStampIds.forEach(id => { const st = stamps.find(s => s.id === id); if (st) initStampPos[id] = { x: st.x, y: st.y }; });
-      
-      initialGroupDragPositions.current = initNodePos;
-      initialGroupImagePositions.current = initImgPos;
-      initialGroupStickyPositions.current = initStickyPos;
-      initialGroupOutlinePositions.current = initOutlinePos;
       initialGroupStampPositions.current = initStampPos;
-      
-      setMultiDragOffsets({ dx: 0, dy: 0 });
-      setDraggingStampId(null); setSelectedEdgeId(null);
+      setMultiDragOffsets({ dx: 0, dy: 0 }); setDraggingStampId(null); setSelectedEdgeId(null);
     } else {
       stampDragOffset.current = { x: coords.x - stamp.x, y: coords.y - stamp.y };
       setDraggingStampId(stampId); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
-  }, [stamps, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, stickies, outlines]);
+  }, [stamps, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
 
   const handleResizeHandleMouseDown = useCallback((e: ReactMouseEvent, imageId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingImageHandle({ imageId, handle }); }, []);
   const handleStickyResizeHandleMouseDown = useCallback((e: ReactMouseEvent, stickyId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingStickyHandle({ stickyId, handle }); }, []);
@@ -2405,11 +1715,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
     if (!nodeUnder) {
-      setSelectedNodeIds([]);
-      setSelectedImageIds([]);
-      setSelectedStickyIds([]);
-      setSelectedOutlineIds([]);
-      setSelectedStampIds([]);
+      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       setSelectedEdgeId(null);
       closeContextMenu();
       wasDraggingRef.current = true;
@@ -2422,16 +1728,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) {
-      addNodeAtPosition(coords.x, coords.y, false);
-    }
+    if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y, false); }
   }, [mindMap, zoomLevel, isSpacePressed, currentTool, addNodeAtPosition]);
 
   const handleMouseMove = useCallback((e: MouseEvent | ReactMouseEvent) => {
     const container = scrollContainerRef.current; if (!container) return;
     if (isCanvasPanning) { const dx = e.clientX - panStartCoords.current.x, dy = e.clientY - panStartCoords.current.y; container.scrollLeft = panStartCoords.current.scrollLeft - dx; container.scrollTop = panStartCoords.current.scrollTop - dy; return; }
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-
     if (editingEdgeEndpoint) {
       const { edgeId, endpoint } = editingEdgeEndpoint; const edge = edges.find((eg: EdgeData) => eg.id === edgeId); if (!edge) return;
       const nodeId = endpoint === 'source' ? edge.sourceNodeId : edge.targetNodeId; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
@@ -2449,13 +1752,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       } else {
         setDrawingEdge(prev => prev ? { ...prev, currentX: coords.x, currentY: coords.y, targetNodeId: undefined, targetPoint: undefined } : null);
       }
-      return; 
+      return;
     }
     if (draggingImageId) { updateImagePosition(draggingImageId, coords.x - imageDragOffset.current.x, coords.y - imageDragOffset.current.y); return; }
     if (draggingStickyId) { updateStickyPosition(draggingStickyId, coords.x - stickyDragOffset.current.x, coords.y - stickyDragOffset.current.y); return; }
     if (draggingOutlineId) { updateOutlinePosition(draggingOutlineId, coords.x - outlineDragOffset.current.x, coords.y - outlineDragOffset.current.y); return; }
     if (draggingStampId) { updateStampPosition(draggingStampId, coords.x - stampDragOffset.current.x, coords.y - stampDragOffset.current.y); return; }
-    
     if (resizingImageHandle) {
       const image = images.find((img: ImageData) => img.id === resizingImageHandle.imageId); if (!image) return;
       let newWidth = image.width, newHeight = image.height, newX = image.x, newY = image.y; const h = resizingImageHandle.handle;
@@ -2471,8 +1773,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (h.includes('e')) newWidth = Math.max(100, coords.x - sticky.x); if (h.includes('s')) newHeight = Math.max(80, coords.y - sticky.y);
       if (h.includes('w')) { const diff = sticky.x - coords.x; newWidth = Math.max(100, diff); newX = coords.x; }
       if (h.includes('n')) { const diff = sticky.y - coords.y; newHeight = Math.max(80, diff); newY = coords.y; }
-      updateStickySize(sticky.id, newWidth, newHeight);
-      if (h.includes('w') || h.includes('n')) updateStickyPosition(sticky.id, newX, newY);
+      updateStickySize(sticky.id, newWidth, newHeight); if (h.includes('w') || h.includes('n')) updateStickyPosition(sticky.id, newX, newY);
       return;
     }
     if (resizingOutlineHandle) {
@@ -2481,11 +1782,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (h.includes('e')) newWidth = Math.max(30, coords.x - outline.x); if (h.includes('s')) newHeight = Math.max(30, coords.y - outline.y);
       if (h.includes('w')) { const diff = outline.x - coords.x; newWidth = Math.max(30, diff); newX = coords.x; }
       if (h.includes('n')) { const diff = outline.y - coords.y; newHeight = Math.max(30, diff); newY = coords.y; }
-      updateOutlineSize(outline.id, newWidth, newHeight);
-      if (h.includes('w') || h.includes('n')) updateOutlinePosition(outline.id, newX, newY);
+      updateOutlineSize(outline.id, newWidth, newHeight); if (h.includes('w') || h.includes('n')) updateOutlinePosition(outline.id, newX, newY);
       return;
     }
-    
     if (selectionRect) { setSelectionRect(prev => prev ? { ...prev, x2: coords.x, y2: coords.y } : null); return; }
     if (draggingNodeId) {
       const newX = coords.x - dragOffset.current.x, newY = coords.y - dragOffset.current.y;
@@ -2493,12 +1792,10 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (mindMap) { const target = findNodeAtPoint(mindMap, coords.x, coords.y, draggingNodeId); setDragTargetNodeId(target && target.id !== draggingNodeId ? target.id : null); }
       return;
     }
-
     if (isMultiDragging && multiDragOffsets) {
       const deltaX = coords.x - groupDragStartMouse.current.x;
       const deltaY = coords.y - groupDragStartMouse.current.y;
       setMultiDragOffsets({ dx: deltaX, dy: deltaY });
-      
       const newPositions: Record<string, { x: number; y: number }> = {};
       selectedNodeIds.forEach(id => { const init = initialGroupDragPositions.current[id]; if(init) newPositions[id] = { x: init.x + deltaX, y: init.y + deltaY }; });
       setDragPositions(newPositions);
@@ -2535,24 +1832,15 @@ const MindMapApp = ({ user }: { user: User }) => {
         const _selNodes: string[] = []; 
         const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; 
         collectNodes(mindMap);
-        
         const _selImages: string[] = [];
         images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); });
-        
         const _selStickies: string[] = [];
         stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); });
-
         const _selOutlines: string[] = [];
         outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); });
-
         const _selStamps: string[] = [];
         stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); });
-
-        setSelectedNodeIds(_selNodes);
-        setSelectedImageIds(_selImages);
-        setSelectedStickyIds(_selStickies);
-        setSelectedOutlineIds(_selOutlines);
-        setSelectedStampIds(_selStamps);
+        setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps);
       }
       setSelectionRect(null); return;
     }
@@ -2570,11 +1858,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } });
       });
       setDragPositions({}); 
-      initialGroupDragPositions.current = {};
-      initialGroupImagePositions.current = {};
-      initialGroupStickyPositions.current = {};
-      initialGroupOutlinePositions.current = {};
-      initialGroupStampPositions.current = {};
+      initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {};
       setMultiDragOffsets(null);
       return;
     }
@@ -2601,34 +1885,23 @@ const MindMapApp = ({ user }: { user: User }) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; }
     if (e.altKey && (e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); setZenMode(prev => !prev); return; }
     if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) { e.preventDefault(); changeZoom(e.key === '-' ? -0.1 : 0.1); return; }
-    
     if ((e.key === 'Delete' || e.key === 'Backspace')) {
       if (selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId && !selectedOutlineId && !selectedStampId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; }
-      if (selectedNodeIds.includes(yRootRef.current!)) {
-        e.preventDefault();
-        return;
-      }
+      if (selectedNodeIds.includes(yRootRef.current!)) { e.preventDefault(); return; }
       if (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
         e.preventDefault();
         ydocRef.current?.transact(() => {
-          selectedNodeIds.forEach(id => {
-            if (id !== yRootRef.current) {
-              yNodesRef.current?.forEach((v, k) => { if (v.children?.includes(id)) yNodesRef.current?.set(k, { ...v, children: v.children.filter(cid => cid !== id) }); });
-              yNodesRef.current?.delete(id);
-            }
-          });
-          selectedImageIds.forEach(id => yImagesRef.current?.delete(id));
-          selectedStickyIds.forEach(id => yStickiesRef.current?.delete(id));
-          selectedOutlineIds.forEach(id => yOutlinesRef.current?.delete(id));
-          selectedStampIds.forEach(id => yStampsRef.current?.delete(id));
+          selectedNodeIds.forEach(id => { if (id !== yRootRef.current) deleteNode(id); });
+          selectedImageIds.forEach(id => deleteImage(id));
+          selectedStickyIds.forEach(id => deleteSticky(id));
+          selectedOutlineIds.forEach(id => deleteOutline(id));
+          selectedStampIds.forEach(id => deleteStamp(id));
         });
         setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
         return;
       }
     }
-    
     if (!selectedNodeId || selectedNodeIds.length > 1) return;
-    
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault();
       const current = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
@@ -2645,10 +1918,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         if (e.key === 'ArrowDown' && dy > 20 && Math.abs(dx) < Math.abs(dy)) valid = true;
         if (e.key === 'ArrowLeft' && dx < -20 && Math.abs(dy) < Math.abs(dx)) valid = true;
         if (e.key === 'ArrowRight' && dx > 20 && Math.abs(dy) < Math.abs(dx)) valid = true;
-        if (valid) {
-          const dist = Math.hypot(dx, dy);
-          if (dist < minDist) { minDist = dist; closest = n; }
-        }
+        if (valid) { const dist = Math.hypot(dx, dy); if (dist < minDist) { minDist = dist; closest = n; } }
       }
       if (closest) {
         setSelectedNodeIds([closest.id]);
@@ -2669,21 +1939,15 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       const node = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
-      if (node?.independent) {
-        addIndependentSibling(selectedNodeId, 'after');
-      } else {
-        addSiblingNode(selectedNodeId, 'after');
-      }
+      if (node?.independent) addIndependentSibling(selectedNodeId, 'after');
+      else addSiblingNode(selectedNodeId, 'after');
       return;
     }
     if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       const node = mindMap ? findNodeById(mindMap, selectedNodeId) : null;
-      if (node?.independent) {
-        addIndependentSibling(selectedNodeId, 'before');
-      } else {
-        addSiblingNode(selectedNodeId, 'before');
-      }
+      if (node?.independent) addIndependentSibling(selectedNodeId, 'before');
+      else addSiblingNode(selectedNodeId, 'before');
       return;
     }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addParentNode(selectedNodeId); return; }
@@ -2704,14 +1968,8 @@ const MindMapApp = ({ user }: { user: User }) => {
       const node = mindMap ? findNodeById(mindMap, nodeId) : null;
       switch (action) {
         case 'addChild': addChildNode(nodeId); break;
-        case 'addSiblingAfter':
-          if (node?.independent) addIndependentSibling(nodeId, 'after');
-          else addSiblingNode(nodeId, 'after');
-          break;
-        case 'addSiblingBefore':
-          if (node?.independent) addIndependentSibling(nodeId, 'before');
-          else addSiblingNode(nodeId, 'before');
-          break;
+        case 'addSiblingAfter': if (node?.independent) addIndependentSibling(nodeId, 'after'); else addSiblingNode(nodeId, 'after'); break;
+        case 'addSiblingBefore': if (node?.independent) addIndependentSibling(nodeId, 'before'); else addSiblingNode(nodeId, 'before'); break;
         case 'addParent': addParentNode(nodeId); break;
         case 'delete': deleteNode(nodeId); break;
         case 'alignVertical': alignNodes('vertical'); break;
@@ -2722,110 +1980,34 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
     } else if (contextMenu.type === 'edge' && contextMenu.edgeId) {
       switch (action) { case 'deleteEdge': deleteEdge(contextMenu.edgeId); break; case 'arrowNone': updateEdgeArrow(contextMenu.edgeId, 'none'); break; case 'arrowStart': updateEdgeArrow(contextMenu.edgeId, 'start'); break; case 'arrowEnd': updateEdgeArrow(contextMenu.edgeId, 'end'); break; case 'arrowBoth': updateEdgeArrow(contextMenu.edgeId, 'both'); break; }
-    } else if (contextMenu.type === 'image' && contextMenu.imageId) { 
-      if (action === 'deleteImage') deleteImage(contextMenu.imageId); 
-      else if (action === 'bringToFront') bringToFront();
-      else if (action === 'sendToBack') sendToBack();
-    }
-    else if (contextMenu.type === 'sticky' && contextMenu.stickyId) {
-      switch (action) {
-        case 'deleteSticky': deleteSticky(contextMenu.stickyId); break;
-        case 'changeColor': setShowColorPalette({ stickyId: contextMenu.stickyId, x: contextMenu.x, y: contextMenu.y }); break;
-        case 'bringToFront': bringToFront(); break;
-        case 'sendToBack': sendToBack(); break;
-      }
-    }
-    else if (contextMenu.type === 'outline' && contextMenu.outlineId) {
-      switch (action) {
-        case 'deleteOutline': deleteOutline(contextMenu.outlineId); break;
-        case 'changeColor': setShowColorPalette({ outlineId: contextMenu.outlineId, x: contextMenu.x, y: contextMenu.y }); break;
-        case 'bringToFront': bringToFront(); break;
-        case 'sendToBack': sendToBack(); break;
-      }
-    }
-    else if (contextMenu.type === 'stamp' && contextMenu.stampId) {
-      switch (action) {
-        case 'deleteStamp': deleteStamp(contextMenu.stampId); break;
-        case 'bringToFront': bringToFront(); break;
-        case 'sendToBack': sendToBack(); break;
-      }
-    }
-    else if (contextMenu.type === 'canvas') { 
-      if (action === 'addNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addNodeAtPosition(contextMenu.canvasX, contextMenu.canvasY, false); 
+    } else if (contextMenu.type === 'image' && contextMenu.imageId) {
+      if (action === 'deleteImage') deleteImage(contextMenu.imageId); else if (action === 'bringToFront') bringToFront(); else if (action === 'sendToBack') sendToBack();
+    } else if (contextMenu.type === 'sticky' && contextMenu.stickyId) {
+      switch (action) { case 'deleteSticky': deleteSticky(contextMenu.stickyId); break; case 'changeColor': setShowColorPalette({ stickyId: contextMenu.stickyId, x: contextMenu.x, y: contextMenu.y }); break; case 'bringToFront': bringToFront(); break; case 'sendToBack': sendToBack(); break; }
+    } else if (contextMenu.type === 'outline' && contextMenu.outlineId) {
+      switch (action) { case 'deleteOutline': deleteOutline(contextMenu.outlineId); break; case 'changeColor': setShowColorPalette({ outlineId: contextMenu.outlineId, x: contextMenu.x, y: contextMenu.y }); break; case 'bringToFront': bringToFront(); break; case 'sendToBack': sendToBack(); break; }
+    } else if (contextMenu.type === 'stamp' && contextMenu.stampId) {
+      switch (action) { case 'deleteStamp': deleteStamp(contextMenu.stampId); break; case 'bringToFront': bringToFront(); break; case 'sendToBack': sendToBack(); break; }
+    } else if (contextMenu.type === 'canvas') {
+      if (action === 'addNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addNodeAtPosition(contextMenu.canvasX, contextMenu.canvasY, false);
       else if (action === 'addImageNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addImageNodeWithUpload(contextMenu.canvasX, contextMenu.canvasY);
-      else if (action === 'addSticky' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addSticky(contextMenu.canvasX, contextMenu.canvasY); 
+      else if (action === 'addSticky' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addSticky(contextMenu.canvasX, contextMenu.canvasY);
       else if (action === 'addStamp' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addStamp(contextMenu.canvasX, contextMenu.canvasY);
-      else if (action === 'addImage') fileInputRef.current?.click(); 
+      else if (action === 'addImage') fileInputRef.current?.click();
     }
   }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
-  const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => {
-    e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
-    const ctrlOrMeta = e.ctrlKey || e.metaKey;
-    if (ctrlOrMeta) { 
-      setSelectedNodeIds(prev => {
-        const newArr = prev.includes(nodeId) ? prev.filter((id: string) => id !== nodeId) : [...prev, nodeId];
-        return newArr;
-      }); 
-    } else { 
-      setSelectedNodeIds([nodeId]); 
-      setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
-    }
-    setSelectedEdgeId(null); closeContextMenu();
-  }, [closeContextMenu, showColorPalette]);
-
-  const handleImageClick = useCallback((e: ReactMouseEvent, imageId: string) => {
-    e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]);
-    } else {
-      setSelectedImageIds([imageId]);
-      setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
-    }
-    setSelectedEdgeId(null); closeContextMenu();
-  }, [closeContextMenu, showColorPalette]);
-
-  const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => {
-    e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]);
-    } else {
-      setSelectedStickyIds([stickyId]);
-      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
-    }
-    setSelectedEdgeId(null); closeContextMenu();
-  }, [closeContextMenu, showColorPalette]);
-
-  const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => {
-    e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]);
-    } else {
-      setSelectedOutlineIds([outlineId]);
-      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]);
-    }
-    setSelectedEdgeId(null); closeContextMenu();
-  }, [closeContextMenu, showColorPalette]);
-
-  const handleStampClick = useCallback((e: ReactMouseEvent, stampId: string) => {
-    e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; }
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedStampIds(prev => prev.includes(stampId) ? prev.filter(id => id !== stampId) : [...prev, stampId]);
-    } else {
-      setSelectedStampIds([stampId]);
-      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]);
-    }
-    setSelectedEdgeId(null); closeContextMenu();
-  }, [closeContextMenu, showColorPalette]);
+  const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedNodeIds(prev => prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]); } else { setSelectedNodeIds([nodeId]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); }, [closeContextMenu, showColorPalette]);
+  const handleImageClick = useCallback((e: ReactMouseEvent, imageId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]); else { setSelectedImageIds([imageId]); setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); }, [closeContextMenu, showColorPalette]);
+  const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]); else { setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); }, [closeContextMenu, showColorPalette]);
+  const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); }, [closeContextMenu, showColorPalette]);
+  const handleStampClick = useCallback((e: ReactMouseEvent, stampId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) setSelectedStampIds(prev => prev.includes(stampId) ? prev.filter(id => id !== stampId) : [...prev, stampId]); else { setSelectedStampIds([stampId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); } setSelectedEdgeId(null); closeContextMenu(); }, [closeContextMenu, showColorPalette]);
 
   const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => {
     e.stopPropagation();
     const node = mindMap ? findNodeById(mindMap, nodeId) : null;
-    if (node?.imageUrl) {
-      setImageModalUrl(node.imageUrl);
-    } else {
-      setEditingNodeId(nodeId);
-    }
+    if (node?.imageUrl) { setImageModalUrl(node.imageUrl); }
+    else { setEditingNodeId(nodeId); }
   }, [mindMap]);
   const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
@@ -2846,45 +2028,28 @@ const MindMapApp = ({ user }: { user: User }) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
-    
     const container = scrollContainerRef.current;
     if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-
     const fileExt = file.name.split('.').pop(); 
     const fileName = `${crypto.randomUUID()}.${fileExt}`;
     const { data, error } = await supabase.storage.from('images').upload(fileName, file);
     if (error) { alert('画像のアップロードに失敗しました'); return; }
-    
     const path = data.path;
     const img = new Image();
     img.src = URL.createObjectURL(file);
     img.onload = () => {
       const MAX_DIM = 200;
       let w = img.width, h = img.height;
-      if (w > MAX_DIM || h > MAX_DIM) {
-        const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
+      if (w > MAX_DIM || h > MAX_DIM) { const ratio = Math.min(MAX_DIM / w, MAX_DIM / h); w = Math.round(w * ratio); h = Math.round(h * ratio); }
       const yImages = yImagesRef.current;
       if (!yImages || !ydocRef.current) return;
       const imageId = crypto.randomUUID();
-      ydocRef.current.transact(() => {
-        yImages.set(imageId, {
-          storagePath: path,
-          x: coords.x - w / 2,
-          y: coords.y - h / 2,
-          width: w,
-          height: h
-        });
-      });
+      ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: coords.x - w / 2, y: coords.y - h / 2, width: w, height: h }); });
     };
   }, [zoomLevel]);
 
-  const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
-  const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId!, mindMap, dragPositions, draggingNodeId) : null;
-
+  // ==================== JSX レンダリング ====================
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
 
   if (!mindMap) {
@@ -2913,16 +2078,37 @@ const MindMapApp = ({ user }: { user: User }) => {
             ) : (
               <div className="flex flex-col gap-1.5">
                 {savedMaps.map((map: MapRecord, index: number) => (
-                  <div 
-                    key={map.id} 
-                    draggable
-                    onDragStart={(e) => handleMapDragStart(e, index)}
-                    onDragEnter={(e) => handleMapDragEnter(e, index)}
-                    onDragEnd={handleMapDragEnd}
-                    onDragOver={(e) => e.preventDefault()}
-                    className={`group flex flex-col rounded-lg border transition-all cursor-grab active:cursor-grabbing ${mapId === map.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:border-slate-200 hover:shadow-sm'}`}
-                  >
-                    <button onClick={() => handleLoadMap(map)} className="flex-1 text-left px-3 py-2.5 rounded-lg text-sm transition-colors truncate">{map.title}</button>
+                  <div key={map.id} draggable onDragStart={(e) => handleMapDragStart(e, index)} onDragEnter={(e) => handleMapDragEnter(e, index)} onDragEnd={handleMapDragEnd} onDragOver={(e) => e.preventDefault()} className={`group flex flex-col rounded-lg border transition-all cursor-grab active:cursor-grabbing ${mapId === map.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:border-slate-200 hover:shadow-sm'}`}>
+                    {editingMapId === map.id ? (
+                      <div className="px-3 py-2.5 bg-white rounded-t-lg flex items-center gap-2">
+                        <GripVerticalIcon />
+                        <input autoFocus value={editMapTitle} onChange={e => setEditMapTitle(e.target.value)} onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle); if (e.key === 'Escape') setEditingMapId(null); }} className="w-full text-sm font-semibold text-indigo-900 bg-transparent border-b-2 border-indigo-500 outline-none pb-0.5" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between w-full relative overflow-hidden">
+                        <div className="pl-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"><GripVerticalIcon /></div>
+                        <button onClick={() => handleLoadMap(map)} className={`flex-1 text-left px-2 py-2.5 rounded-t-lg text-sm transition-colors truncate ${mapId === map.id ? 'text-indigo-900 font-semibold' : 'text-slate-700 font-medium'}`}>{map.title}</button>
+                        <button onClick={(e) => { e.stopPropagation(); setEditMapTitle(map.title); setEditingMapId(map.id); }} className={`absolute right-2 p-1.5 opacity-0 group-hover:opacity-100 bg-slate-100/80 hover:bg-slate-200 rounded text-slate-500 hover:text-indigo-600 transition-all ${mapId === map.id ? 'opacity-100' : ''}`} title="タイトルを変更"><PencilIcon /></button>
+                      </div>
+                    )}
+                    <div className="flex flex-col px-3 pb-2.5 pt-1 cursor-default">
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500" title={map.user_id === user.id ? undefined : `オーナー: ${map.owner_email || '不明'}`}>
+                            {map.user_id === user.id ? '👑 オーナー' : '🤝 共有'}
+                          </span>
+                          <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
+                            <button onClick={(e) => { e.stopPropagation(); handleCopyMap(map, e); }} className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors" title="コピー"><CopyIcon /></button>
+                            {map.user_id === user.id ? (
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteMap(map, e); }} className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors" title="削除"><TrashIcon /></button>
+                            ) : (
+                              <button onClick={(e) => { e.stopPropagation(); handleLeaveMap(map, e); }} className="p-1.5 hover:bg-amber-100 rounded text-slate-500 hover:text-amber-600 transition-colors" title="退出"><LeaveIcon /></button>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-slate-400">{map.updated_at ? new Date(map.updated_at).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2972,20 +2158,18 @@ const MindMapApp = ({ user }: { user: User }) => {
   const allParticipants = Array.from(participantsMap.values());
 
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
-
   const canvasScrollClass = `w-full h-full overflow-auto relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
-
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
-  // --------------------- JSX ---------------------
+  const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
+  const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId!, mindMap, dragPositions, draggingNodeId) : null;
+
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-      
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
-      
       {imageModalUrl && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}>
           <div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}>
@@ -2994,7 +2178,6 @@ const MindMapApp = ({ user }: { user: User }) => {
           </div>
         </div>
       )}
-      
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}>
@@ -3004,28 +2187,11 @@ const MindMapApp = ({ user }: { user: User }) => {
             </div>
             <p className="text-sm text-slate-500 mb-4">Googleアカウントのメールアドレスを入力して、共同編集者を招待します。</p>
             <div className="flex gap-2 mb-3">
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="colleague@example.com"
-                className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
-                disabled={inviteLoading || !!inviteLink}
-              />
-              <button
-                onClick={handleInviteSubmit}
-                disabled={inviteLoading || !inviteEmail.trim() || !mapId || !!inviteLink}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-              >
-                {inviteLoading ? '招待中...' : '招待する'}
-              </button>
+              <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="colleague@example.com" className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all" disabled={inviteLoading || !!inviteLink} />
+              <button onClick={handleInviteSubmit} disabled={inviteLoading || !inviteEmail.trim() || !mapId || !!inviteLink} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">{inviteLoading ? '招待中...' : '招待する'}</button>
             </div>
             {!mapId && <p className="text-sm text-amber-600 mb-2 font-medium">⚠️ マップを保存してから招待してください。</p>}
-            {inviteMessage && !inviteLink && (
-              <p className={`text-sm font-medium ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-rose-500' : 'text-emerald-600'}`}>
-                {inviteMessage}
-              </p>
-            )}
+            {inviteMessage && !inviteLink && <p className={`text-sm font-medium ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-rose-500' : 'text-emerald-600'}`}>{inviteMessage}</p>}
             {inviteLink && (
               <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <p className="text-xs font-medium text-slate-700 mb-2">招待リンク（未登録ユーザー用）:</p>
@@ -3039,7 +2205,6 @@ const MindMapApp = ({ user }: { user: User }) => {
           </div>
         </div>
       )}
-
       {showHelpModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -3121,26 +2286,11 @@ const MindMapApp = ({ user }: { user: User }) => {
           ) : (
             <div className="flex flex-col gap-1.5">
               {savedMaps.map((map: MapRecord, index: number) => (
-                <div 
-                  key={map.id} 
-                  draggable
-                  onDragStart={(e) => handleMapDragStart(e, index)}
-                  onDragEnter={(e) => handleMapDragEnter(e, index)}
-                  onDragEnd={handleMapDragEnd}
-                  onDragOver={(e) => e.preventDefault()}
-                  className={`group flex flex-col rounded-lg border transition-all cursor-grab active:cursor-grabbing ${mapId === map.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:border-slate-200 hover:shadow-sm'}`}
-                >
+                <div key={map.id} draggable onDragStart={(e) => handleMapDragStart(e, index)} onDragEnter={(e) => handleMapDragEnter(e, index)} onDragEnd={handleMapDragEnd} onDragOver={(e) => e.preventDefault()} className={`group flex flex-col rounded-lg border transition-all cursor-grab active:cursor-grabbing ${mapId === map.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:border-slate-200 hover:shadow-sm'}`}>
                   {editingMapId === map.id ? (
                     <div className="px-3 py-2.5 bg-white rounded-t-lg flex items-center gap-2">
                       <GripVerticalIcon />
-                      <input
-                        autoFocus
-                        value={editMapTitle}
-                        onChange={e => setEditMapTitle(e.target.value)}
-                        onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle); if (e.key === 'Escape') setEditingMapId(null); }}
-                        className="w-full text-sm font-semibold text-indigo-900 bg-transparent border-b-2 border-indigo-500 outline-none pb-0.5"
-                      />
+                      <input autoFocus value={editMapTitle} onChange={e => setEditMapTitle(e.target.value)} onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle); if (e.key === 'Escape') setEditingMapId(null); }} className="w-full text-sm font-semibold text-indigo-900 bg-transparent border-b-2 border-indigo-500 outline-none pb-0.5" />
                     </div>
                   ) : (
                     <div className="flex items-center justify-between w-full relative overflow-hidden">
@@ -3156,11 +2306,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                           {map.user_id === user.id ? '👑 オーナー' : '🤝 共有'}
                         </span>
                         <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${mapId === map.id ? 'opacity-100' : ''}`}>
-                          <button onClick={(e) => handleCopyMap(map, e)} className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors" title="コピー"><CopyIcon /></button>
+                          <button onClick={(e) => { e.stopPropagation(); handleCopyMap(map, e); }} className="p-1.5 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-700 transition-colors" title="コピー"><CopyIcon /></button>
                           {map.user_id === user.id ? (
-                            <button onClick={(e) => handleDeleteMap(map, e)} className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors" title="削除"><TrashIcon /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteMap(map, e); }} className="p-1.5 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors" title="削除"><TrashIcon /></button>
                           ) : (
-                            <button onClick={(e) => handleLeaveMap(map, e)} className="p-1.5 hover:bg-amber-100 rounded text-slate-500 hover:text-amber-600 transition-colors" title="退出"><LeaveIcon /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleLeaveMap(map, e); }} className="p-1.5 hover:bg-amber-100 rounded text-slate-500 hover:text-amber-600 transition-colors" title="退出"><LeaveIcon /></button>
                           )}
                         </div>
                       </div>
@@ -3185,18 +2335,10 @@ const MindMapApp = ({ user }: { user: User }) => {
       </div>
 
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50 overflow-hidden">
-        
         {!zenMode && (
           <>
             <div className="absolute top-4 left-4 z-40 flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
-              <input 
-                value={mapTitle} 
-                onChange={e => setMapTitle(e.target.value)} 
-                onBlur={handleHeaderTitleBlur}
-                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-48 font-bold outline-none rounded-md transition-all text-slate-800" 
-                placeholder="NEW" 
-              />
+              <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} onBlur={handleHeaderTitleBlur} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-48 font-bold outline-none rounded-md transition-all text-slate-800" placeholder="NEW" />
               <div className="w-px h-5 bg-slate-200 mx-1" />
               <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-colors" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
               <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-colors" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
@@ -3206,7 +2348,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 {saveMessage === '保存完了' && <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>保存済み</span>}
               </div>
             </div>
-
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 bg-white/95 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
               <button onClick={() => setCurrentTool('select')} className={`p-2 rounded-lg transition-colors ${currentTool === 'select' ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="選択ツール"><CursorIcon /></button>
               <div className="w-px h-6 bg-slate-200 mx-0.5" />
@@ -3219,33 +2360,11 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg hover:bg-slate-100 text-sky-600 transition-colors" title="画像を添付（自由配置）"><ImageIcon /></button>
               <button onClick={() => { const container = scrollContainerRef.current; if (container) { const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel; const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel; addImageNodeWithUpload(x, y); } }} className="p-2 rounded-lg hover:bg-slate-100 text-purple-600 transition-colors" title="画像専用ノードを追加"><ImageNodeIcon /></button>
               <div className="w-px h-6 bg-slate-200 mx-0.5" />
-              
               <div className="flex items-center gap-1 bg-rose-50/50 p-1 rounded-lg border border-rose-100">
-                <input
-                  type="text"
-                  value={stampText}
-                  onChange={e => setStampText(e.target.value.slice(0, 8))}
-                  className="text-[11px] w-16 bg-transparent border-none focus:ring-0 text-rose-700 font-bold px-1 text-center outline-none placeholder-rose-300"
-                  placeholder="印鑑名"
-                  title="印鑑名"
-                />
+                <input type="text" value={stampText} onChange={e => setStampText(e.target.value.slice(0, 8))} className="text-[11px] w-16 bg-transparent border-none focus:ring-0 text-rose-700 font-bold px-1 text-center outline-none placeholder-rose-300" placeholder="印鑑名" title="印鑑名" />
                 <div className="w-px h-4 bg-rose-200" />
-                <button
-                  onClick={() => {
-                    const container = scrollContainerRef.current;
-                    if (container) {
-                      const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel;
-                      const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel;
-                      addStamp(x, y);
-                    }
-                  }}
-                  className="p-1.5 rounded hover:bg-rose-100 text-rose-600 transition-colors"
-                  title="印鑑を配置 (Ctrl+Shift+S)"
-                >
-                  <StampIcon />
-                </button>
+                <button onClick={() => { const container = scrollContainerRef.current; if (container) { const x = (container.scrollLeft + container.clientWidth / 2) / zoomLevel; const y = (container.scrollTop + container.clientHeight / 2) / zoomLevel; addStamp(x, y); } }} className="p-1.5 rounded hover:bg-rose-100 text-rose-600 transition-colors" title="印鑑を配置 (Ctrl+Shift+S)"><StampIcon /></button>
               </div>
-              
               <div className="w-px h-6 bg-slate-200 mx-1" />
               <div className="flex items-center gap-1">
                 {COLOR_PALETTE.map(cp => (<button key={cp.label} onClick={() => handleHeaderColorSelect(cp.bg, cp.text)} disabled={totalSelectedCount === 0} className="w-5 h-5 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm" style={{ backgroundColor: cp.bg }} title={cp.label} />))}
@@ -3257,7 +2376,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <option value="straight">直線</option>
               </select>
             </div>
-
             <div className="absolute top-4 right-4 z-40 flex items-center">
               <div className="relative bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
                 <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1 transition-colors" title="参加者一覧">
@@ -3292,7 +2410,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 )}
               </div>
             </div>
-
             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-2">
               <div className="flex items-center gap-1 bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
                 <button onClick={() => setShowHelpModal(true)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="ショートカット一覧"><HelpIcon /></button>
@@ -3303,20 +2420,12 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <span className="text-xs text-slate-600 font-semibold w-12 text-center cursor-pointer select-none" onClick={() => setZoomLevel(1.0)} title="100%に戻す">{Math.round(zoomLevel * 100)}%</span>
                 <button onClick={() => changeZoom(0.1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="拡大">＋</button>
                 <div className="w-px h-5 bg-slate-200 mx-0.5" />
-                <button
-                  onClick={toggleGrid}
-                  className={`p-2 rounded-lg transition-colors ${showGrid ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`}
-                  title="背景グリッドの表示/非表示"
-                >
-                  <GridIcon />
-                </button>
+                <button onClick={toggleGrid} className={`p-2 rounded-lg transition-colors ${showGrid ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="背景グリッドの表示/非表示"><GridIcon /></button>
               </div>
             </div>
           </>
         )}
-        
         {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-4 right-4 z-50 bg-slate-900/80 backdrop-blur text-white border border-slate-700 rounded-full px-5 py-2 text-xs font-bold shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105">ZEN解除 (Alt+Cmd+F)</button>}
-        
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
             {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('toggleCollapse')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">折りたたみ/展開</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
@@ -3331,43 +2440,12 @@ const MindMapApp = ({ user }: { user: User }) => {
         {showColorPalette && (
           <div className="fixed z-[110] bg-white border border-slate-200 rounded-xl shadow-2xl p-4 text-sm" style={{ left: showColorPalette.x, top: showColorPalette.y }} onClick={e => e.stopPropagation()}>
             <div className="text-xs font-bold text-slate-500 mb-3 text-center uppercase tracking-wide">カラーパレット</div>
-            <div className="grid grid-cols-4 gap-3 mb-4">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-10 h-10 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05), 0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { 
-              if(showColorPalette.nodeId && selectedNodeIds.length > 1) updateMultipleNodeColors(selectedNodeIds, cp.bg, cp.text);
-              else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); 
-              else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); 
-              else if(showColorPalette.outlineId) updateOutlineColor(showColorPalette.outlineId, cp.text);
-              setShowColorPalette(null); closeContextMenu(); 
-            }} />))}</div>
+            <div className="grid grid-cols-4 gap-3 mb-4">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-10 h-10 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05), 0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { if(showColorPalette.nodeId && selectedNodeIds.length > 1) updateMultipleNodeColors(selectedNodeIds, cp.bg, cp.text); else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); else if(showColorPalette.outlineId) updateOutlineColor(showColorPalette.outlineId, cp.text); setShowColorPalette(null); closeContextMenu(); }} />))}</div>
             <button onClick={() => setShowColorPalette(null)} className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">キャンセル</button>
           </div>
         )}
-        
-        <div 
-          ref={scrollContainerRef} 
-          className={`${canvasScrollClass} hide-scrollbar bg-slate-50`} 
-          tabIndex={0} 
-          onKeyDown={handleKeyDown} 
-          onClick={handleCanvasClick} 
-          onContextMenu={handleCanvasContextMenu} 
-          onMouseDown={handleCanvasMouseDown} 
-          onDoubleClick={handleCanvasDoubleClick}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleCanvasDrop}
-          style={hideScrollbarStyle as React.CSSProperties}
-        >
-          <div 
-            className="relative" 
-            style={{ 
-              width: '10000px', 
-              height: '10000px', 
-              transform: `scale(${zoomLevel})`, 
-              transformOrigin: '0 0',
-              backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none',
-              backgroundSize: '32px 32px',
-              backgroundColor: '#f8fafc'
-            }} 
-            onContextMenu={handleCanvasContextMenu}
-          >
+        <div ref={scrollContainerRef} className={`${canvasScrollClass} hide-scrollbar bg-slate-50`} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop} style={hideScrollbarStyle as React.CSSProperties}>
+          <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: '#f8fafc' }} onContextMenu={handleCanvasContextMenu}>
             {remoteCursors.map((p) => (
               <div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5">
@@ -3376,19 +2454,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <span className="ml-5 text-xs font-bold px-1.5 py-0.5 rounded text-white shadow" style={{ backgroundColor: p.color }}>{getInitial(p.email)}</span>
               </div>
             ))}
-
             {showFloatingToolbar && floatingToolbarPos && (
-              <div 
-                className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5"
-                style={{
-                  left: floatingToolbarPos.x,
-                  top: floatingToolbarPos.y - floatingToolbarPos.height / 2 - 50,
-                  transform: 'translate(-50%, 0)',
-                  animation: 'fadeIn 0.15s ease-out'
-                }}
-                onClick={e => e.stopPropagation()}
-                onMouseDown={e => e.stopPropagation()}
-              >
+              <div className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5" style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y - floatingToolbarPos.height / 2 - 50, transform: 'translate(-50%, 0)', animation: 'fadeIn 0.15s ease-out' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
                 <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="色を変更"><PaletteIcon /></button>
                 <div className="w-px h-5 bg-slate-600 mx-0.5" />
@@ -3404,15 +2471,9 @@ const MindMapApp = ({ user }: { user: User }) => {
                 )}
                 {selectedOutlineId && outlines.find(o => o.id === selectedOutlineId)?.type === 'text' && (
                   <div className="relative group">
-                    <button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300" title="文字サイズ">
-                      <span className="text-xs">Aa</span>
-                    </button>
+                    <button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300" title="文字サイズ"><span className="text-xs">Aa</span></button>
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg p-1 z-50">
-                      {FONT_SIZES.map(size => (
-                        <button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 rounded">
-                          {size}px
-                        </button>
-                      ))}
+                      {FONT_SIZES.map(size => (<button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 rounded">{size}px</button>))}
                     </div>
                   </div>
                 )}
@@ -3420,46 +2481,21 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <>
                     <div className="w-px h-5 bg-slate-600 mx-0.5" />
                     <div className="relative group">
-                      <button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更">
-                        <ResizeIcon />
-                      </button>
+                      <button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更"><ResizeIcon /></button>
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">
-                        {IMAGE_SCALE_PRESETS.map(scale => {
-                          const percent = Math.round(scale * 100);
-                          return (
-                            <button
-                              key={scale}
-                              onClick={() => resizeImageNode(selectedNodeId!, scale)}
-                              className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors"
-                            >
-                              {percent}%
-                            </button>
-                          );
-                        })}
+                        {IMAGE_SCALE_PRESETS.map(scale => { const percent = Math.round(scale * 100); return (<button key={scale} onClick={() => resizeImageNode(selectedNodeId!, scale)} className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors">{percent}%</button>); })}
                       </div>
                     </div>
                   </>
                 )}
               </div>
             )}
-
             {outlines.map((outline: OutlineData) => {
               const isEditing = editingOutlineId === outline.id;
               const isSelected = selectedOutlineIds.includes(outline.id);
               const fontSize = outline.fontSize ?? NODE_DEFAULT_FONT_SIZE;
               return (
-                <div
-                  key={outline.id}
-                  className={`absolute cursor-move transition-shadow group ${isSelected ? 'ring-2 ring-indigo-500/50 shadow-md' : 'hover:ring-2 hover:ring-slate-300/50'} ${outline.type === 'text' ? '' : 'bg-transparent'}`}
-                  style={{ 
-                    left: outline.x, top: outline.y, width: outline.width, height: outline.height, zIndex: outline.zIndex ?? 4,
-                    borderRadius: outline.type === 'circle' ? '50%' : '0'
-                  }}
-                  onMouseDown={(e) => handleMouseDownOnOutline(e as ReactMouseEvent, outline.id)}
-                  onContextMenu={(e) => handleOutlineContextMenu(e as ReactMouseEvent, outline.id)}
-                  onDoubleClick={(e) => { e.stopPropagation(); if (outline.type === 'text') setEditingOutlineId(outline.id); }}
-                  onClick={(e) => handleOutlineClick(e as ReactMouseEvent, outline.id)}
-                >
+                <div key={outline.id} className={`absolute cursor-move transition-shadow group ${isSelected ? 'ring-2 ring-indigo-500/50 shadow-md' : 'hover:ring-2 hover:ring-slate-300/50'} ${outline.type === 'text' ? '' : 'bg-transparent'}`} style={{ left: outline.x, top: outline.y, width: outline.width, height: outline.height, zIndex: outline.zIndex ?? 4, borderRadius: outline.type === 'circle' ? '50%' : '0' }} onMouseDown={(e) => handleMouseDownOnOutline(e as ReactMouseEvent, outline.id)} onContextMenu={(e) => handleOutlineContextMenu(e as ReactMouseEvent, outline.id)} onDoubleClick={(e) => { e.stopPropagation(); if (outline.type === 'text') setEditingOutlineId(outline.id); }} onClick={(e) => handleOutlineClick(e as ReactMouseEvent, outline.id)}>
                   {outline.type === 'rectangle' && (<div className="w-full h-full border-4 rounded" style={{ borderColor: outline.color }}></div>)}
                   {outline.type === 'circle' && (<div className="w-full h-full border-4 rounded-full" style={{ borderColor: outline.color }}></div>)}
                   {outline.type === 'triangle' && (<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none"><polygon points="50,0 100,100 0,100" fill="none" stroke={outline.color} strokeWidth="4" vectorEffect="non-scaling-stroke" /></svg>)}
@@ -3486,18 +2522,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </div>
               );
             })}
-
             {images.map((image: ImageData) => {
               const isSelected = selectedImageIds.includes(image.id);
               return (
-                <div
-                  key={image.id}
-                  className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${isSelected ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-transparent shadow-md hover:shadow-lg'}`}
-                  style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: image.zIndex ?? 6 }}
-                  onMouseDown={(e) => handleMouseDownOnImage(e as ReactMouseEvent, image.id)}
-                  onContextMenu={(e) => handleImageContextMenu(e as ReactMouseEvent, image.id)}
-                  onClick={(e) => handleImageClick(e as ReactMouseEvent, image.id)}
-                >
+                <div key={image.id} className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${isSelected ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-transparent shadow-md hover:shadow-lg'}`} style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: image.zIndex ?? 6 }} onMouseDown={(e) => handleMouseDownOnImage(e as ReactMouseEvent, image.id)} onContextMenu={(e) => handleImageContextMenu(e as ReactMouseEvent, image.id)} onClick={(e) => handleImageClick(e as ReactMouseEvent, image.id)}>
                   <img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />
                   {isSelected && selectedImageIds.length === 1 && totalSelectedCount === 1 && (<>
                     <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e as ReactMouseEvent, image.id, 'nw')} />
@@ -3508,20 +2536,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </div>
               );
             })}
-
             {stickies.map((sticky: StickyData) => {
               const isEditing = editingStickyId === sticky.id;
               const isSelected = selectedStickyIds.includes(sticky.id);
               return (
-                <div
-                  key={sticky.id}
-                  className={`absolute cursor-move rounded-sm overflow-visible transition-shadow group ${isSelected ? 'ring-4 ring-indigo-500/20 shadow-2xl' : 'shadow-lg hover:shadow-xl'}`}
-                  style={{ left: sticky.x, top: sticky.y, width: sticky.width, height: sticky.height, zIndex: sticky.zIndex ?? 5 }}
-                  onMouseDown={(e) => handleMouseDownOnSticky(e as ReactMouseEvent, sticky.id)}
-                  onContextMenu={(e) => handleStickyContextMenu(e as ReactMouseEvent, sticky.id)}
-                  onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }}
-                  onClick={(e) => handleStickyClick(e as ReactMouseEvent, sticky.id)}
-                >
+                <div key={sticky.id} className={`absolute cursor-move rounded-sm overflow-visible transition-shadow group ${isSelected ? 'ring-4 ring-indigo-500/20 shadow-2xl' : 'shadow-lg hover:shadow-xl'}`} style={{ left: sticky.x, top: sticky.y, width: sticky.width, height: sticky.height, zIndex: sticky.zIndex ?? 5 }} onMouseDown={(e) => handleMouseDownOnSticky(e as ReactMouseEvent, sticky.id)} onContextMenu={(e) => handleStickyContextMenu(e as ReactMouseEvent, sticky.id)} onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }} onClick={(e) => handleStickyClick(e as ReactMouseEvent, sticky.id)}>
                   <div className="absolute -bottom-1.5 right-2 w-[70%] h-[50%] -z-10 opacity-40" style={{ backgroundColor: 'rgba(0,0,0,0.3)', transform: 'rotate(3deg)', filter: 'blur(6px)' }} />
                   <div className="relative w-full h-full rounded-sm flex flex-col p-3" style={{ backgroundColor: sticky.bgColor, color: sticky.textColor, boxShadow: '1px 2px 4px rgba(0,0,0,0.05)' }}>
                     <div className="absolute top-0 left-0 w-0 h-0 border-r-[16px] border-r-transparent border-b-[16px] rounded-br-sm" style={{ borderBottomColor: 'rgba(0,0,0,0.08)' }} />
@@ -3548,46 +2567,19 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </div>
               );
             })}
-
-            {/* ★ 印鑑のデザイン修正：影を内側の円形 div に移動 */}
             {stamps.map((stamp) => (
-              <div
-                key={stamp.id}
-                className={`absolute cursor-move flex items-center justify-center transition-all duration-300 ${selectedStampIds.includes(stamp.id) ? 'ring-4 ring-indigo-500/30 scale-105 shadow-2xl' : 'hover:shadow-xl hover:scale-105 hover:-translate-y-1'}`}
-                style={{
-                  left: stamp.x,
-                  top: stamp.y,
-                  width: stamp.width,
-                  height: stamp.height,
-                  backgroundColor: 'transparent',
-                  color: stamp.color,
-                  zIndex: stamp.zIndex ?? 3,
-                  fontFamily: "'MS Mincho', 'Yu Mincho', serif",
-                }}
-                onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)}
-                onContextMenu={(e) => handleStampContextMenu(e, stamp.id)}
-                onClick={(e) => handleStampClick(e, stamp.id)}
-                title={`${stamp.email} の印鑑`}
-              >
-                <div 
-                  className="flex flex-col items-center justify-center w-full h-full rounded-full border-[2.5px] bg-white/90 backdrop-blur-sm relative overflow-hidden"
-                  style={{ borderColor: stamp.color, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}
-                >
+              <div key={stamp.id} className={`absolute cursor-move flex items-center justify-center transition-all duration-300 ${selectedStampIds.includes(stamp.id) ? 'ring-4 ring-indigo-500/30 scale-105 shadow-2xl' : 'hover:shadow-xl hover:scale-105 hover:-translate-y-1'}`} style={{ left: stamp.x, top: stamp.y, width: stamp.width, height: stamp.height, backgroundColor: 'transparent', color: stamp.color, zIndex: stamp.zIndex ?? 3, fontFamily: "'MS Mincho', 'Yu Mincho', serif" }} onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)} onContextMenu={(e) => handleStampContextMenu(e, stamp.id)} onClick={(e) => handleStampClick(e, stamp.id)} title={`${stamp.email} の印鑑`}>
+                <div className="flex flex-col items-center justify-center w-full h-full rounded-full border-[2.5px] bg-white/90 backdrop-blur-sm relative overflow-hidden" style={{ borderColor: stamp.color, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
                   <div className="w-full text-center border-b-[1.5px] pb-1 pt-2" style={{ borderColor: stamp.color }}>
-                    <span className="text-[8px] font-bold tracking-tighter leading-none block font-sans">
-                      {new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}
-                    </span>
+                    <span className="text-[8px] font-bold tracking-tighter leading-none block font-sans">{new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}</span>
                   </div>
                   <div className="w-full text-center pt-1 flex-1 flex items-center justify-center">
-                    <span className="text-[13px] font-extrabold tracking-widest leading-none block pb-1">
-                      {stamp.text}
-                    </span>
+                    <span className="text-[13px] font-extrabold tracking-widest leading-none block pb-1">{stamp.text}</span>
                   </div>
                   <div className="absolute inset-0 pointer-events-none rounded-full opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPgo8cGF0aCBkPSJNMCAwdjRoNFYweiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4=')]"></div>
                 </div>
               </div>
             ))}
-
             <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
               <defs>
                 <marker id="arrowStart" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#94a3b8" /></marker>
@@ -3595,7 +2587,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
                 <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
               </defs>
-              
               {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { 
                 const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); 
                 const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); 
@@ -3616,7 +2607,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                   </g>
                 ); 
               })}
-
               {edgeLines.map((el: any) => { 
                 const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; 
                 const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; 
@@ -3631,38 +2621,17 @@ const MindMapApp = ({ user }: { user: User }) => {
                   </g>
                 ); 
               })}
-
               {drawingEdge && mindMap && (
-                <path 
-                  d={(() => {
+                <path d={(() => {
                     const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId);
                     if (!sNode) return '';
                     const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH);
                     const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT);
-                    return getEdgePath(
-                      getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh),
-                      {x: drawingEdge.currentX, y: drawingEdge.currentY},
-                      drawingEdge.sourcePoint,
-                      drawingEdge.targetPoint || 'left',
-                      edgeStyle
-                    );
-                  })()}
-                  fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" 
-                />
+                    return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle);
+                  })()} fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />
               )}
-              
               {selectionRect && (
-                <rect
-                  x={Math.min(selectionRect.x1, selectionRect.x2)}
-                  y={Math.min(selectionRect.y1, selectionRect.y2)}
-                  width={Math.abs(selectionRect.x2 - selectionRect.x1)}
-                  height={Math.abs(selectionRect.y2 - selectionRect.y1)}
-                  fill="rgba(99, 102, 241, 0.15)"
-                  stroke="#6366f1"
-                  strokeWidth={2}
-                  strokeDasharray="6 6"
-                  className="rounded-sm"
-                />
+                <rect x={Math.min(selectionRect.x1, selectionRect.x2)} y={Math.min(selectionRect.y1, selectionRect.y2)} width={Math.abs(selectionRect.x2 - selectionRect.x1)} height={Math.abs(selectionRect.y2 - selectionRect.y1)} fill="rgba(99, 102, 241, 0.15)" stroke="#6366f1" strokeWidth={2} strokeDasharray="6 6" className="rounded-sm" />
               )}
             </svg>
             <RecursiveNode 
@@ -3695,7 +2664,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   );
 };
 
-// --------------------- 再帰ノード ---------------------
+// ==================== 再帰ノード ====================
 interface RecursiveNodeProps {
   node: MindNode;
   selectedNodeId: string | null;
