@@ -251,7 +251,7 @@ const COLOR_PALETTE = [
   { bg: '#faf5ff', text: '#7e22ce', label: 'パープル' },
 ];
 
-const STAMP_RED = '#ea5550'; // 日本の朱肉色固定
+const STAMP_RED = '#ea5550';
 
 const DEFAULT_STICKY_WIDTH = 200;
 const DEFAULT_STICKY_HEIGHT = 160;
@@ -408,15 +408,12 @@ const PlusIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCol
 const SaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v11a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V4m0 3h4m-4 0H8" /></svg> );
 const LinkIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828m6.364-6.364a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828" /></svg> );
 const HomeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> );
-const AlignVIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="21" strokeWidth={2} /><path strokeWidth={2} d="M5 7l7-4 7 4M5 17l7 4 7-4" /></svg> );
-const AlignHIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12" strokeWidth={2} /><path strokeWidth={2} d="M7 5l-4 7 4 7M17 5l4 7-4 7" /></svg> );
 const PaletteIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg> );
 const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
 const LeaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> );
 const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const SiblingNodeIcon = ({ className = '' }: { className?: string }) => ( <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
 const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
-const ParentNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg> );
 const StickyIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> );
 const ImageIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> );
 const PencilIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> );
@@ -427,8 +424,6 @@ const SquareIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentC
 const CircleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" strokeWidth={2} /></svg> );
 const TriangleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,4 20,20 4,20" strokeWidth={2} strokeLinejoin="round" /></svg> );
 const TextOutlineIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V4h16v3M9 20h6M12 4v16" /></svg> );
-const GroupIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg> );
-const UngroupIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> );
 const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
 const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const ImageNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2" strokeWidth={2} /><circle cx="8.5" cy="8.5" r="2.5" strokeWidth={2} /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15l-5-5-6 6-3-3-5 5" /></svg> );
@@ -728,7 +723,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  const addLog = (msg: string) => { if (process.env.NODE_ENV === 'development') console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -751,7 +746,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
 
-  // ★ 印鑑設定用 (色は朱肉色固定)
   const [stampText, setStampText] = useState<string>(() => {
     const name = myEmail.split('@')[0];
     return name.length > 8 ? name.substring(0, 8) : name;
@@ -807,27 +801,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, getMinZIndex]);
 
-  const handleGroup = useCallback(() => {
-    const gId = crypto.randomUUID();
-    ydocRef.current?.transact(() => {
-      selectedNodeIds.forEach(id => { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, groupId: gId}); });
-      selectedImageIds.forEach(id => { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, groupId: gId}); });
-      selectedStickyIds.forEach(id => { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, groupId: gId}); });
-      selectedOutlineIds.forEach(id => { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, groupId: gId}); });
-      selectedStampIds.forEach(id => { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, groupId: gId}); });
-    });
-  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
-
-  const handleUngroup = useCallback(() => {
-    ydocRef.current?.transact(() => {
-      selectedNodeIds.forEach(id => { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, groupId: undefined}); });
-      selectedImageIds.forEach(id => { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, groupId: undefined}); });
-      selectedStickyIds.forEach(id => { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, groupId: undefined}); });
-      selectedOutlineIds.forEach(id => { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, groupId: undefined}); });
-      selectedStampIds.forEach(id => { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, groupId: undefined}); });
-    });
-  }, [selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
-
   const totalSelectedCount = selectedNodeIds.length + selectedImageIds.length + selectedStickyIds.length + selectedOutlineIds.length + selectedStampIds.length;
 
   const closeContextMenu = useCallback(() => { setContextMenu(prev => ({ ...prev, visible: false })); setShowColorPalette(null); }, []);
@@ -872,14 +845,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     return () => { window.removeEventListener('keydown', handleGlobalKeyDown); window.removeEventListener('keyup', handleGlobalKeyUp); };
   }, [editingNodeId]);
 
-  // ★ スタンプ追加・削除・位置更新
   const addStamp = useCallback((x: number, y: number) => {
     const yStamps = yStampsRef.current; if (!yStamps || !ydocRef.current) return;
     const id = crypto.randomUUID();
     ydocRef.current.transact(() => {
       yStamps.set(id, {
         text: stampText,
-        color: STAMP_RED, // 朱肉色固定
+        color: STAMP_RED,
         textColor: STAMP_RED,
         x, y,
         width: STAMP_DEFAULT_WIDTH,
@@ -906,11 +878,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) yStamps.set(stampId, { ...data, x, y });
   }, []);
 
-  // スタンプの色変更は廃止（朱色固定）
-  const updateStampColors = useCallback((stampId: string, color: string, textColor: string) => {
-      // no-op : 色は変更しない
-  }, []);
-
   const updateOutlineFontSize = useCallback((outlineId: string, fontSize: number) => {
     const yOutlines = yOutlinesRef.current; if (!yOutlines) return;
     const data = yOutlines.get(outlineId);
@@ -921,7 +888,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ グローバルショートカット (Ctrl+Shift+S)
   useEffect(() => {
     const handleGlobalStampShortcut = (e: globalThis.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
@@ -938,7 +904,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     return () => window.removeEventListener('keydown', handleGlobalStampShortcut);
   }, [addStamp, zoomLevel]);
 
-  // ★ 既存のエッジ関連関数（変更なし）
   const addEdge = useCallback((sourceNodeId: string, sourcePoint: ConnectionPoint, targetNodeId: string, targetPoint: ConnectionPoint) => { const yEdges = yEdgesRef.current; if (!yEdges || !ydocRef.current) return; const edgeId = crypto.randomUUID(); ydocRef.current.transact(() => { yEdges.set(edgeId, { sourceNodeId, sourcePoint, targetNodeId, targetPoint, arrow: 'none' }); }); }, []);
   const deleteEdge = useCallback((edgeId: string) => {
     if (edgeId.startsWith('parent-edge-')) {
@@ -1255,7 +1220,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (selectedOutlineIds.length > 0) {
       selectedOutlineIds.forEach(id => updateOutlineColor(id, textColor));
     }
-    // スタンプの色は固定のため変更しない
   }, [selectedNodeIds, selectedStickyIds, selectedOutlineIds, updateMultipleNodeColors, updateStickyColors, updateOutlineColor]);
 
   const handleEdgeStyleChange = useCallback((newStyle: EdgeStyle) => {
@@ -2571,7 +2535,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     else if (contextMenu.type === 'stamp' && contextMenu.stampId) {
       switch (action) {
         case 'deleteStamp': deleteStamp(contextMenu.stampId); break;
-        // 印鑑は朱色固定のため changeColor は機能させない
         case 'bringToFront': bringToFront(); break;
         case 'sendToBack': sendToBack(); break;
       }
@@ -2721,6 +2684,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <svg className="w-6 h-6 text-indigo-600 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3" strokeWidth="2.5" fill="#e0e7ff"/><circle cx="6" cy="6" r="2" strokeWidth="2.5"/><circle cx="18" cy="6" r="2" strokeWidth="2.5"/><circle cx="6" cy="18" r="2" strokeWidth="2.5"/><circle cx="18" cy="18" r="2" strokeWidth="2.5"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.5 8.5L10.5 10.5M15.5 8.5L13.5 10.5M8.5 15.5L10.5 13.5M15.5 15.5L13.5 13.5"/></svg>
                 MindMap Pro
               </h2>
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded border border-slate-200" title={connectionStatus}>
+                <div className={`w-2 h-2 rounded-full ${statusColor} ${connectionStatus === '接続済み' ? 'animate-pulse' : ''}`} />
+                <span className="text-[10px] font-medium text-slate-500">{connectionStatus === '接続済み' ? 'Online' : 'Offline'}</span>
+              </div>
             </div>
           </div>
           <div className="p-4 border-b border-slate-100 flex flex-col gap-3">
@@ -2788,16 +2755,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null });
   mapMembers.forEach((member) => { if (member.user_id !== myUserId) participantsMap.set(member.user_id, { user_id: member.user_id, email: member.email, color: stringToColor(member.email), isOnline: false, isSelf: false, selectedNodeId: null, editingNodeId: null }); });
-  const validMemberIds = new Set(mapMembers.map(m => m.user_id));
-  if (mapOwnerId) validMemberIds.add(mapOwnerId); // Map owner is always a valid participant
-  validMemberIds.add(myUserId); // Current user is always valid if they are accessing the map
-
-  Object.entries(awarenessStates).forEach(([userId, state]) => {
-    if (userId === myUserId) return;
-    // Only include awareness states from valid members of the current map
-    if (!validMemberIds.has(userId)) return;
-    participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId });
-  });
+  Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId }); });
   const allParticipants = Array.from(participantsMap.values());
 
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
@@ -3160,7 +3118,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); 
               else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); 
               else if(showColorPalette.outlineId) updateOutlineColor(showColorPalette.outlineId, cp.text);
-              // スタンプは朱肉色固定なので変更処理はスキップ
               setShowColorPalette(null); closeContextMenu(); 
             }} />))}</div>
             <button onClick={() => setShowColorPalette(null)} className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">キャンセル</button>
@@ -3378,7 +3335,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   backgroundColor: 'transparent',
                   color: stamp.color,
                   zIndex: stamp.zIndex ?? 3,
-                  fontFamily: "'MS Mincho', 'Yu Mincho', serif", // 日本の印鑑らしい明朝体
+                  fontFamily: "'MS Mincho', 'Yu Mincho', serif",
                   boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
                 }}
                 onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)}
@@ -3386,31 +3343,23 @@ const MindMapApp = ({ user }: { user: User }) => {
                 onClick={(e) => handleStampClick(e, stamp.id)}
                 title={`${stamp.email} の印鑑`}
               >
-                {/* データネーム印（シヤチハタ風）デザイン本体 */}
                 <div 
                   className="flex flex-col items-center justify-center w-full h-full rounded-full border-[3px] bg-white/90 backdrop-blur-sm relative overflow-hidden"
                   style={{ borderColor: stamp.color }}
                 >
-                  {/* 上段：確認 */}
                   <div className="w-full text-center border-b-[1.5px] pb-0.5" style={{ borderColor: stamp.color }}>
                     <span className="text-[10px] font-bold tracking-widest leading-none block pt-1">確認</span>
                   </div>
-                  
-                  {/* 中段：日付 (YY.MM.DD 形式) */}
                   <div className="w-full text-center border-b-[1.5px] py-0.5" style={{ borderColor: stamp.color }}>
                     <span className="text-[9px] font-bold tracking-tighter leading-none block font-sans">
                       {new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}
                     </span>
                   </div>
-                  
-                  {/* 下段：名前 */}
                   <div className="w-full text-center pt-0.5 flex-1 flex items-center justify-center">
                     <span className="text-[15px] font-extrabold tracking-widest leading-none block pb-1">
                       {stamp.text}
                     </span>
                   </div>
-                  
-                  {/* 朱肉のかすれ・滲みを表現するノイズエフェクト */}
                   <div className="absolute inset-0 pointer-events-none rounded-full opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPgo8cGF0aCBkPSJNMCAwdjRoNFYweiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4=')]"></div>
                 </div>
               </div>
