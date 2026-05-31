@@ -752,12 +752,24 @@ const MindMapApp = ({ user }: { user: User }) => {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
 
+  // 印鑑名を localStorage に保存
   const [stampText, setStampText] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mindmap-stamp-text');
+      if (saved) return saved;
+    }
     const name = myEmail.split('@')[0];
     return name.length > 8 ? name.substring(0, 8) : name;
   });
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mindmap-stamp-text', stampText);
+    }
+  }, [stampText]);
+
   const cursorBroadcastTimerRef = useRef<number | null>(null);
+  const lastMindMapRef = useRef<MindNode | null>(null); // ノード消失時のフォールバック
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1392,9 +1404,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     const updateReact = () => {
       if (yRootRef.current) {
         const tree = yMapToTree(yNodes, yRootRef.current);
-        // ルートが欠落した場合は mindMap を更新しない（ノード消失防止）
         if (tree) {
           setMindMap(tree);
+          lastMindMapRef.current = tree; // 正常時は常に更新
+        } else if (lastMindMapRef.current) {
+          // ルートが一時的に消えたときは前回の状態を維持（ノード消失防止）
+          setMindMap(lastMindMapRef.current);
         }
       }
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
@@ -3422,19 +3437,19 @@ const MindMapApp = ({ user }: { user: User }) => {
                   className="flex flex-col items-center justify-center w-full h-full rounded-full border-[3px] bg-white/90 backdrop-blur-sm relative overflow-hidden"
                   style={{ borderColor: stamp.color }}
                 >
-                  <div className="w-full text-center border-b-[1.5px] pb-0.5" style={{ borderColor: stamp.color }}>
-                    <span className="text-[10px] font-bold tracking-widest leading-none block pt-1">確認</span>
-                  </div>
+                  {/* 日付 */}
                   <div className="w-full text-center border-b-[1.5px] py-0.5" style={{ borderColor: stamp.color }}>
                     <span className="text-[9px] font-bold tracking-tighter leading-none block font-sans">
                       {new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}
                     </span>
                   </div>
+                  {/* 名前 */}
                   <div className="w-full text-center pt-0.5 flex-1 flex items-center justify-center">
                     <span className="text-[15px] font-extrabold tracking-widest leading-none block pb-1">
                       {stamp.text}
                     </span>
                   </div>
+                  {/* ノイズエフェクト */}
                   <div className="absolute inset-0 pointer-events-none rounded-full opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPgo8cGF0aCBkPSJNMCAwdjRoNFYweiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4=')]"></div>
                 </div>
               </div>
