@@ -808,7 +808,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [announcements, setAnnouncements] = useState<{ id: string; email: string; nodeText: string }[]>([]);
   const prevEditingStates = useRef<Record<string, string | null>>({});
 
-  // ★ ドラッグ判定用の ref と閾値
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const DRAG_THRESHOLD = 3;
   const hasDraggedRef = useRef(false);
@@ -1216,7 +1215,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     addSticky(x, y);
   }, [addSticky, zoomLevel]);
 
-  // ★ 修正1：updateText 内で幅も同時更新
   const updateText = useCallback((nodeId: string, text: string) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
@@ -1229,8 +1227,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 修正：updatePositionをトランザクション内で最新データを再取得して安全に更新
+  // ★ 修正2: updatePosition にバリデーション追加
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => {
+    if (!nodeId || isNaN(x) || isNaN(y) || x <= 0 || y <= 0) return;
+    
     ydocRef.current?.transact(() => {
       const nodes = yNodesRef.current;
       if (!nodes) return;
@@ -1514,7 +1514,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 修正版 initYjs（debounce化 + functional updater + 古いydocガード）
+  // ★ 修正版 initYjs（debounce化 + functional updater + 古いydocガード + 受信サニタイズ）
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1557,7 +1557,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
 
     const updateReact = () => {
-      // ★ 修正4: 古いydoc参照ガード
+      // 古いydoc参照ガード
       if (ydocRef.current !== ydoc) {
         return;
       }
@@ -1619,7 +1619,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
-    // ★ 修正2: debounce時間を1msに変更
+    // debounce時間を1msに変更
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedUpdateReact = () => {
       if (updateTimer) clearTimeout(updateTimer);
@@ -1657,7 +1657,23 @@ const MindMapApp = ({ user }: { user: User }) => {
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
-    channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
+    // ★ 修正4: 受信ハンドラで座標異常ノードをサニタイズ
+    channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
+      const update = base64ToUint8Array(msg.payload.update);
+      Y.applyUpdate(ydoc, update, 'supabase');
+      
+      // 適用後に座標異常ノードをサニタイズ
+      const nodes = yNodesRef.current;
+      if (nodes) {
+        nodes.forEach((data, nodeId) => {
+          if (data.x <= 0 || data.y <= 0 || isNaN(data.x) || isNaN(data.y)) {
+            console.warn(`[MindMap] 座標異常ノードを修正: ${nodeId}`, data.x, data.y);
+            nodes.set(nodeId, { ...data, x: 5000, y: 5000 });
+          }
+        });
+      }
+    });
+
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
     channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { 
@@ -1710,7 +1726,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // 以下、すべてのハンドラ (変更なし、省略せずに全体を出力)
+  // 以下、すべてのハンドラ
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -1821,7 +1837,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       setMultiDragOffsets({ dx: 0, dy: 0 }); setDraggingNodeId(null); setDragTargetNodeId(null); setSelectedEdgeId(null);
     } else {
       dragOffset.current = { x: coords.x - node.x, y: coords.y - node.y };
-      // ★ 修正1: ドラッグ開始座標を記録し、フラグをリセット
       dragStartPosRef.current = { x: node.x, y: node.y };
       hasDraggedRef.current = false;
       setDragPositions(prev => ({ ...prev, [nodeId]: { x: node.x, y: node.y } }));
@@ -1913,7 +1928,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (selectionRect) { setSelectionRect(prev => prev ? { ...prev, x2: coords.x, y2: coords.y } : null); return; }
     if (draggingNodeId) {
       const newX = coords.x - dragOffset.current.x, newY = coords.y - dragOffset.current.y;
-      // ★ 修正1: ドラッグ距離が閾値を超えたらフラグを立てる
       if (dragStartPosRef.current) {
         const dist = Math.hypot(newX - dragStartPosRef.current.x, newY - dragStartPosRef.current.y);
         if (dist >= DRAG_THRESHOLD) {
@@ -1927,7 +1941,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (isMultiDragging && multiDragOffsets) { const deltaX = coords.x - groupDragStartMouse.current.x; const deltaY = coords.y - groupDragStartMouse.current.y; setMultiDragOffsets({ dx: deltaX, dy: deltaY }); const newPositions: Record<string, { x: number; y: number }> = {}; selectedNodeIds.forEach(id => { const init = initialGroupDragPositions.current[id]; if(init) newPositions[id] = { x: init.x + deltaX, y: init.y + deltaY }; }); setDragPositions(newPositions); }
   }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, updateStampPosition, images, stickies, outlines, isCanvasPanning]);
 
-  // ★ 修正1: 実際にドラッグした場合のみ位置を更新
+  // ★ 修正1: handleMouseUp に座標バリデーションとローカル変数
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
@@ -1941,10 +1955,11 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (resizingOutlineHandle) { setResizingOutlineHandle(null); return; }
     if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); } setSelectionRect(null); return; }
     if (draggingNodeId) {
-      // 実際にドラッグしていた場合のみ位置を更新
       if (hasDraggedRef.current) {
         const pos = dragPositions[draggingNodeId];
-        if (pos) {
+        // 座標の妥当性チェック
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && 
+            !isNaN(pos.x) && !isNaN(pos.y) && pos.x > 0 && pos.y > 0) {
           updatePosition(draggingNodeId, pos.x, pos.y);
         }
         if (dragTargetNodeId && dragTargetNodeId !== draggingNodeId) {
@@ -1953,9 +1968,14 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
       hasDraggedRef.current = false;
       dragStartPosRef.current = null;
+      // draggingNodeId をローカル変数に保存してからステート更新
+      const nodeIdToClean = draggingNodeId;
       setDraggingNodeId(null);
       setDragTargetNodeId(null);
-      setDragPositions(prev => { const { [draggingNodeId]: _, ...rest } = prev; return rest; });
+      setDragPositions(prev => {
+        const { [nodeIdToClean]: _, ...rest } = prev;
+        return rest;
+      });
       return;
     }
     if (isMultiDragging && multiDragOffsets) { ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { const p = initialGroupDragPositions.current[id]; if (p) { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); }); setDragPositions({}); initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {}; setMultiDragOffsets(null); return; }
@@ -2095,7 +2115,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
-  // JSX（変更なし、長いので省略せずに続く）
+  // --------------------- JSX ---------------------
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -2351,9 +2371,16 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
+  // ★ 修正3: displayPos に fallback
   const displayPos = (() => {
-    if (isMultiDragging && dragPositions[node.id]) return dragPositions[node.id];
-    if (isSingleDragging && dragPositions[node.id]) return dragPositions[node.id];
+    if (isMultiDragging && dragPositions[node.id]) {
+      const p = dragPositions[node.id];
+      if (p.x > 0 && p.y > 0) return p;
+    }
+    if (isSingleDragging && dragPositions[node.id]) {
+      const p = dragPositions[node.id];
+      if (p.x > 0 && p.y > 0) return p;
+    }
     return { x: node.x, y: node.y };
   })();
 
