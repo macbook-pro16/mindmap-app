@@ -2221,12 +2221,14 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     .filter(([, state]) => {
       return state != null && state.editingNodeId === node.id;
     })
-    .map(([, state]) => state);
+    .map(([, state]) => state as AwarenessState)
+    .filter(Boolean); // 念のため
   const remoteSelectors = Object.entries(awarenessStates)
     .filter(([, state]) => {
       return state != null && state.selectedNodeId === node.id && state.editingNodeId !== node.id;
     })
-    .map(([, state]) => state);
+    .map(([, state]) => state as AwarenessState)
+    .filter(Boolean);
   
   const borderColorClass = isTarget ? 'border-emerald-500 border-2 ring-4 ring-emerald-500/20' : (isSelected ? (isSingleSelected ? 'border-indigo-600 ring-4 ring-indigo-600/20' : 'border-purple-600 ring-4 ring-purple-600/20') : 'border-transparent');
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
