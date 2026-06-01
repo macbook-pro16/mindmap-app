@@ -803,6 +803,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     return name.length > 8 ? name.substring(0, 8) : name;
   });
 
+  // ★ 編集中アナウンス
   const [announcements, setAnnouncements] = useState<{ id: string; email: string; nodeText: string }[]>([]);
   const prevEditingStates = useRef<Record<string, string | null>>({});
 
@@ -1448,6 +1449,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     };
   }, [mapId, mapTitle, roomId, user.id, user.email]);
 
+  // ★ 安定版 initYjs
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1485,6 +1487,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         return;
       }
 
+      // 孤立ノードをYjsドキュメント上で修復（ルートの子として追加）
       const allNodeIds = new Set<string>();
       yNodes.forEach((_, key) => allNodeIds.add(key));
       const visited = new Set<string>();
@@ -1529,6 +1532,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         setMindMap(lastMindMapRef.current);
       }
 
+      // 他のデータ更新
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
       const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
@@ -1559,6 +1563,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
+    // ★ 修正: state が null/undefined の場合に安全に除外
     channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { 
       const { userId, state } = msg.payload; 
       if (userId === myUserId) return; 
@@ -1604,6 +1609,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
+  // 以下、すべてのハンドラ
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -1670,6 +1676,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
 
+  // --------------------- マウスイベントハンドラ ---------------------
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -1920,10 +1927,20 @@ const MindMapApp = ({ user }: { user: User }) => {
   for (const edge of edges) { const sourcePos = getNodeDisplayPos(edge.sourceNodeId, mindMap, dragPositions, draggingNodeId); const targetPos = getNodeDisplayPos(edge.targetNodeId, mindMap, dragPositions, draggingNodeId); if (!sourcePos || !targetPos) continue; const startPt = getConnectionPoint(sourcePos.x, sourcePos.y, edge.sourcePoint, sourcePos.width, sourcePos.height); const endPt = getConnectionPoint(targetPos.x, targetPos.y, edge.targetPoint, targetPos.width, targetPos.height); const pathD = getEdgePath(startPt, endPt, edge.sourcePoint, edge.targetPoint, edgeStyle); edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y }); }
 
   const ownAwareness = awarenessStates[myUserId];
-  // ★ 修正2: participantsMap生成時にstate.emailやstate.colorがundefinedの場合のデフォルト値を設定
+  // ★ 修正2: participantsMap生成時にemailとcolorがundefinedの場合にデフォルト値を設定
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
-  mapMembers.forEach((member) => { if (member.user_id !== myUserId) participantsMap.set(member.user_id, { user_id: member.user_id, email: member.email, color: stringToColor(member.email), isOnline: false, isSelf: false, selectedNodeId: null, editingNodeId: null }); });
+  mapMembers.forEach((member) => { 
+    if (member.user_id !== myUserId) participantsMap.set(member.user_id, { 
+      user_id: member.user_id, 
+      email: member.email || 'Unknown', 
+      color: stringToColor(member.email || 'unknown'), 
+      isOnline: false, 
+      isSelf: false, 
+      selectedNodeId: null, 
+      editingNodeId: null 
+    }); 
+  });
   Object.entries(awarenessStates).forEach(([userId, state]) => { 
     if (userId === myUserId || !state) return; 
     participantsMap.set(userId, { 
