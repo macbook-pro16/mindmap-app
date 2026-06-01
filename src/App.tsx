@@ -440,9 +440,12 @@ const GridIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCol
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
+  const visited = new Set<string>();
+
   const convert = (id: string): MindNode | null => {
     const data = nodes.get(id);
     if (!data) return null;
+    visited.add(id);
     const childIds = (data.children || []) as string[];
     const children = childIds.map(convert).filter((c): c is MindNode => c !== null);
     const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
@@ -476,7 +479,48 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       children,
     };
   };
-  return convert(rootId);
+
+  const root = convert(rootId);
+  if (!root) return null;
+
+  // ★ 孤立ノードの自動修復：マップ内の全ノードを走査し、親の children 配列から参照されていない孤立ノードをルート直下に追加
+  nodes.forEach((data: YjsNodeData, key: string) => {
+    if (!visited.has(key) && key !== rootId) {
+      const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+      let width = data.width;
+      let height = data.height;
+      if (data.imageUrl && data.imageWidth && data.imageHeight) {
+        const scale = data.imageScale ?? 1.0;
+        width = data.imageWidth * scale;
+        height = data.imageHeight * scale;
+      } else if (!width && data.imageUrl) {
+        width = IMAGE_NODE_MAX_INITIAL_SIZE;
+        height = IMAGE_NODE_MAX_INITIAL_SIZE;
+      } else if (!width) {
+        width = computeNodeWidth(data.text, fontSize);
+        height = NODE_HEIGHT;
+      }
+      const orphanNode: MindNode = {
+        id: key, text: data.text, x: data.x, y: data.y,
+        independent: true,
+        bgColor: data.bgColor ?? '#f8fafc',
+        textColor: data.textColor ?? '#334155',
+        groupId: data.groupId,
+        zIndex: data.zIndex,
+        width, height,
+        fontSize,
+        collapsed: data.collapsed ?? false,
+        imageUrl: data.imageUrl,
+        imageWidth: data.imageWidth,
+        imageHeight: data.imageHeight,
+        imageScale: data.imageScale ?? 1.0,
+        children: [],
+      };
+      root.children.push(orphanNode);
+    }
+  });
+
+  return root;
 };
 
 const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
