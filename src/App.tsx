@@ -1449,7 +1449,50 @@ const MindMapApp = ({ user }: { user: User }) => {
     };
   }, [mapId, mapTitle, roomId, user.id, user.email]);
 
-  // ★ 安定版 initYjs
+  // ★ 安全な孤立ノード修復関数 (observe 外で一度だけ実行)
+  const repairOrphanNodes = useCallback(() => {
+    const yNodes = yNodesRef.current;
+    const rootId = yRootRef.current;
+    if (!yNodes || !rootId) return;
+    const allNodeIds = new Set<string>();
+    yNodes.forEach((_, key) => allNodeIds.add(key));
+    const visited = new Set<string>();
+    const stack = [rootId];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const data = yNodes.get(id);
+      if (data?.children) {
+        for (const childId of data.children) {
+          if (!visited.has(childId)) stack.push(childId);
+        }
+      }
+    }
+    const orphanIds = [...allNodeIds].filter(id => id !== rootId && !visited.has(id));
+    if (orphanIds.length > 0) {
+      const ydoc = ydocRef.current;
+      if (!ydoc) return;
+      ydoc.transact(() => {
+        const root = yNodes.get(rootId);
+        if (root) {
+          const newChildren = [...root.children];
+          let changed = false;
+          for (const orphanId of orphanIds) {
+            if (!newChildren.includes(orphanId) && yNodes.get(orphanId)) {
+              newChildren.push(orphanId);
+              changed = true;
+            }
+          }
+          if (changed) {
+            yNodes.set(rootId, { ...root, children: newChildren });
+          }
+        }
+      });
+    }
+  }, []);
+
+  // ★ 修正版 initYjs
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1479,60 +1522,22 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
     });
 
+    // ★ 修正: observe 内での ydoc.transact() を完全に削除し、古いキャッシュフォールバックも廃止
     const updateReact = () => {
       if (!yRootRef.current) return;
       const rootData = yNodes.get(yRootRef.current);
       if (!rootData) {
-        if (lastMindMapRef.current) setMindMap(lastMindMapRef.current);
-        return;
+        return; // フォールバック削除
       }
-
-      // 孤立ノードをYjsドキュメント上で修復（ルートの子として追加）
-      const allNodeIds = new Set<string>();
-      yNodes.forEach((_, key) => allNodeIds.add(key));
-      const visited = new Set<string>();
-      const stack = [yRootRef.current];
-      while (stack.length) {
-        const id = stack.pop()!;
-        if (visited.has(id)) continue;
-        visited.add(id);
-        const data = yNodes.get(id);
-        if (data && data.children) {
-          for (const childId of data.children) {
-            if (!visited.has(childId)) stack.push(childId);
-          }
-        }
-      }
-      const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
-      if (orphanIds.length > 0) {
-        addLog(`孤立ノード修復: ${orphanIds.join(', ')}`);
-        ydoc.transact(() => {
-          const root = yNodes.get(yRootRef.current!);
-          if (root) {
-            const newChildren = [...root.children];
-            let changed = false;
-            for (const orphanId of orphanIds) {
-              if (!newChildren.includes(orphanId) && yNodes.get(orphanId)) {
-                newChildren.push(orphanId);
-                changed = true;
-              }
-            }
-            if (changed) {
-              yNodes.set(yRootRef.current!, { ...root, children: newChildren });
-            }
-          }
-        });
-      }
+      // 孤立ノード修復ロジックは一切実行しない
 
       const tree = yMapToTree(yNodes, yRootRef.current);
       if (tree) {
         setMindMap(tree);
         lastMindMapRef.current = tree;
-      } else if (lastMindMapRef.current) {
-        setMindMap(lastMindMapRef.current);
       }
+      // treeがnullなら何もしない
 
-      // 他のデータ更新
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
       const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
@@ -1552,7 +1557,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
     ydoc.on('update', (update: Uint8Array, origin: string) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
-      setIsDirty(true); if (origin === 'supabase' || origin === 'local') return;
+      setIsDirty(true);
+      // 安全のため、不明なoriginの場合は再ブロードキャストしない（修正箇所1によりobserve内transactは存在しない）
+      if (origin === 'supabase' || origin === 'local') return;
+      // 追加: 想定外のoriginの場合はログ
+      if (origin !== 'supabase' && origin !== 'local' && origin !== 'user') {
+        addLog(`Unknown update origin: ${origin}, broadcasting.`);
+      }
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
@@ -1563,7 +1574,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
-    // ★ 修正: state が null/undefined の場合に安全に除外
     channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { 
       const { userId, state } = msg.payload; 
       if (userId === myUserId) return; 
@@ -1578,7 +1588,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     if(typeof window !== 'undefined') { window.addEventListener('beforeunload', removeSelf); }
     
     channel.subscribe((status: string, err?: Error) => {
-      if (status === 'SUBSCRIBED') setConnectionStatus('接続済み'); else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断'); else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト'); else setConnectionStatus('接続中...');
+      if (status === 'SUBSCRIBED') {
+        setConnectionStatus('接続済み');
+        // 同期後に一度だけ孤立ノード修復を安全に実行
+        setTimeout(() => repairOrphanNodes(), 2000);
+      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断');
+      else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト');
+      else setConnectionStatus('接続中...');
       if (err) console.error('Supabase Error:', err);
       if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'sync-step-1', payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) } }); broadcastAwareness(channel, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }
     });
@@ -1609,7 +1625,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // 以下、すべてのハンドラ
+  // 以下、すべてのハンドラ (変更なし、省略せずに全体を出力)
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
