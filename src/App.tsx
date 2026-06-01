@@ -796,6 +796,27 @@ const MindMapApp = ({ user }: { user: User }) => {
     return name.length > 8 ? name.substring(0, 8) : name;
   });
 
+  // ★ 編集中アナウンス
+  const [announcements, setAnnouncements] = useState<{ id: string; userId: string; email: string; nodeText: string; timestamp: number }[]>([]);
+  const prevEditingNodeIdMap = useRef<Record<string, string | null>>({});
+  useEffect(() => {
+    Object.entries(awarenessStates).forEach(([userId, state]) => {
+      if (userId === myUserId) return;
+      const prevEditing = prevEditingNodeIdMap.current[userId] || null;
+      if (state.editingNodeId && state.editingNodeId !== prevEditing) {
+        let nodeText = '不明なノード';
+        if (yNodesRef.current) {
+          const nodeData = yNodesRef.current.get(state.editingNodeId);
+          if (nodeData) nodeText = nodeData.text || '無題';
+        }
+        const newAnnouncement = { id: `${userId}-${Date.now()}`, userId, email: state.email, nodeText, timestamp: Date.now() };
+        setAnnouncements(prev => [...prev, newAnnouncement]);
+        setTimeout(() => { setAnnouncements(prev => prev.filter(a => a.id !== newAnnouncement.id)); }, 3000);
+      }
+      prevEditingNodeIdMap.current[userId] = state.editingNodeId;
+    });
+  }, [awarenessStates, myUserId]);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('mindmap-stamp-text', stampText);
@@ -1468,66 +1489,58 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
 
     const updateReact = () => {
-      if (yRootRef.current) {
-        const rootData = yNodes.get(yRootRef.current);
-        if (!rootData) {
-          // ルートが欠落している場合は前の状態を表示（実質的には何もしない）
-          if (lastMindMapRef.current) {
-            setMindMap(lastMindMapRef.current);
+      if (!yRootRef.current) return;
+      const rootData = yNodes.get(yRootRef.current);
+      if (!rootData) {
+        if (lastMindMapRef.current) setMindMap(lastMindMapRef.current);
+        return;
+      }
+
+      // 孤立ノードの自動修復（Yjsドキュメントを修正）
+      const allNodeIds = new Set<string>();
+      yNodes.forEach((_, key) => allNodeIds.add(key));
+      const visited = new Set<string>();
+      const stack = [yRootRef.current];
+      while (stack.length) {
+        const id = stack.pop()!;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const data = yNodes.get(id);
+        if (data && data.children) {
+          for (const childId of data.children) {
+            if (!visited.has(childId)) stack.push(childId);
           }
-          return;
-        }
-        
-        // ★ 孤立ノードをYjsドキュメント上で修復（ルートから到達不能なノードをルートの子として追加）
-        const allNodeIds = new Set<string>();
-        yNodes.forEach((_, key) => allNodeIds.add(key));
-
-        const visited = new Set<string>();
-        const stack = [yRootRef.current];
-        while (stack.length) {
-          const id = stack.pop()!;
-          if (visited.has(id)) continue;
-          visited.add(id);
-          const data = yNodes.get(id);
-          if (data && data.children) {
-            for (const childId of data.children) {
-              if (!visited.has(childId)) stack.push(childId);
-            }
-          }
-        }
-
-        const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
-
-        if (orphanIds.length > 0) {
-          addLog(`孤立ノード修復: ${orphanIds.join(', ')}`);
-          ydoc.transact(() => {
-            const root = yNodes.get(yRootRef.current!);
-            if (root) {
-              const newChildren = [...root.children];
-              let changed = false;
-              for (const orphanId of orphanIds) {
-                // 既に子として存在していなければ追加
-                if (!newChildren.includes(orphanId) && yNodes.get(orphanId)) {
-                  newChildren.push(orphanId);
-                  changed = true;
-                }
-              }
-              if (changed) {
-                yNodes.set(yRootRef.current!, { ...root, children: newChildren });
-              }
-            }
-          });
-        }
-
-        // 修復後のツリーを構築
-        const tree = yMapToTree(yNodes, yRootRef.current);
-        if (tree) {
-          setMindMap(tree);
-          lastMindMapRef.current = tree;
-        } else if (lastMindMapRef.current) {
-          setMindMap(lastMindMapRef.current);
         }
       }
+      const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
+      if (orphanIds.length > 0) {
+        addLog(`孤立ノード修復: ${orphanIds.join(', ')}`);
+        ydoc.transact(() => {
+          const root = yNodes.get(yRootRef.current!);
+          if (root) {
+            const newChildren = [...root.children];
+            let changed = false;
+            for (const orphanId of orphanIds) {
+              if (!newChildren.includes(orphanId) && yNodes.get(orphanId)) {
+                newChildren.push(orphanId);
+                changed = true;
+              }
+            }
+            if (changed) {
+              yNodes.set(yRootRef.current!, { ...root, children: newChildren });
+            }
+          }
+        });
+      }
+
+      const tree = yMapToTree(yNodes, yRootRef.current);
+      if (tree) {
+        setMindMap(tree);
+        lastMindMapRef.current = tree;
+      } else if (lastMindMapRef.current) {
+        setMindMap(lastMindMapRef.current);
+      }
+
       // その他のデータ更新
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
@@ -1573,7 +1586,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
-  // ----- ハンドラ（省略なし）-----
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) {
       setEditingMapId(null);
@@ -1749,7 +1761,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const initialScrollDone = useRef(false);
   useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
-
+  
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || !channelRef.current) return;
@@ -2863,7 +2875,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     };
   }, [zoomLevel]);
 
-  // --------------------- JSX ---------------------
   const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
   const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId!, mindMap, dragPositions, draggingNodeId) : null;
 
@@ -2960,6 +2971,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
+  // --------------------- JSX ---------------------
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -3072,6 +3084,17 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 編集中アナウンス */}
+      {announcements.length > 0 && (
+        <div className="fixed top-20 right-4 z-[300] flex flex-col gap-2 pointer-events-none">
+          {announcements.map(a => (
+            <div key={a.id} className="bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium animate-fade-in">
+              {a.email} さんが「{a.nodeText}」を編集中です
+            </div>
+          ))}
         </div>
       )}
 
