@@ -454,14 +454,11 @@ const AlignHorizontalIcon = () => (
   </svg>
 );
 
-// --------------------- データ変換ユーティリティ ---------------------
+// --------------------- データ変換ユーティリティ (純粋版) ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
-  const visited = new Set<string>();
-
   const convert = (id: string): MindNode | null => {
     const data = nodes.get(id);
     if (!data) return null;
-    visited.add(id);
     const childIds = (data.children || []) as string[];
     const children = childIds.map(convert).filter((c): c is MindNode => c !== null);
     const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
@@ -495,48 +492,7 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       children,
     };
   };
-
-  const root = convert(rootId);
-  if (!root) return null;
-
-  // 表示上の孤立ノード修復（安全策）
-  nodes.forEach((data: YjsNodeData, key: string) => {
-    if (!visited.has(key) && key !== rootId) {
-      const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
-      let width = data.width;
-      let height = data.height;
-      if (data.imageUrl && data.imageWidth && data.imageHeight) {
-        const scale = data.imageScale ?? 1.0;
-        width = data.imageWidth * scale;
-        height = data.imageHeight * scale;
-      } else if (!width && data.imageUrl) {
-        width = IMAGE_NODE_MAX_INITIAL_SIZE;
-        height = IMAGE_NODE_MAX_INITIAL_SIZE;
-      } else if (!width) {
-        width = computeNodeWidth(data.text, fontSize);
-        height = NODE_HEIGHT;
-      }
-      const orphanNode: MindNode = {
-        id: key, text: data.text, x: data.x, y: data.y,
-        independent: true,
-        bgColor: data.bgColor ?? '#f8fafc',
-        textColor: data.textColor ?? '#334155',
-        groupId: data.groupId,
-        zIndex: data.zIndex,
-        width, height,
-        fontSize,
-        collapsed: data.collapsed ?? false,
-        imageUrl: data.imageUrl,
-        imageWidth: data.imageWidth,
-        imageHeight: data.imageHeight,
-        imageScale: data.imageScale ?? 1.0,
-        children: [],
-      };
-      root.children.push(orphanNode);
-    }
-  });
-
-  return root;
+  return convert(rootId);
 };
 
 const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
@@ -848,7 +804,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const cursorBroadcastTimerRef = useRef<number | null>(null);
   const lastMindMapRef = useRef<MindNode | null>(null);
-  const parentMapRef = useRef<Record<string, string>>({});
 
   const isAnyDragging = useMemo(() => {
     return draggingNodeId !== null || editingEdgeEndpoint !== null || drawingEdge !== null || 
@@ -1516,76 +1471,59 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (yRootRef.current) {
         const rootData = yNodes.get(yRootRef.current);
         if (!rootData) {
-          const lastRoot = lastMindMapRef.current;
-          if (lastRoot) {
-            setMindMap(lastRoot);
-          } else {
-            setMindMap(null);
+          // ルートが欠落している場合は前の状態を表示（実質的には何もしない）
+          if (lastMindMapRef.current) {
+            setMindMap(lastMindMapRef.current);
           }
           return;
         }
-        // ★ 孤立ノードの自動修復（Yjsドキュメント上で実行）
+        
+        // ★ 孤立ノードをYjsドキュメント上で修復（ルートから到達不能なノードをルートの子として追加）
         const allNodeIds = new Set<string>();
         yNodes.forEach((_, key) => allNodeIds.add(key));
 
         const visited = new Set<string>();
-        const collectNodeIds = (node: MindNode) => {
-          visited.add(node.id);
-          for (const child of node.children) {
-            collectNodeIds(child);
+        const stack = [yRootRef.current];
+        while (stack.length) {
+          const id = stack.pop()!;
+          if (visited.has(id)) continue;
+          visited.add(id);
+          const data = yNodes.get(id);
+          if (data && data.children) {
+            for (const childId of data.children) {
+              if (!visited.has(childId)) stack.push(childId);
+            }
           }
-        };
+        }
 
+        const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
+
+        if (orphanIds.length > 0) {
+          addLog(`孤立ノード修復: ${orphanIds.join(', ')}`);
+          ydoc.transact(() => {
+            const root = yNodes.get(yRootRef.current!);
+            if (root) {
+              const newChildren = [...root.children];
+              let changed = false;
+              for (const orphanId of orphanIds) {
+                // 既に子として存在していなければ追加
+                if (!newChildren.includes(orphanId) && yNodes.get(orphanId)) {
+                  newChildren.push(orphanId);
+                  changed = true;
+                }
+              }
+              if (changed) {
+                yNodes.set(yRootRef.current!, { ...root, children: newChildren });
+              }
+            }
+          });
+        }
+
+        // 修復後のツリーを構築
         const tree = yMapToTree(yNodes, yRootRef.current);
         if (tree) {
-          collectNodeIds(tree);
-
-          const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
-
-          if (orphanIds.length > 0) {
-            addLog(`孤立ノードを検出: ${orphanIds.join(', ')}`);
-            ydoc.transact(() => {
-              for (const orphanId of orphanIds) {
-                const orphanData = yNodes.get(orphanId);
-                if (!orphanData) continue;
-
-                let targetParentId: string | null = parentMapRef.current[orphanId] || null;
-                if (targetParentId && !yNodes.get(targetParentId)) {
-                  targetParentId = null;
-                }
-                if (!targetParentId) {
-                  targetParentId = yRootRef.current!;
-                }
-
-                const parentData = yNodes.get(targetParentId);
-                if (parentData && !parentData.children.includes(orphanId)) {
-                  yNodes.set(targetParentId, {
-                    ...parentData,
-                    children: [...parentData.children, orphanId],
-                  });
-                  addLog(`${orphanId} を ${targetParentId} の子として修復`);
-                }
-              }
-            });
-          }
-
-          // 修復後のツリーを再構築
-          const repairedTree = yMapToTree(yNodes, yRootRef.current);
-          if (repairedTree) {
-            setMindMap(repairedTree);
-            lastMindMapRef.current = repairedTree;
-            const newParentMap: Record<string, string> = {};
-            const buildParentMap = (node: MindNode) => {
-              for (const child of node.children) {
-                newParentMap[child.id] = node.id;
-                buildParentMap(child);
-              }
-            };
-            buildParentMap(repairedTree);
-            parentMapRef.current = newParentMap;
-          } else if (lastMindMapRef.current) {
-            setMindMap(lastMindMapRef.current);
-          }
+          setMindMap(tree);
+          lastMindMapRef.current = tree;
         } else if (lastMindMapRef.current) {
           setMindMap(lastMindMapRef.current);
         }
@@ -1635,6 +1573,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
+  // ----- ハンドラ（省略なし）-----
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) {
       setEditingMapId(null);
@@ -1810,7 +1749,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const initialScrollDone = useRef(false);
   useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
-  
+
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || !channelRef.current) return;
@@ -2924,6 +2863,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     };
   }, [zoomLevel]);
 
+  // --------------------- JSX ---------------------
   const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
   const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId!, mindMap, dragPositions, draggingNodeId) : null;
 
@@ -3020,7 +2960,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
-  // --------------------- JSX ---------------------
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
