@@ -475,7 +475,6 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       width = computeNodeWidth(data.text, fontSize);
       height = NODE_HEIGHT;
     }
-    // ★ 修正2: width=0 ガード
     if (!width || width <= 0) width = NODE_MIN_WIDTH;
     if (!height || height <= 0) height = NODE_HEIGHT;
 
@@ -524,7 +523,6 @@ const uint8ArrayToBase64 = (u8: Uint8Array): string => { let binary = ''; for (l
 const base64ToUint8Array = (b64: string): Uint8Array => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const stringToColor = (str: string): string => { let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash); return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`; };
 
-// ★ 修正1：email が undefined や空文字の場合でも安全にフォールバック
 const getInitial = (email?: string): string => {
   if (!email || typeof email !== 'string') return 'U';
   const localPart = email.split('@')[0];
@@ -1226,7 +1224,18 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
+  // ★ 修正：updatePositionをトランザクション内で最新データを再取得して安全に更新
+  const updatePosition = useCallback((nodeId: string, x: number, y: number) => {
+    ydocRef.current?.transact(() => {
+      const nodes = yNodesRef.current;
+      if (!nodes) return;
+      const data = nodes.get(nodeId);
+      if (data) {
+        nodes.set(nodeId, { ...data, x, y });
+      }
+    });
+  }, []);
+
   const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
 
   const updateMultipleNodeColors = useCallback((nodeIds: string[], bgColor: string, textColor: string) => {
@@ -1549,7 +1558,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       const rootData = yNodes.get(rootId);
       if (!rootData) return;
 
-      // 修正3：DEV環境でのデバッグログ（transactは行わない）
       if (import.meta.env.DEV) {
         yNodes.forEach((nodeData, nodeId) => {
           if (nodeData.children) {
@@ -1564,7 +1572,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
       const tree = yMapToTree(yNodes, rootId);
       if (tree) {
-        // ★ 修正4: functional updater を使用
         setMindMap(_prev => tree);
         lastMindMapRef.current = tree;
       }
@@ -1603,7 +1610,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
-    // ★ 修正1: debounce化
+    // debounce化
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedUpdateReact = () => {
       if (updateTimer) clearTimeout(updateTimer);
@@ -1612,7 +1619,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       }, 0);
     };
 
-    // observe登録（debounce版）
     yNodes.observe(debouncedUpdateReact);
     yEdges.observe(debouncedUpdateReact);
     yImages.observe(debouncedUpdateReact);
@@ -1620,9 +1626,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     yOutlines.observe(debouncedUpdateReact);
     ySettings.observe(debouncedUpdateReact);
     yStamps.observe(debouncedUpdateReact);
-    updateReact(); // 初期描画
+    updateReact();
 
-    // クリーンアップ：destroy時にタイマー解除
     ydoc.on('destroy', () => {
       if (updateTimer) clearTimeout(updateTimer);
     });
@@ -1696,7 +1701,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // 以下、すべてのハンドラ (変更なし、省略せずに全体を出力)
+  // ハンドラたち
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -1898,6 +1903,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (isMultiDragging && multiDragOffsets) { const deltaX = coords.x - groupDragStartMouse.current.x; const deltaY = coords.y - groupDragStartMouse.current.y; setMultiDragOffsets({ dx: deltaX, dy: deltaY }); const newPositions: Record<string, { x: number; y: number }> = {}; selectedNodeIds.forEach(id => { const init = initialGroupDragPositions.current[id]; if(init) newPositions[id] = { x: init.x + deltaX, y: init.y + deltaY }; }); setDragPositions(newPositions); }
   }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, updateStampPosition, images, stickies, outlines, isCanvasPanning]);
 
+  // ★ 修正②：単なるクリックで updatePosition が呼ばれないように、移動していない場合はスキップ
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
@@ -1910,11 +1916,26 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (resizingStickyHandle) { setResizingStickyHandle(null); return; }
     if (resizingOutlineHandle) { setResizingOutlineHandle(null); return; }
     if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); } setSelectionRect(null); return; }
-    if (draggingNodeId) { const pos = dragPositions[draggingNodeId]; if (pos) updatePosition(draggingNodeId, pos.x, pos.y); if (dragTargetNodeId && dragTargetNodeId !== draggingNodeId) reparentNode(draggingNodeId, dragTargetNodeId); setDraggingNodeId(null); setDragTargetNodeId(null); setDragPositions(prev => { const { [draggingNodeId]: _, ...rest } = prev; return rest; }); return; }
+    if (draggingNodeId) {
+      const pos = dragPositions[draggingNodeId];
+      if (pos) {
+        const originalNode = mindMap ? findNodeById(mindMap, draggingNodeId) : null;
+        // 座標が変わっていなければ更新しない
+        if (!originalNode || Math.abs(pos.x - originalNode.x) > 0.01 || Math.abs(pos.y - originalNode.y) > 0.01) {
+          updatePosition(draggingNodeId, pos.x, pos.y);
+        }
+      }
+      if (dragTargetNodeId && dragTargetNodeId !== draggingNodeId) reparentNode(draggingNodeId, dragTargetNodeId);
+      setDraggingNodeId(null); setDragTargetNodeId(null);
+      setDragPositions(prev => { const { [draggingNodeId]: _, ...rest } = prev; return rest; });
+      return;
+    }
     if (isMultiDragging && multiDragOffsets) { ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { const p = initialGroupDragPositions.current[id]; if (p) { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); }); setDragPositions({}); initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {}; setMultiDragOffsets(null); return; }
   }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, dragPositions, dragTargetNodeId, mindMap, addEdge, updatePosition, reparentNode, isCanvasPanning, images, stickies, outlines, stamps]);
 
   useEffect(() => { if (isAnyDragging) { if(typeof window !== 'undefined') { window.addEventListener('mousemove', handleMouseMove as EventListener); window.addEventListener('mouseup', handleMouseUp); } return () => { if(typeof window !== 'undefined') { window.removeEventListener('mousemove', handleMouseMove as EventListener); window.removeEventListener('mouseup', handleMouseUp); } }; } }, [isAnyDragging, handleMouseMove, handleMouseUp]);
+
+  // 他のハンドラは変更なし
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (editingNodeId || editingStickyId || editingMapId !== null || editingOutlineId !== null || showHelpModal) return;
@@ -2014,7 +2035,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   for (const edge of edges) { const sourcePos = getNodeDisplayPos(edge.sourceNodeId, mindMap, dragPositions, draggingNodeId); const targetPos = getNodeDisplayPos(edge.targetNodeId, mindMap, dragPositions, draggingNodeId); if (!sourcePos || !targetPos) continue; const startPt = getConnectionPoint(sourcePos.x, sourcePos.y, edge.sourcePoint, sourcePos.width, sourcePos.height); const endPt = getConnectionPoint(targetPos.x, targetPos.y, edge.targetPoint, targetPos.width, targetPos.height); const pathD = getEdgePath(startPt, endPt, edge.sourcePoint, edge.targetPoint, edgeStyle); edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y }); }
 
   const ownAwareness = awarenessStates[myUserId];
-  // ★ 修正2: participantsMap生成時にemailとcolorがundefinedの場合にデフォルト値を設定
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
   mapMembers.forEach((member) => { 
@@ -2049,7 +2069,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
-  // --------------------- JSX ---------------------
+  // JSX（変更なし、長いので省略せずに続く）
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -2304,8 +2324,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     nodeHeight = node.imageHeight * scale;
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
-
-  // ★ 修正1: 自動幅調整useEffectを完全に削除
 
   const displayPos = (() => {
     if (isMultiDragging && dragPositions[node.id]) return dragPositions[node.id];
