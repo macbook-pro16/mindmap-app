@@ -437,6 +437,23 @@ const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="curr
 const CloseIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> );
 const StampIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 0v14M12 7v10M7 12h10" /></svg> );
 const GridIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} /><line x1="3" y1="9" x2="21" y2="9" strokeWidth={2} /><line x1="3" y1="15" x2="21" y2="15" strokeWidth={2} /><line x1="9" y1="3" x2="9" y2="21" strokeWidth={2} /><line x1="15" y1="3" x2="15" y2="21" strokeWidth={2} /></svg> );
+// ★ 整列アイコン
+const AlignVerticalIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <line x1="12" y1="2" x2="12" y2="22" strokeWidth={2} strokeLinecap="round" />
+    <circle cx="6" cy="7" r="2" strokeWidth={2} />
+    <circle cx="18" cy="12" r="2" strokeWidth={2} />
+    <circle cx="6" cy="17" r="2" strokeWidth={2} />
+  </svg>
+);
+const AlignHorizontalIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <line x1="2" y1="12" x2="22" y2="12" strokeWidth={2} strokeLinecap="round" />
+    <circle cx="7" cy="6" r="2" strokeWidth={2} />
+    <circle cx="12" cy="18" r="2" strokeWidth={2} />
+    <circle cx="17" cy="6" r="2" strokeWidth={2} />
+  </svg>
+);
 
 // --------------------- データ変換ユーティリティ ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -483,7 +500,7 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
   const root = convert(rootId);
   if (!root) return null;
 
-  // ★ 孤立ノードの自動修復：マップ内の全ノードを走査し、親の children 配列から参照されていない孤立ノードをルート直下に追加
+  // ★ 孤立ノードの自動修復：マップ内の全ノードを走査し、親の children 配列から参照されていない孤立ノードをルート直下に追加（表示のみ）
   nodes.forEach((data: YjsNodeData, key: string) => {
     if (!visited.has(key) && key !== rootId) {
       const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
@@ -1267,7 +1284,26 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { const nodes = yNodesRef.current; if (!nodes || selectedNodeIds.length < 2) return; const refNodeId = selectedNodeIds[0]; const refNode = nodes.get(refNodeId); if (!refNode) return; const targetX = axis === 'vertical' ? refNode.x : undefined; const targetY = axis === 'horizontal' ? refNode.y : undefined; const idsToAlign = selectedNodeIds.slice(1); ydocRef.current?.transact(() => { idsToAlign.forEach((id: string) => { const data = nodes.get(id); if (!data) return; const updated = { ...data }; if (targetX !== undefined) updated.x = targetX; if (targetY !== undefined) updated.y = targetY; nodes.set(id, updated); }); }); }, [selectedNodeIds]);
+  const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { 
+    const nodes = yNodesRef.current; 
+    if (!nodes || selectedNodeIds.length < 2) return; 
+    const refNodeId = selectedNodeIds[0]; 
+    const refNode = nodes.get(refNodeId); 
+    if (!refNode) return; 
+    const targetX = axis === 'vertical' ? refNode.x : undefined; 
+    const targetY = axis === 'horizontal' ? refNode.y : undefined; 
+    const idsToAlign = selectedNodeIds.slice(1); 
+    ydocRef.current?.transact(() => { 
+      idsToAlign.forEach((id: string) => { 
+        const data = nodes.get(id); 
+        if (!data) return; 
+        const updated = { ...data }; 
+        if (targetX !== undefined) updated.x = targetX; 
+        if (targetY !== undefined) updated.y = targetY; 
+        nodes.set(id, updated); 
+      }); 
+    }); 
+  }, [selectedNodeIds]);
 
   const handleImageUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1480,114 +1516,33 @@ const MindMapApp = ({ user }: { user: User }) => {
 
     const updateReact = () => {
       if (yRootRef.current) {
-        // ★ ルートノードが完全に欠落した場合の復元
+        // ★ ルートノードが完全に欠落した場合の復元（Yjsドキュメントの修正はしない）
         const rootData = yNodes.get(yRootRef.current);
         if (!rootData) {
           const lastRoot = lastMindMapRef.current;
-          ydoc.transact(() => {
-            if (lastRoot) {
-              yNodes.set(yRootRef.current!, {
-                text: lastRoot.text,
-                x: lastRoot.x,
-                y: lastRoot.y,
-                children: lastRoot.children.map(c => c.id),
-                independent: false,
-                bgColor: lastRoot.bgColor ?? '#f8fafc',
-                textColor: lastRoot.textColor ?? '#334155',
-                width: lastRoot.width,
-                height: lastRoot.height,
-                fontSize: lastRoot.fontSize ?? NODE_DEFAULT_FONT_SIZE,
-                collapsed: false,
-                imageUrl: lastRoot.imageUrl,
-                imageWidth: lastRoot.imageWidth,
-                imageHeight: lastRoot.imageHeight,
-                imageScale: lastRoot.imageScale ?? 1.0,
-              });
-            } else {
-              yNodes.set(yRootRef.current!, {
-                text: '中心テーマ',
-                x: 5000,
-                y: 5000,
-                children: [],
-                independent: false,
-                bgColor: '#f8fafc',
-                textColor: '#334155',
-                width: computeNodeWidth('中心テーマ', NODE_DEFAULT_FONT_SIZE),
-                height: NODE_HEIGHT,
-                fontSize: NODE_DEFAULT_FONT_SIZE,
-                collapsed: false,
-              });
-            }
-          });
+          // ルートが無い場合は前の状態を表示する（表示のみ）
+          if (lastRoot) {
+            setMindMap(lastRoot);
+          } else {
+            setMindMap(null);
+          }
           return;
         }
-
-        // ★ 孤立ノードの自動修復：マップ内の全ノードIDを収集
-        const allNodeIds = new Set<string>();
-        yNodes.forEach((_, key) => allNodeIds.add(key));
-
-        // 現在のツリーに含まれるノードを収集
-        const visited = new Set<string>();
-        const collectNodeIds = (node: MindNode) => {
-          visited.add(node.id);
-          for (const child of node.children) {
-            collectNodeIds(child);
-          }
-        };
-
+        // ★ 孤立ノードは yMapToTree 内で表示上のみ修復されるため、ここでは何もしない
         const tree = yMapToTree(yNodes, yRootRef.current);
         if (tree) {
-          collectNodeIds(tree);
-
-          // 孤立ノードを探す（全ノードのうち、ツリーに含まれないもの。ルートは除く）
-          const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
-
-          if (orphanIds.length > 0) {
-            addLog(`孤立ノードを検出: ${orphanIds.join(', ')}`);
-            ydoc.transact(() => {
-              for (const orphanId of orphanIds) {
-                const orphanData = yNodes.get(orphanId);
-                if (!orphanData) continue;
-
-                // 記憶している親を優先、なければルートに追加
-                let targetParentId: string | null = parentMapRef.current[orphanId] || null;
-                if (targetParentId && !yNodes.get(targetParentId)) {
-                  targetParentId = null; // 親が存在しない場合
-                }
-                if (!targetParentId) {
-                  targetParentId = yRootRef.current!;
-                }
-
-                const parentData = yNodes.get(targetParentId);
-                if (parentData && !parentData.children.includes(orphanId)) {
-                  yNodes.set(targetParentId, {
-                    ...parentData,
-                    children: [...parentData.children, orphanId],
-                  });
-                  addLog(`${orphanId} を ${targetParentId} の子として復元`);
-                }
-              }
-            });
-          }
-
-          // 修復後のツリーを再構築
-          const repairedTree = yMapToTree(yNodes, yRootRef.current);
-          if (repairedTree) {
-            setMindMap(repairedTree);
-            lastMindMapRef.current = repairedTree;
-            // 親子マップを更新
-            const newParentMap: Record<string, string> = {};
-            const buildParentMap = (node: MindNode) => {
-              for (const child of node.children) {
-                newParentMap[child.id] = node.id;
-                buildParentMap(child);
-              }
-            };
-            buildParentMap(repairedTree);
-            parentMapRef.current = newParentMap;
-          } else if (lastMindMapRef.current) {
-            setMindMap(lastMindMapRef.current);
-          }
+          setMindMap(tree);
+          lastMindMapRef.current = tree;
+          // 親子マップを更新
+          const newParentMap: Record<string, string> = {};
+          const buildParentMap = (node: MindNode) => {
+            for (const child of node.children) {
+              newParentMap[child.id] = node.id;
+              buildParentMap(child);
+            }
+          };
+          buildParentMap(tree);
+          parentMapRef.current = newParentMap;
         } else if (lastMindMapRef.current) {
           setMindMap(lastMindMapRef.current);
         }
@@ -3294,6 +3249,24 @@ const MindMapApp = ({ user }: { user: User }) => {
               <div className="flex items-center gap-1">
                 {COLOR_PALETTE.map(cp => (<button key={cp.label} onClick={() => handleHeaderColorSelect(cp.bg, cp.text)} disabled={totalSelectedCount === 0} className="w-5 h-5 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm" style={{ backgroundColor: cp.bg }} title={cp.label} />))}
               </div>
+              <div className="w-px h-6 bg-slate-200 mx-1" />
+              {/* ★ 整列ボタン追加 */}
+              <button
+                onClick={() => alignNodes('vertical')}
+                disabled={selectedNodeIds.length < 2}
+                className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="垂直に整列"
+              >
+                <AlignVerticalIcon />
+              </button>
+              <button
+                onClick={() => alignNodes('horizontal')}
+                disabled={selectedNodeIds.length < 2}
+                className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="水平に整列"
+              >
+                <AlignHorizontalIcon />
+              </button>
               <div className="w-px h-6 bg-slate-200 mx-1" />
               <select value={edgeStyle} onChange={e => handleEdgeStyleChange(e.target.value as EdgeStyle)} className="text-[11px] border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 cursor-pointer shadow-sm transition-colors font-medium">
                 <option value="bezier">曲線</option>
