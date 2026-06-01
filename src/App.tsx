@@ -1556,7 +1556,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
-    // ★ 修正点1: state が null/undefined の場合に安全に除外
+    // ★ 修正: state が null/undefined の場合に安全に除外
     channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { 
       const { userId, state } = msg.payload; 
       if (userId === myUserId) return; 
@@ -1582,7 +1582,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   // 編集中アナウンス用effect
   useEffect(() => {
     Object.entries(awarenessStates).forEach(([userId, state]) => {
-      if (userId === myUserId || !state) return; // 安全のため state が falsy ならスキップ
+      if (userId === myUserId || !state) return; // state が falsy ならスキップ
       const prev = prevEditingStates.current[userId] || null;
       if (state.editingNodeId && state.editingNodeId !== prev) {
         let nodeText = '不明なノード';
@@ -1603,7 +1603,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // 以下、すべてのハンドラ（前回と同じ、省略なし）
+  // 以下、すべてのハンドラ
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -2118,7 +2118,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
               {selectionRect && (<rect x={Math.min(selectionRect.x1, selectionRect.x2)} y={Math.min(selectionRect.y1, selectionRect.y2)} width={Math.abs(selectionRect.x2 - selectionRect.x1)} height={Math.abs(selectionRect.y2 - selectionRect.y1)} fill="rgba(99, 102, 241, 0.15)" stroke="#6366f1" strokeWidth={2} strokeDasharray="6 6" className="rounded-sm" />)}
             </svg>
-            {/* 修正: ダブルクォーテーションを削除し、正しいJSX Propsに */}
             <RecursiveNode 
               node={mindMap} 
               selectedNodeId={selectedNodeId} 
@@ -2217,12 +2216,16 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
       onTextEditComplete(node.id, node.text);
     }
   };
-  // ★ 修正点2: オプショナルチェーンで安全にアクセス
+  // ★ 修正: state が undefined/null の可能性を完全に排除
   const remoteEditors = Object.entries(awarenessStates)
-    .filter(([, state]) => state?.editingNodeId === node.id)
+    .filter(([, state]) => {
+      return state != null && state.editingNodeId === node.id;
+    })
     .map(([, state]) => state);
   const remoteSelectors = Object.entries(awarenessStates)
-    .filter(([, state]) => state?.selectedNodeId === node.id && state?.editingNodeId !== node.id)
+    .filter(([, state]) => {
+      return state != null && state.selectedNodeId === node.id && state.editingNodeId !== node.id;
+    })
     .map(([, state]) => state);
   
   const borderColorClass = isTarget ? 'border-emerald-500 border-2 ring-4 ring-emerald-500/20' : (isSelected ? (isSingleSelected ? 'border-indigo-600 ring-4 ring-indigo-600/20' : 'border-purple-600 ring-4 ring-purple-600/20') : 'border-transparent');
