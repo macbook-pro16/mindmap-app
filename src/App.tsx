@@ -1556,7 +1556,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
-    channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { const { userId, state } = msg.payload; if (userId === myUserId) return; if (state === null) setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; }); else setAwarenessStates(prev => ({ ...prev, [userId]: state })); });
+    // ★ 修正点1: state が null/undefined の場合に安全に除外
+    channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { 
+      const { userId, state } = msg.payload; 
+      if (userId === myUserId) return; 
+      if (state == null) {
+        setAwarenessStates(prev => { const { [userId]: _, ...rest } = prev; return rest; });
+      } else {
+        setAwarenessStates(prev => ({ ...prev, [userId]: state }));
+      }
+    });
     
     const removeSelf = () => channel.send({ type: 'broadcast', event: 'awareness-update', payload: { userId: myUserId, state: null } }); 
     if(typeof window !== 'undefined') { window.addEventListener('beforeunload', removeSelf); }
@@ -1573,7 +1582,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   // 編集中アナウンス用effect
   useEffect(() => {
     Object.entries(awarenessStates).forEach(([userId, state]) => {
-      if (userId === myUserId) return;
+      if (userId === myUserId || !state) return; // 安全のため state が falsy ならスキップ
       const prev = prevEditingStates.current[userId] || null;
       if (state.editingNodeId && state.editingNodeId !== prev) {
         let nodeText = '不明なノード';
@@ -1594,7 +1603,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // 以下、すべてのハンドラ
+  // 以下、すべてのハンドラ（前回と同じ、省略なし）
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -1915,7 +1924,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
   mapMembers.forEach((member) => { if (member.user_id !== myUserId) participantsMap.set(member.user_id, { user_id: member.user_id, email: member.email, color: stringToColor(member.email), isOnline: false, isSelf: false, selectedNodeId: null, editingNodeId: null }); });
-  Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId, cursorX: state.cursorX, cursorY: state.cursorY, mouseInCanvas: state.mouseInCanvas }); });
+  Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId || !state) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId, cursorX: state.cursorX, cursorY: state.cursorY, mouseInCanvas: state.mouseInCanvas }); });
   const allParticipants = Array.from(participantsMap.values());
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
   const canvasScrollClass = `w-full h-full overflow-auto relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
@@ -2208,8 +2217,13 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
       onTextEditComplete(node.id, node.text);
     }
   };
-  const remoteEditors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.editingNodeId === node.id).map(([, state]: [string, AwarenessState]) => state);
-  const remoteSelectors = Object.entries(awarenessStates).filter(([, state]: [string, AwarenessState]) => state.selectedNodeId === node.id && state.editingNodeId !== node.id).map(([, state]: [string, AwarenessState]) => state);
+  // ★ 修正点2: オプショナルチェーンで安全にアクセス
+  const remoteEditors = Object.entries(awarenessStates)
+    .filter(([, state]) => state?.editingNodeId === node.id)
+    .map(([, state]) => state);
+  const remoteSelectors = Object.entries(awarenessStates)
+    .filter(([, state]) => state?.selectedNodeId === node.id && state?.editingNodeId !== node.id)
+    .map(([, state]) => state);
   
   const borderColorClass = isTarget ? 'border-emerald-500 border-2 ring-4 ring-emerald-500/20' : (isSelected ? (isSingleSelected ? 'border-indigo-600 ring-4 ring-indigo-600/20' : 'border-purple-600 ring-4 ring-purple-600/20') : 'border-transparent');
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
@@ -2249,8 +2263,8 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             )}
           </>
         )}
-        {remoteEditors.length > 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteEditors.map((editor: AwarenessState, i: number) => <div key={i} className="w-5 h-5 rounded-full border-2 border-white shadow-md animate-pulse" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
-        {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteSelectors.map((selector: AwarenessState, i: number) => <div key={i} className="w-4 h-4 rounded-full border-2 border-white opacity-80 shadow-sm" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
+        {remoteEditors.length > 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteEditors.map((editor, i) => <div key={i} className="w-5 h-5 rounded-full border-2 border-white shadow-md animate-pulse" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
+        {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteSelectors.map((selector, i) => <div key={i} className="w-4 h-4 rounded-full border-2 border-white opacity-80 shadow-sm" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
         
         {isSingleSelected && !isEditing && !isMultiDragging && !node.imageUrl && (
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-1 z-30">
