@@ -475,6 +475,10 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       width = computeNodeWidth(data.text, fontSize);
       height = NODE_HEIGHT;
     }
+    // ★ 修正2: width=0 ガード
+    if (!width || width <= 0) width = NODE_MIN_WIDTH;
+    if (!height || height <= 0) height = NODE_HEIGHT;
+
     return {
       id, text: data.text, x: data.x, y: data.y,
       independent: data.independent ?? false,
@@ -1496,7 +1500,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 修正版 initYjs（修正4：localStorage復元をobserveの前に行う）
+  // ★ 修正版 initYjs（debounce化 + functional updater）
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1560,22 +1564,68 @@ const MindMapApp = ({ user }: { user: User }) => {
 
       const tree = yMapToTree(yNodes, rootId);
       if (tree) {
-        setMindMap(tree);
+        // ★ 修正4: functional updater を使用
+        setMindMap(_prev => tree);
         lastMindMapRef.current = tree;
       }
 
-      const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
-      const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
-      const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
-      const outlineList: OutlineData[] = []; yOutlines.forEach((value: YjsOutlineData, key: string) => { outlineList.push({ id: key, ...value, fontSize: value.fontSize ?? NODE_DEFAULT_FONT_SIZE }); }); setOutlines(outlineList);
-      const stampList: StampData[] = []; yStamps.forEach((value: YjsStampData, key: string) => { stampList.push({ id: key, ...value }); }); setStamps(stampList);
+      const edgeList: EdgeData[] = [];
+      yEdges.forEach((value: YjsEdgeData, key: string) => {
+        edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' });
+      });
+      setEdges(_prev => edgeList);
+
+      const imageList: ImageData[] = [];
+      yImages.forEach((value: YjsImageData, key: string) => {
+        imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex });
+      });
+      setImages(_prev => imageList);
+
+      const stickyList: StickyData[] = [];
+      yStickies.forEach((value: YjsStickyData, key: string) => {
+        stickyList.push({ id: key, ...value });
+      });
+      setStickies(_prev => stickyList);
+
+      const outlineList: OutlineData[] = [];
+      yOutlines.forEach((value: YjsOutlineData, key: string) => {
+        outlineList.push({ id: key, ...value, fontSize: value.fontSize ?? NODE_DEFAULT_FONT_SIZE });
+      });
+      setOutlines(_prev => outlineList);
+
+      const stampList: StampData[] = [];
+      yStamps.forEach((value: YjsStampData, key: string) => {
+        stampList.push({ id: key, ...value });
+      });
+      setStamps(_prev => stampList);
+
       const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined;
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
-    // observe登録
-    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); yOutlines.observe(updateReact); ySettings.observe(updateReact); yStamps.observe(updateReact);
-    updateReact();
+    // ★ 修正1: debounce化
+    let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedUpdateReact = () => {
+      if (updateTimer) clearTimeout(updateTimer);
+      updateTimer = setTimeout(() => {
+        updateReact();
+      }, 0);
+    };
+
+    // observe登録（debounce版）
+    yNodes.observe(debouncedUpdateReact);
+    yEdges.observe(debouncedUpdateReact);
+    yImages.observe(debouncedUpdateReact);
+    yStickies.observe(debouncedUpdateReact);
+    yOutlines.observe(debouncedUpdateReact);
+    ySettings.observe(debouncedUpdateReact);
+    yStamps.observe(debouncedUpdateReact);
+    updateReact(); // 初期描画
+
+    // クリーンアップ：destroy時にタイマー解除
+    ydoc.on('destroy', () => {
+      if (updateTimer) clearTimeout(updateTimer);
+    });
     
     const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, yOutlines, ySettings, yStamps]);
     undoManagerRef.current = undoManager;
