@@ -519,7 +519,14 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
 const uint8ArrayToBase64 = (u8: Uint8Array): string => { let binary = ''; for (let i = 0; i < u8.byteLength; i++) binary += String.fromCharCode(u8[i]); return btoa(binary); };
 const base64ToUint8Array = (b64: string): Uint8Array => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const stringToColor = (str: string): string => { let hash = 0; for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash); return `hsl(${Math.abs(hash) % 360}, 70%, 60%)`; };
-const getInitial = (email: string): string => email.split('@')[0].substring(0, 2).toUpperCase();
+
+// ★ 修正1：email が undefined や空文字の場合でも安全にフォールバック
+const getInitial = (email?: string): string => {
+  if (!email || typeof email !== 'string') return 'U';
+  const localPart = email.split('@')[0];
+  return localPart ? localPart.substring(0, 2).toUpperCase() || 'U' : 'U';
+};
+
 const findParentId = (nodes: Y.Map<YjsNodeData>, childId: string): string | null => {
   let result: string | null = null;
   nodes.forEach((value: YjsNodeData, key: string) => { if (value.children?.includes(childId)) result = key; });
@@ -796,7 +803,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     return name.length > 8 ? name.substring(0, 8) : name;
   });
 
-  // ★ 編集中アナウンス
   const [announcements, setAnnouncements] = useState<{ id: string; email: string; nodeText: string }[]>([]);
   const prevEditingStates = useRef<Record<string, string | null>>({});
 
@@ -1442,7 +1448,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     };
   }, [mapId, mapTitle, roomId, user.id, user.email]);
 
-  // ★ 安定版 initYjs
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1480,7 +1485,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         return;
       }
 
-      // 孤立ノードをYjsドキュメント上で修復（ルートの子として追加）
       const allNodeIds = new Set<string>();
       yNodes.forEach((_, key) => allNodeIds.add(key));
       const visited = new Set<string>();
@@ -1525,7 +1529,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         setMindMap(lastMindMapRef.current);
       }
 
-      // 他のデータ更新
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
       const stickyList: StickyData[] = []; yStickies.forEach((value: YjsStickyData, key: string) => { stickyList.push({ id: key, ...value }); }); setStickies(stickyList);
@@ -1556,7 +1559,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
-    // ★ 修正: state が null/undefined の場合に安全に除外
     channel.on('broadcast', { event: 'awareness-update' }, (msg: { payload: { userId: string, state: AwarenessState | null } }) => { 
       const { userId, state } = msg.payload; 
       if (userId === myUserId) return; 
@@ -1579,10 +1581,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     channelRef.current = channel; setRoomId(room); return channel;
   };
 
-  // 編集中アナウンス用effect
   useEffect(() => {
     Object.entries(awarenessStates).forEach(([userId, state]) => {
-      if (userId === myUserId || !state) return; // state が falsy ならスキップ
+      if (userId === myUserId || !state) return;
       const prev = prevEditingStates.current[userId] || null;
       if (state.editingNodeId && state.editingNodeId !== prev) {
         let nodeText = '不明なノード';
@@ -1603,7 +1604,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // 以下、すべてのハンドラ
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -1670,7 +1670,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
 
-  // --------------------- マウスイベントハンドラ ---------------------
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -1921,10 +1920,25 @@ const MindMapApp = ({ user }: { user: User }) => {
   for (const edge of edges) { const sourcePos = getNodeDisplayPos(edge.sourceNodeId, mindMap, dragPositions, draggingNodeId); const targetPos = getNodeDisplayPos(edge.targetNodeId, mindMap, dragPositions, draggingNodeId); if (!sourcePos || !targetPos) continue; const startPt = getConnectionPoint(sourcePos.x, sourcePos.y, edge.sourcePoint, sourcePos.width, sourcePos.height); const endPt = getConnectionPoint(targetPos.x, targetPos.y, edge.targetPoint, targetPos.width, targetPos.height); const pathD = getEdgePath(startPt, endPt, edge.sourcePoint, edge.targetPoint, edgeStyle); edgeLines.push({ id: edge.id, pathD, selected: selectedEdgeId === edge.id, arrow: edge.arrow || 'none', sourceX: startPt.x, sourceY: startPt.y, targetX: endPt.x, targetY: endPt.y }); }
 
   const ownAwareness = awarenessStates[myUserId];
+  // ★ 修正2: participantsMap生成時にstate.emailやstate.colorがundefinedの場合のデフォルト値を設定
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
   mapMembers.forEach((member) => { if (member.user_id !== myUserId) participantsMap.set(member.user_id, { user_id: member.user_id, email: member.email, color: stringToColor(member.email), isOnline: false, isSelf: false, selectedNodeId: null, editingNodeId: null }); });
-  Object.entries(awarenessStates).forEach(([userId, state]) => { if (userId === myUserId || !state) return; participantsMap.set(userId, { user_id: userId, email: state.email, color: state.color, isOnline: true, isSelf: false, selectedNodeId: state.selectedNodeId, editingNodeId: state.editingNodeId, cursorX: state.cursorX, cursorY: state.cursorY, mouseInCanvas: state.mouseInCanvas }); });
+  Object.entries(awarenessStates).forEach(([userId, state]) => { 
+    if (userId === myUserId || !state) return; 
+    participantsMap.set(userId, { 
+      user_id: userId, 
+      email: state.email || 'Unknown', 
+      color: state.color || stringToColor(state.email || 'unknown'), 
+      isOnline: true, 
+      isSelf: false, 
+      selectedNodeId: state.selectedNodeId, 
+      editingNodeId: state.editingNodeId, 
+      cursorX: state.cursorX, 
+      cursorY: state.cursorY, 
+      mouseInCanvas: state.mouseInCanvas 
+    }); 
+  });
   const allParticipants = Array.from(participantsMap.values());
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
   const canvasScrollClass = `w-full h-full overflow-auto relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
@@ -1941,7 +1955,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       {showInviteModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold text-slate-800">チームメンバーを招待</h3><button onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><p className="text-sm text-slate-500 mb-4">Googleアカウントのメールアドレスを入力して、共同編集者を招待します。</p><div className="flex gap-2 mb-3"><input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="colleague@example.com" className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all" disabled={inviteLoading || !!inviteLink} /><button onClick={handleInviteSubmit} disabled={inviteLoading || !inviteEmail.trim() || !mapId || !!inviteLink} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">{inviteLoading ? '招待中...' : '招待する'}</button></div>{!mapId && <p className="text-sm text-amber-600 mb-2 font-medium">⚠️ マップを保存してから招待してください。</p>}{inviteMessage && !inviteLink && (<p className={`text-sm font-medium ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-rose-500' : 'text-emerald-600'}`}>{inviteMessage}</p>)}{inviteLink && (<div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200"><p className="text-xs font-medium text-slate-700 mb-2">招待リンク（未登録ユーザー用）:</p><div className="flex items-center gap-2"><input readOnly value={inviteLink} className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none" /><button onClick={() => { navigator.clipboard.writeText(inviteLink); setInviteMessage('コピーしました！'); }} className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 transition-colors">コピー</button></div><p className="text-[10px] text-slate-400 mt-1">相手がこのリンクを開いてログインすると、自動的にマップに参加できます。</p></div>)}</div></div>)}
       {showHelpModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><HelpIcon /> 操作コマンド一覧</h3><button onClick={() => setShowHelpModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">ノード操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">子を追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Tab</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">下に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">上に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Shift + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li></ul></div><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">キャンバス操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">画面移動 (パン)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Space + ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズームイン/アウト</span><div className="flex gap-1"><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Wheel</kbd></div></li><li className="flex justify-between items-center"><span className="text-slate-600">全体表示に戻る</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Homeボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">範囲選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">背景をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">線を引く</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">〇をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">図形/テキスト配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ツール選択後クリック</kbd></li></ul></div><div className="md:col-span-2 pt-4 border-t border-slate-100"><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム・グループ・その他</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">レイヤー変更</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右クリックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像ドロップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像を直接ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">印鑑を配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + Shift + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト図形の文字サイズ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">選択中にサイズメニュー</kbd></li></ul><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">元に戻す</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Z</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全画面表示 (Zen)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Alt + Cmd + F</kbd></li></ul></div></div></div></div></div>)}
 
-      {/* 編集中アナウンス */}
       {announcements.length > 0 && (
         <div className="fixed top-20 right-4 z-[300] flex flex-col gap-2 pointer-events-none">
           {announcements.map(a => (
@@ -2216,13 +2229,13 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
       onTextEditComplete(node.id, node.text);
     }
   };
-  // ★ 修正: state が undefined/null の可能性を完全に排除
+  // ★ 修正3: remoteEditors と remoteSelectors で state が undefined にならないよう安全にフィルタリング＆マッピング
   const remoteEditors = Object.entries(awarenessStates)
     .filter(([, state]) => {
       return state != null && state.editingNodeId === node.id;
     })
     .map(([, state]) => state as AwarenessState)
-    .filter(Boolean); // 念のため
+    .filter(Boolean);
   const remoteSelectors = Object.entries(awarenessStates)
     .filter(([, state]) => {
       return state != null && state.selectedNodeId === node.id && state.editingNodeId !== node.id;
@@ -2268,8 +2281,30 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             )}
           </>
         )}
-        {remoteEditors.length > 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteEditors.map((editor, i) => <div key={i} className="w-5 h-5 rounded-full border-2 border-white shadow-md animate-pulse" style={{ backgroundColor: editor.color }} title={`${editor.email} が編集中`} />)}</div>}
-        {remoteSelectors.length > 0 && remoteEditors.length === 0 && <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">{remoteSelectors.map((selector, i) => <div key={i} className="w-4 h-4 rounded-full border-2 border-white opacity-80 shadow-sm" style={{ backgroundColor: selector.color }} title={`${selector.email} が選択中`} />)}</div>}
+        {remoteEditors.length > 0 && (
+          <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
+            {remoteEditors.map((editor, i) => (
+              <div 
+                key={i} 
+                className="w-5 h-5 rounded-full border-2 border-white shadow-md animate-pulse" 
+                style={{ backgroundColor: editor?.color ?? '#999' }} 
+                title={`${editor?.email ?? 'Unknown'} が編集中`} 
+              />
+            ))}
+          </div>
+        )}
+        {remoteSelectors.length > 0 && remoteEditors.length === 0 && (
+          <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
+            {remoteSelectors.map((selector, i) => (
+              <div 
+                key={i} 
+                className="w-4 h-4 rounded-full border-2 border-white opacity-80 shadow-sm" 
+                style={{ backgroundColor: selector?.color ?? '#999' }} 
+                title={`${selector?.email ?? 'Unknown'} が選択中`} 
+              />
+            ))}
+          </div>
+        )}
         
         {isSingleSelected && !isEditing && !isMultiDragging && !node.imageUrl && (
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-1 z-30">
@@ -2283,9 +2318,42 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           </div>
         )}
       </div>
-      {isSingleSelected && !isMultiDragging && connectionPoints.map((point: ConnectionPoint) => { const pt = getConnectionPoint(displayPos.x, displayPos.y, point, nodeWidth, nodeHeight); return <div key={point} className={`absolute w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-crosshair hover:scale-150 hover:bg-indigo-50 shadow-md ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'}`} style={{ left: pt.x-8, top: pt.y-8, zIndex: 20 + depth }} onMouseDown={e => onConnectionPointMouseDown(e, node.id, point)} />; })}
+      {isSingleSelected && !isMultiDragging && connectionPoints.map((point: ConnectionPoint) => { 
+        const pt = getConnectionPoint(displayPos.x, displayPos.y, point, nodeWidth, nodeHeight); 
+        return (
+          <div 
+            key={point} 
+            className={`absolute w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-crosshair hover:scale-150 hover:bg-indigo-50 shadow-md ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'}`} 
+            style={{ left: pt.x-8, top: pt.y-8, zIndex: 20 + depth }} 
+            onMouseDown={e => onConnectionPointMouseDown(e, node.id, point)} 
+          />
+        );
+      })}
       {!node.collapsed && node.children.map((child: MindNode) => (
-        <RecursiveNode key={child.id} node={child} selectedNodeId={selectedNodeId} selectedNodeIds={selectedNodeIds} editingNodeId={editingNodeId} draggingNodeId={draggingNodeId} dragPositions={dragPositions} dragTargetNodeId={dragTargetNodeId} isMultiDragging={isMultiDragging} awarenessStates={awarenessStates} myUserId={myUserId} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick} onMouseDownOnNode={onMouseDownOnNode} onTextEditComplete={onTextEditComplete} onContextMenu={onContextMenu} onConnectionPointMouseDown={onConnectionPointMouseDown} depth={depth+1} isAnyDragging={isAnyDragging} updateNodeWidth={updateNodeWidth} updateNodeFontSize={updateNodeFontSize} toggleCollapse={toggleCollapse} />
+        <RecursiveNode 
+          key={child.id} 
+          node={child} 
+          selectedNodeId={selectedNodeId} 
+          selectedNodeIds={selectedNodeIds} 
+          editingNodeId={editingNodeId} 
+          draggingNodeId={draggingNodeId} 
+          dragPositions={dragPositions} 
+          dragTargetNodeId={dragTargetNodeId} 
+          isMultiDragging={isMultiDragging} 
+          awarenessStates={awarenessStates} 
+          myUserId={myUserId} 
+          onNodeClick={onNodeClick} 
+          onNodeDoubleClick={onNodeDoubleClick} 
+          onMouseDownOnNode={onMouseDownOnNode} 
+          onTextEditComplete={onTextEditComplete} 
+          onContextMenu={onContextMenu} 
+          onConnectionPointMouseDown={onConnectionPointMouseDown} 
+          depth={depth+1} 
+          isAnyDragging={isAnyDragging} 
+          updateNodeWidth={updateNodeWidth} 
+          updateNodeFontSize={updateNodeFontSize} 
+          toggleCollapse={toggleCollapse} 
+        />
       ))}
     </>
   );
