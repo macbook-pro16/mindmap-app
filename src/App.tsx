@@ -1005,17 +1005,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  // ★ 修正2：updateNodeWidth を transact で囲む
-  const updateNodeWidth = useCallback((nodeId: string, width: number) => {
-    const nodes = yNodesRef.current; if (!nodes) return;
-    const data = nodes.get(nodeId);
-    if (data) {
-      ydocRef.current?.transact(() => {
-        nodes.set(nodeId, { ...data, width });
-      });
-    }
-  }, []);
-
   const toggleNodeCollapse = useCallback((nodeId: string) => {
     if (nodeId === yRootRef.current) return;
     const nodes = yNodesRef.current; if (!nodes) return;
