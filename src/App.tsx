@@ -803,7 +803,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     return name.length > 8 ? name.substring(0, 8) : name;
   });
 
-  // ★ 編集中アナウンス
   const [announcements, setAnnouncements] = useState<{ id: string; email: string; nodeText: string }[]>([]);
   const prevEditingStates = useRef<Record<string, string | null>>({});
 
@@ -1006,10 +1005,15 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
+  // ★ 修正2：updateNodeWidth を transact で囲む
   const updateNodeWidth = useCallback((nodeId: string, width: number) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
-    if (data) nodes.set(nodeId, { ...data, width });
+    if (data) {
+      ydocRef.current?.transact(() => {
+        nodes.set(nodeId, { ...data, width });
+      });
+    }
   }, []);
 
   const toggleNodeCollapse = useCallback((nodeId: string) => {
@@ -1216,7 +1220,19 @@ const MindMapApp = ({ user }: { user: User }) => {
     addSticky(x, y);
   }, [addSticky, zoomLevel]);
 
-  const updateText = useCallback((nodeId: string, text: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, text }); }, []);
+  // ★ 修正1：updateText 内で幅も同時更新
+  const updateText = useCallback((nodeId: string, text: string) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data && !data.imageUrl) {
+      const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+      const newWidth = computeNodeWidth(text, fontSize);
+      nodes.set(nodeId, { ...data, text, width: newWidth });
+    } else if (data) {
+      nodes.set(nodeId, { ...data, text });
+    }
+  }, []);
+
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, x, y }); }, []);
   const updateNodeColors = useCallback((nodeId: string, bgColor: string, textColor: string) => { const nodes = yNodesRef.current; if (!nodes) return; const data = nodes.get(nodeId); if (data) nodes.set(nodeId, { ...data, bgColor, textColor }); }, []);
 
@@ -1449,7 +1465,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     };
   }, [mapId, mapTitle, roomId, user.id, user.email]);
 
-  // ★ 安全な孤立ノード修復関数 (observe 外で一度だけ実行)
   const repairOrphanNodes = useCallback(() => {
     const yNodes = yNodesRef.current;
     const rootId = yRootRef.current;
@@ -1492,7 +1507,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 修正版 initYjs
+  // ★ 修正版 initYjs（修正4：localStorage復元をobserveの前に行う）
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1522,21 +1537,43 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
     });
 
-    // ★ 修正: observe 内での ydoc.transact() を完全に削除し、古いキャッシュフォールバックも廃止
-    const updateReact = () => {
-      if (!yRootRef.current) return;
-      const rootData = yNodes.get(yRootRef.current);
-      if (!rootData) {
-        return; // フォールバック削除
-      }
-      // 孤立ノード修復ロジックは一切実行しない
+    // 修正4：localStorageからの復元をobserve登録前に行う
+    if (typeof window !== 'undefined') {
+      try {
+        const draft = localStorage.getItem(`mindmap-draft-${room}`);
+        if (draft) {
+          Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local');
+          addLog('未保存のバックアップを復元');
+          setIsDirty(true);
+        }
+      } catch(e) {}
+    }
 
-      const tree = yMapToTree(yNodes, yRootRef.current);
+    const updateReact = () => {
+      const rootId = yRootRef.current;
+      if (!rootId) return;
+
+      const rootData = yNodes.get(rootId);
+      if (!rootData) return;
+
+      // 修正3：DEV環境でのデバッグログ（transactは行わない）
+      if (import.meta.env.DEV) {
+        yNodes.forEach((nodeData, nodeId) => {
+          if (nodeData.children) {
+            nodeData.children.forEach((childId: string) => {
+              if (!yNodes.get(childId)) {
+                console.warn(`[MindMap] 存在しない子ID参照: 親=${nodeId}, 子=${childId}`);
+              }
+            });
+          }
+        });
+      }
+
+      const tree = yMapToTree(yNodes, rootId);
       if (tree) {
         setMindMap(tree);
         lastMindMapRef.current = tree;
       }
-      // treeがnullなら何もしない
 
       const edgeList: EdgeData[] = []; yEdges.forEach((value: YjsEdgeData, key: string) => { edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' }); }); setEdges(edgeList);
       const imageList: ImageData[] = []; yImages.forEach((value: YjsImageData, key: string) => { imageList.push({ id: key, storagePath: value.storagePath, x: value.x, y: value.y, width: value.width, height: value.height, groupId: value.groupId, zIndex: value.zIndex }); }); setImages(imageList);
@@ -1547,7 +1584,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
-    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); yOutlines.observe(updateReact); ySettings.observe(updateReact); yStamps.observe(updateReact); updateReact();
+    // observe登録
+    yNodes.observe(updateReact); yEdges.observe(updateReact); yImages.observe(updateReact); yStickies.observe(updateReact); yOutlines.observe(updateReact); ySettings.observe(updateReact); yStamps.observe(updateReact);
+    updateReact();
     
     const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, yOutlines, ySettings, yStamps]);
     undoManagerRef.current = undoManager;
@@ -1558,18 +1597,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     ydoc.on('update', (update: Uint8Array, origin: string) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
       setIsDirty(true);
-      // 安全のため、不明なoriginの場合は再ブロードキャストしない（修正箇所1によりobserve内transactは存在しない）
       if (origin === 'supabase' || origin === 'local') return;
-      // 追加: 想定外のoriginの場合はログ
       if (origin !== 'supabase' && origin !== 'local' && origin !== 'user') {
         addLog(`Unknown update origin: ${origin}, broadcasting.`);
       }
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
-    
-    if(typeof window !== 'undefined') {
-        try { const draft = localStorage.getItem(`mindmap-draft-${room}`); if (draft) { Y.applyUpdate(ydoc, base64ToUint8Array(draft), 'local'); addLog('未保存のバックアップを復元'); setIsDirty(true); } } catch(e) {}
-    }
     
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => { const update = base64ToUint8Array(msg.payload.update); Y.applyUpdate(ydoc, update, 'supabase'); });
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -1590,7 +1623,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.subscribe((status: string, err?: Error) => {
       if (status === 'SUBSCRIBED') {
         setConnectionStatus('接続済み');
-        // 同期後に一度だけ孤立ノード修復を安全に実行
         setTimeout(() => repairOrphanNodes(), 2000);
       } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断');
       else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト');
@@ -2183,7 +2215,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               onConnectionPointMouseDown={handleConnectionPointMouseDown} 
               depth={0} 
               isAnyDragging={isAnyDragging} 
-              updateNodeWidth={updateNodeWidth}
               updateNodeFontSize={updateNodeFontSize}
               toggleCollapse={toggleNodeCollapse}
             />
@@ -2214,12 +2245,11 @@ interface RecursiveNodeProps {
   onConnectionPointMouseDown: (e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => void;
   depth: number;
   isAnyDragging: boolean;
-  updateNodeWidth: (nodeId: string, width: number) => void;
   updateNodeFontSize: (nodeId: string, fontSize: number) => void;
   toggleCollapse: (nodeId: string) => void;
 }
 
-const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeWidth, updateNodeFontSize, toggleCollapse }: RecursiveNodeProps) => {
+const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
   const isEditing = editingNodeId === node.id;
@@ -2236,14 +2266,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
-  useEffect(() => {
-    if (!node.imageUrl) {
-      const newWidth = computeNodeWidth(node.text, fontSize);
-      if (Math.abs(newWidth - nodeWidth) > 1) {
-        updateNodeWidth(node.id, newWidth);
-      }
-    }
-  }, [node.text, fontSize, node.id, updateNodeWidth, nodeWidth, node.imageUrl]);
+  // ★ 修正1: 自動幅調整useEffectを完全に削除
 
   const displayPos = (() => {
     if (isMultiDragging && dragPositions[node.id]) return dragPositions[node.id];
@@ -2262,7 +2285,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
       onTextEditComplete(node.id, node.text);
     }
   };
-  // ★ 修正3: remoteEditors と remoteSelectors で state が undefined にならないよう安全にフィルタリング＆マッピング
+
   const remoteEditors = Object.entries(awarenessStates)
     .filter(([, state]) => {
       return state != null && state.editingNodeId === node.id;
@@ -2383,8 +2406,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           onConnectionPointMouseDown={onConnectionPointMouseDown} 
           depth={depth+1} 
           isAnyDragging={isAnyDragging} 
-          updateNodeWidth={updateNodeWidth} 
-          updateNodeFontSize={updateNodeFontSize} 
+          updateNodeFontSize={updateNodeFontSize}
           toggleCollapse={toggleCollapse} 
         />
       ))}
