@@ -712,6 +712,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const dragPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [dragTargetNodeId, setDragTargetNodeId] = useState<string | null>(null);
   
@@ -1227,7 +1228,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 修正2: updatePosition にバリデーション追加
+  // updatePosition にバリデーション追加
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => {
     if (!nodeId || isNaN(x) || isNaN(y) || x <= 0 || y <= 0) return;
     
@@ -1514,7 +1515,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 修正版 initYjs（debounce化 + functional updater + 古いydocガード + 受信サニタイズ）
+  // 修正版 initYjs（debounce化 + functional updater + 古いydocガード + 受信サニタイズ）
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1839,7 +1840,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       dragOffset.current = { x: coords.x - node.x, y: coords.y - node.y };
       dragStartPosRef.current = { x: node.x, y: node.y };
       hasDraggedRef.current = false;
-      setDragPositions(prev => ({ ...prev, [nodeId]: { x: node.x, y: node.y } }));
+      const initPos = { x: node.x, y: node.y };
+      dragPositionsRef.current = { ...dragPositionsRef.current, [nodeId]: initPos };
+      setDragPositions(prev => ({ ...prev, [nodeId]: initPos }));
       setDraggingNodeId(nodeId); setDragTargetNodeId(null); setSelectedEdgeId(null); setMultiDragOffsets(null);
     }
   }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, isSpacePressed, images, stickies, outlines, stamps]);
@@ -1934,14 +1937,24 @@ const MindMapApp = ({ user }: { user: User }) => {
           hasDraggedRef.current = true;
         }
       }
-      setDragPositions(prev => ({ ...prev, [draggingNodeId]: { x: newX, y: newY } }));
+      const newPos = { x: newX, y: newY };
+      dragPositionsRef.current = { ...dragPositionsRef.current, [draggingNodeId]: newPos };
+      setDragPositions(prev => ({ ...prev, [draggingNodeId]: newPos }));
       if (mindMap) { const target = findNodeAtPoint(mindMap, coords.x, coords.y, draggingNodeId); setDragTargetNodeId(target && target.id !== draggingNodeId ? target.id : null); }
       return;
     }
-    if (isMultiDragging && multiDragOffsets) { const deltaX = coords.x - groupDragStartMouse.current.x; const deltaY = coords.y - groupDragStartMouse.current.y; setMultiDragOffsets({ dx: deltaX, dy: deltaY }); const newPositions: Record<string, { x: number; y: number }> = {}; selectedNodeIds.forEach(id => { const init = initialGroupDragPositions.current[id]; if(init) newPositions[id] = { x: init.x + deltaX, y: init.y + deltaY }; }); setDragPositions(newPositions); }
+    if (isMultiDragging && multiDragOffsets) {
+      const deltaX = coords.x - groupDragStartMouse.current.x;
+      const deltaY = coords.y - groupDragStartMouse.current.y;
+      setMultiDragOffsets({ dx: deltaX, dy: deltaY });
+      const newPositions: Record<string, { x: number; y: number }> = {};
+      selectedNodeIds.forEach(id => { const init = initialGroupDragPositions.current[id]; if(init) newPositions[id] = { x: init.x + deltaX, y: init.y + deltaY }; });
+      dragPositionsRef.current = newPositions;
+      setDragPositions(newPositions);
+    }
   }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, updateStampPosition, images, stickies, outlines, isCanvasPanning]);
 
-  // ★ 修正1: handleMouseUp に座標バリデーションとローカル変数
+  // ★ 修正1: handleMouseUp で ref から読む
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
@@ -1956,9 +1969,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); } setSelectionRect(null); return; }
     if (draggingNodeId) {
       if (hasDraggedRef.current) {
-        const pos = dragPositions[draggingNodeId];
-        // 座標の妥当性チェック
-        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && 
+        const pos = dragPositionsRef.current[draggingNodeId];  // ← refから読む
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' &&
             !isNaN(pos.x) && !isNaN(pos.y) && pos.x > 0 && pos.y > 0) {
           updatePosition(draggingNodeId, pos.x, pos.y);
         }
@@ -1968,10 +1980,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
       hasDraggedRef.current = false;
       dragStartPosRef.current = null;
-      // draggingNodeId をローカル変数に保存してからステート更新
       const nodeIdToClean = draggingNodeId;
       setDraggingNodeId(null);
       setDragTargetNodeId(null);
+      // refもクリア
+      const { [nodeIdToClean]: _r, ...restRef } = dragPositionsRef.current;
+      dragPositionsRef.current = restRef;
       setDragPositions(prev => {
         const { [nodeIdToClean]: _, ...rest } = prev;
         return rest;
@@ -1983,6 +1997,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   useEffect(() => { if (isAnyDragging) { if(typeof window !== 'undefined') { window.addEventListener('mousemove', handleMouseMove as EventListener); window.addEventListener('mouseup', handleMouseUp); } return () => { if(typeof window !== 'undefined') { window.removeEventListener('mousemove', handleMouseMove as EventListener); window.removeEventListener('mouseup', handleMouseUp); } }; } }, [isAnyDragging, handleMouseMove, handleMouseUp]);
 
+  // 残りのハンドラ、JSXは変更なし（前回の完全なコードと同一）
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (editingNodeId || editingStickyId || editingMapId !== null || editingOutlineId !== null || showHelpModal) return;
     if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(); return; }
@@ -2115,7 +2130,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
-  // --------------------- JSX ---------------------
+  // JSX（前回の完全版と同一、長いので省略せずに含める）
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
