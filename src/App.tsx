@@ -437,7 +437,6 @@ const ResizeIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="curr
 const CloseIcon = () => ( <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg> );
 const StampIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 0v14M12 7v10M7 12h10" /></svg> );
 const GridIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} /><line x1="3" y1="9" x2="21" y2="9" strokeWidth={2} /><line x1="3" y1="15" x2="21" y2="15" strokeWidth={2} /><line x1="9" y1="3" x2="9" y2="21" strokeWidth={2} /><line x1="15" y1="3" x2="15" y2="21" strokeWidth={2} /></svg> );
-// ★ 整列アイコン
 const AlignVerticalIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <line x1="12" y1="2" x2="12" y2="22" strokeWidth={2} strokeLinecap="round" />
@@ -500,7 +499,7 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
   const root = convert(rootId);
   if (!root) return null;
 
-  // ★ 孤立ノードの自動修復：マップ内の全ノードを走査し、親の children 配列から参照されていない孤立ノードをルート直下に追加（表示のみ）
+  // 表示上の孤立ノード修復（安全策）
   nodes.forEach((data: YjsNodeData, key: string) => {
     if (!visited.has(key) && key !== rootId) {
       const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
@@ -849,7 +848,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const cursorBroadcastTimerRef = useRef<number | null>(null);
   const lastMindMapRef = useRef<MindNode | null>(null);
-  // ★ ノードの親子関係を記憶するマップ（修復用）
   const parentMapRef = useRef<Record<string, string>>({});
 
   const isAnyDragging = useMemo(() => {
@@ -1516,11 +1514,9 @@ const MindMapApp = ({ user }: { user: User }) => {
 
     const updateReact = () => {
       if (yRootRef.current) {
-        // ★ ルートノードが完全に欠落した場合の復元（Yjsドキュメントの修正はしない）
         const rootData = yNodes.get(yRootRef.current);
         if (!rootData) {
           const lastRoot = lastMindMapRef.current;
-          // ルートが無い場合は前の状態を表示する（表示のみ）
           if (lastRoot) {
             setMindMap(lastRoot);
           } else {
@@ -1528,21 +1524,68 @@ const MindMapApp = ({ user }: { user: User }) => {
           }
           return;
         }
-        // ★ 孤立ノードは yMapToTree 内で表示上のみ修復されるため、ここでは何もしない
+        // ★ 孤立ノードの自動修復（Yjsドキュメント上で実行）
+        const allNodeIds = new Set<string>();
+        yNodes.forEach((_, key) => allNodeIds.add(key));
+
+        const visited = new Set<string>();
+        const collectNodeIds = (node: MindNode) => {
+          visited.add(node.id);
+          for (const child of node.children) {
+            collectNodeIds(child);
+          }
+        };
+
         const tree = yMapToTree(yNodes, yRootRef.current);
         if (tree) {
-          setMindMap(tree);
-          lastMindMapRef.current = tree;
-          // 親子マップを更新
-          const newParentMap: Record<string, string> = {};
-          const buildParentMap = (node: MindNode) => {
-            for (const child of node.children) {
-              newParentMap[child.id] = node.id;
-              buildParentMap(child);
-            }
-          };
-          buildParentMap(tree);
-          parentMapRef.current = newParentMap;
+          collectNodeIds(tree);
+
+          const orphanIds = [...allNodeIds].filter(id => id !== yRootRef.current && !visited.has(id));
+
+          if (orphanIds.length > 0) {
+            addLog(`孤立ノードを検出: ${orphanIds.join(', ')}`);
+            ydoc.transact(() => {
+              for (const orphanId of orphanIds) {
+                const orphanData = yNodes.get(orphanId);
+                if (!orphanData) continue;
+
+                let targetParentId: string | null = parentMapRef.current[orphanId] || null;
+                if (targetParentId && !yNodes.get(targetParentId)) {
+                  targetParentId = null;
+                }
+                if (!targetParentId) {
+                  targetParentId = yRootRef.current!;
+                }
+
+                const parentData = yNodes.get(targetParentId);
+                if (parentData && !parentData.children.includes(orphanId)) {
+                  yNodes.set(targetParentId, {
+                    ...parentData,
+                    children: [...parentData.children, orphanId],
+                  });
+                  addLog(`${orphanId} を ${targetParentId} の子として修復`);
+                }
+              }
+            });
+          }
+
+          // 修復後のツリーを再構築
+          const repairedTree = yMapToTree(yNodes, yRootRef.current);
+          if (repairedTree) {
+            setMindMap(repairedTree);
+            lastMindMapRef.current = repairedTree;
+            const newParentMap: Record<string, string> = {};
+            const buildParentMap = (node: MindNode) => {
+              for (const child of node.children) {
+                newParentMap[child.id] = node.id;
+                buildParentMap(child);
+              }
+            };
+            buildParentMap(repairedTree);
+            parentMapRef.current = newParentMap;
+          } else if (lastMindMapRef.current) {
+            setMindMap(lastMindMapRef.current);
+          }
         } else if (lastMindMapRef.current) {
           setMindMap(lastMindMapRef.current);
         }
@@ -3250,7 +3293,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 {COLOR_PALETTE.map(cp => (<button key={cp.label} onClick={() => handleHeaderColorSelect(cp.bg, cp.text)} disabled={totalSelectedCount === 0} className="w-5 h-5 rounded-full border border-slate-300 hover:scale-110 transition-transform disabled:opacity-30 disabled:cursor-not-allowed shadow-sm" style={{ backgroundColor: cp.bg }} title={cp.label} />))}
               </div>
               <div className="w-px h-6 bg-slate-200 mx-1" />
-              {/* ★ 整列ボタン追加 */}
               <button
                 onClick={() => alignNodes('vertical')}
                 disabled={selectedNodeIds.length < 2}
@@ -3566,7 +3608,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               );
             })}
 
-            {/* ★ 印鑑のデザイン修正：影を内側の円形 div に移動 */}
             {stamps.map((stamp) => (
               <div
                 key={stamp.id}
