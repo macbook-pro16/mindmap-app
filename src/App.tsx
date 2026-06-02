@@ -801,6 +801,11 @@ const MindMapApp = ({ user }: { user: User }) => {
   // ★ リモート更新受信フラグ（自動リロード用）
   const [remoteUpdateReceived, setRemoteUpdateReceived] = useState(false);
 
+  // ★ isDirty を ref でも保持する
+  const [isDirty, setIsDirty] = useState(false);
+  const isDirtyRef = useRef(false);
+  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
       const next = !prev;
@@ -811,11 +816,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (process.env.NODE_ENV !== 'production') console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
   const myUserId = user.id;
   const myEmail = user.email || '';
   const myColor = stringToColor(myEmail);
@@ -1614,7 +1618,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       const rootData = yNodes.get(rootId);
       if (!rootData) return;
 
-      if (import.meta.env.DEV) {
+      if (process.env.NODE_ENV !== 'production') {
         yNodes.forEach((nodeData, nodeId) => {
           if (nodeData.children) {
             nodeData.children.forEach((childId: string) => {
@@ -1691,8 +1695,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
     ydoc.on('update', (update: Uint8Array, origin: string) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
-      setIsDirty(true);
+      // ★ 修正: supabase/local からの更新はisDirtyにしない
       if (origin === 'supabase' || origin === 'local') return;
+      setIsDirty(true);
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
@@ -1726,6 +1731,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.subscribe((status: string, err?: Error) => {
       if (status === 'SUBSCRIBED') {
         setConnectionStatus('接続済み');
+        // 再接続時にも差分同期を要求する
+        channel.send({
+          type: 'broadcast',
+          event: 'sync-step-1',
+          payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) }
+        });
         setTimeout(() => repairOrphanNodes(), 2000);
       } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断');
       else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト');
@@ -1765,7 +1776,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (!remoteUpdateReceived) return;
     setRemoteUpdateReceived(false);
     const isUserInteracting = isAnyDragging || editingNodeId !== null || editingStickyId !== null || editingOutlineId !== null || editingMapId !== null || drawingEdge !== null;
-    if (!isUserInteracting && !isDirty) {
+    // isDirty の代わりに isDirtyRef を参照する
+    if (!isUserInteracting && !isDirtyRef.current) {
       if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
       reloadTimerRef.current = setTimeout(() => {
         window.location.reload();
@@ -1773,7 +1785,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     } else {
       if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
     }
-  }, [remoteUpdateReceived, isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge, isDirty]);
+  }, [remoteUpdateReceived, isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge]);
 
   // ---- ハンドラ ----
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
