@@ -490,7 +490,6 @@ const RefreshIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
   </svg>
 );
-// タスク関連のアイコン追加
 const TaskIcon = () => (
   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -622,6 +621,10 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
   if (node.imageUrl && node.imageWidth && node.imageHeight && node.imageScale !== undefined) {
     w = node.imageWidth * node.imageScale;
     h = node.imageHeight * node.imageScale;
+  }
+  // タスクが有効なら高さを実際の表示高さに合わせる（マウス座標計算用）
+  if (node.taskEnabled && !node.imageUrl) {
+    h = Math.max(h, 72);
   }
   if (nodeId === draggingNodeId && dragPositions[nodeId]) return { x: dragPositions[nodeId].x, y: dragPositions[nodeId].y, width: w, height: h };
   return { x: node.x, y: node.y, width: w, height: h };
@@ -824,10 +827,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const remoteUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ★ リモート更新受信フラグ（自動リロード用）
   const [remoteUpdateReceived, setRemoteUpdateReceived] = useState(false);
 
-  // ★ isDirty を ref でも保持する
   const [isDirty, setIsDirty] = useState(false);
   const isDirtyRef = useRef(false);
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
@@ -835,20 +836,24 @@ const MindMapApp = ({ user }: { user: User }) => {
   // ★ 招待履歴の状態
   const [inviteHistory, setInviteHistory] = useState<{ invited_email: string; invite_count: number }[]>([]);
 
-  // 招待履歴の取得
+  // 招待履歴の取得（エラーハンドリング付き）
   const fetchInviteHistory = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('user_invite_history')
       .select('invited_email, invite_count')
       .eq('inviter_user_id', user.id)
       .order('invite_count', { ascending: false })
       .order('last_invited_at', { ascending: false })
       .limit(10);
+    if (error) {
+      console.error('招待履歴の取得に失敗:', error);
+      return;
+    }
     if (data) setInviteHistory(data);
   }, [user]);
 
-  // マウント時に招待履歴を取得
+  // マウント時およびユーザーID変更時に招待履歴を取得
   useEffect(() => {
     fetchInviteHistory();
   }, [fetchInviteHistory]);
@@ -917,10 +922,8 @@ const MindMapApp = ({ user }: { user: User }) => {
            selectionRect !== null || isCanvasPanning || isMultiDragging;
   }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
 
-  // 自動リロード用のタイマー
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 操作中になったら自動リロードをキャンセル
   useEffect(() => {
     const isUserInteracting = isAnyDragging || editingNodeId !== null || editingStickyId !== null || editingOutlineId !== null || editingMapId !== null || drawingEdge !== null;
     if (isUserInteracting || isDirty) {
@@ -1913,14 +1916,15 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleMapDragEnter = useCallback((_e: DragEvent<HTMLDivElement>, index: number) => { dragOverMapItemIndex.current = index; }, []);
   const handleMapDragEnd = useCallback(async () => { if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) { const newSavedMaps = [...savedMaps]; const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0]; newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem); setSavedMaps(newSavedMaps); try { await Promise.all(newSavedMaps.map((map, index) => supabase.from('maps').update({ sort_order: index }).eq('id', map.id))); } catch (err) { console.error('並び替え保存エラー', err); } } dragMapItemIndex.current = null; dragOverMapItemIndex.current = null; }, [savedMaps]);
 
-  // ★ 修正2: 共有モーダルを開く前にメンバー情報を更新
+  // ★ 共有モーダルを開く前にメンバー情報を更新
   const handleShare = useCallback(() => { 
     if (!roomId) return; 
     fetchMapMembers();
+    fetchInviteHistory(); // モーダル表示時に履歴も再取得
     setShowInviteModal(true); 
     setInviteLink(''); 
     setInviteMessage(''); 
-  }, [roomId, fetchMapMembers]);
+  }, [roomId, fetchMapMembers, fetchInviteHistory]);
 
   const handleInviteSubmit = useCallback(async () => { 
     if (!inviteEmail.trim() || !mapId) { 
@@ -2020,7 +2024,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, isSpacePressed, images, stickies, outlines, stamps]);
 
-  // 他のマウスハンドラ (handleMouseDownOnImage, handleMouseDownOnSticky, ...) は変更なし
   const handleMouseDownOnImage = useCallback((e: ReactMouseEvent, imageId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const image = images.find((img: ImageData) => img.id === imageId); if (!image) return;
@@ -2817,7 +2820,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   return (
     <>
       <div
-        className={`absolute flex flex-col items-center justify-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
+        className={`absolute flex flex-col items-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
         style={{
           left: displayPos.x - nodeWidth/2, top: displayPos.y - nodeHeight/2,
           width: nodeWidth, height: nodeHeight, zIndex: node.zIndex ?? (10 + depth),
@@ -2841,25 +2844,27 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center w-full h-full relative">
-            {isEditing ? (
-              <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
-            ) : (
-              <span
-                className="whitespace-nowrap"
-                style={{
-                  color: node.textColor || '#1e293b',
-                  fontSize,
-                  textDecoration: node.taskDone ? 'line-through' : 'none',
-                  opacity: node.taskDone ? 0.6 : 1,
-                }}
-              >
-                {node.text}
-              </span>
-            )}
-            {/* ★ タスクステータスバッジ */}
+          <div className="flex flex-col items-center w-full h-full">
+            <div className="flex-1 flex items-center justify-center w-full overflow-hidden">
+              {isEditing ? (
+                <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+              ) : (
+                <span
+                  className="whitespace-nowrap"
+                  style={{
+                    color: node.textColor || '#1e293b',
+                    fontSize,
+                    textDecoration: node.taskDone ? 'line-through' : 'none',
+                    opacity: node.taskDone ? 0.6 : 1,
+                  }}
+                >
+                  {node.text}
+                </span>
+              )}
+            </div>
+            {/* ★ タスクステータスバッジ - 下部固定 */}
             {node.taskEnabled && (
-              <div className="absolute bottom-1 left-2 right-2 flex items-center gap-1.5 overflow-hidden">
+              <div className="flex items-center gap-1.5 overflow-hidden px-2 pb-1 w-full justify-center">
                 <div
                   className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
                     node.taskDone
