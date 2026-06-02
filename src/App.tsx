@@ -798,6 +798,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const remoteUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ★ リモート更新受信フラグ（自動リロード用）
+  const [remoteUpdateReceived, setRemoteUpdateReceived] = useState(false);
+
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
       const next = !prev;
@@ -863,21 +866,19 @@ const MindMapApp = ({ user }: { user: User }) => {
            selectionRect !== null || isCanvasPanning || isMultiDragging;
   }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
 
-  // ★ 自動リロード用の ref とタイマー
+  // 自動リロード用のタイマー
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isDirtyRef = useRef(isDirty);
-  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
 
-  const isUserInteractingRef = useRef(false);
+  // 操作中になったら自動リロードをキャンセル
   useEffect(() => {
-    isUserInteractingRef.current =
-      isAnyDragging ||
-      editingNodeId !== null ||
-      editingStickyId !== null ||
-      editingOutlineId !== null ||
-      editingMapId !== null ||
-      drawingEdge !== null;
-  }, [isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge]);
+    const isUserInteracting = isAnyDragging || editingNodeId !== null || editingStickyId !== null || editingOutlineId !== null || editingMapId !== null || drawingEdge !== null;
+    if (isUserInteracting || isDirty) {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = null;
+      }
+    }
+  }, [isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge, isDirty]);
 
   // --- Layer Management ---
   const getMaxZIndex = useCallback(() => {
@@ -1564,7 +1565,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // 修正版 initYjs
+  // 修正版 initYjs (リモート更新の処理を分離)
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1695,20 +1696,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
-    // ★ 修正: リモート更新時に直接リロードタイマーを開始
+    // リモート更新受信 → フラグを立てるだけにする
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
       const update = base64ToUint8Array(msg.payload.update);
       Y.applyUpdate(ydoc, update, 'supabase');
-      // 更新通知を表示
       setHasRemoteUpdate(true);
-      // 条件が満たされていればリロードタイマーを開始
-      if (!isUserInteractingRef.current && !isDirtyRef.current) {
-        if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-        reloadTimerRef.current = setTimeout(() => {
-          window.location.reload();
-        }, 3000);
-      }
-      // 通知の自動非表示タイマー
+      setRemoteUpdateReceived(true);  // 自動リロード用フラグ
       if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
       remoteUpdateTimerRef.current = setTimeout(() => {
         setHasRemoteUpdate(false);
@@ -1766,6 +1759,21 @@ const MindMapApp = ({ user }: { user: User }) => {
       prevEditingStates.current[userId] = state.editingNodeId;
     });
   }, [awarenessStates, myUserId]);
+
+  // ★ 自動リロード用 useEffect（リモート更新フラグを監視）
+  useEffect(() => {
+    if (!remoteUpdateReceived) return;
+    setRemoteUpdateReceived(false);
+    const isUserInteracting = isAnyDragging || editingNodeId !== null || editingStickyId !== null || editingOutlineId !== null || editingMapId !== null || drawingEdge !== null;
+    if (!isUserInteracting && !isDirty) {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+    } else {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    }
+  }, [remoteUpdateReceived, isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge, isDirty]);
 
   // ---- ハンドラ ----
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
@@ -2091,16 +2099,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       remoteUpdateTimerRef.current = null;
     }
   }, []);
-
-  // 編集中になったら自動リロードをキャンセル
-  useEffect(() => {
-    if (isUserInteractingRef.current || isDirtyRef.current) {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current);
-        reloadTimerRef.current = null;
-      }
-    }
-  }, [isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge, isDirty]);
 
   // ★ 参加者情報の計算
   const ownAwareness = awarenessStates[myUserId];
