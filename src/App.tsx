@@ -689,7 +689,6 @@ const App = () => {
 
 // --------------------- 共同編集マインドマップ ---------------------
 const MindMapApp = ({ user }: { user: User }) => {
-  // ... すべての state と ref は以前と同じ ...
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
@@ -799,6 +798,22 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const remoteUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ★ 自動リロード用の ref とタイマー
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDirtyRef = useRef(isDirty);
+  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+
+  const isUserInteractingRef = useRef(false);
+  useEffect(() => {
+    isUserInteractingRef.current =
+      isAnyDragging ||
+      editingNodeId !== null ||
+      editingStickyId !== null ||
+      editingOutlineId !== null ||
+      editingMapId !== null ||
+      drawingEdge !== null;
+  }, [isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge]);
+
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
       const next = !prev;
@@ -864,8 +879,7 @@ const MindMapApp = ({ user }: { user: User }) => {
            selectionRect !== null || isCanvasPanning || isMultiDragging;
   }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
 
-  // --- レイヤー管理など、すべての useCallback / useEffect は変更なし ---
-  // (紙面の都合で省略しますが、前回のコードと完全に同じ)
+  // --- Layer Management ---
   const getMaxZIndex = useCallback(() => {
     let max = 10;
     yNodesRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
@@ -1264,8 +1278,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
+  // ★ 修正1: updatePosition のバリデーションから x <= 0, y <= 0 を削除
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => {
     if (!nodeId || isNaN(x) || isNaN(y)) return;
+    
     ydocRef.current?.transact(() => {
       const nodes = yNodesRef.current;
       if (!nodes) return;
@@ -1549,6 +1565,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
+  // 修正版 initYjs（debounce化 + functional updater + 古いydocガード、サニタイズ削除）
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1578,6 +1595,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
     });
 
+    // 修正4：localStorageからの復元をobserve登録前に行う
     if (typeof window !== 'undefined') {
       try {
         const draft = localStorage.getItem(`mindmap-draft-${room}`);
@@ -1590,7 +1608,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
 
     const updateReact = () => {
-      if (ydocRef.current !== ydoc) return;
+      // 古いydoc参照ガード
+      if (ydocRef.current !== ydoc) {
+        return;
+      }
       const rootId = yRootRef.current;
       if (!rootId) return;
 
@@ -1649,10 +1670,13 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
+    // debounce時間を1msに変更
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedUpdateReact = () => {
       if (updateTimer) clearTimeout(updateTimer);
-      updateTimer = setTimeout(() => { updateReact(); }, 1);
+      updateTimer = setTimeout(() => {
+        updateReact();
+      }, 1);
     };
 
     yNodes.observe(debouncedUpdateReact);
@@ -1664,7 +1688,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     yStamps.observe(debouncedUpdateReact);
     updateReact();
 
-    ydoc.on('destroy', () => { if (updateTimer) clearTimeout(updateTimer); });
+    ydoc.on('destroy', () => {
+      if (updateTimer) clearTimeout(updateTimer);
+    });
     
     const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, yOutlines, ySettings, yStamps]);
     undoManagerRef.current = undoManager;
@@ -1676,15 +1702,23 @@ const MindMapApp = ({ user }: { user: User }) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
       setIsDirty(true);
       if (origin === 'supabase' || origin === 'local') return;
+      if (origin !== 'supabase' && origin !== 'local' && origin !== 'user') {
+        addLog(`Unknown update origin: ${origin}, broadcasting.`);
+      }
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
+    // ★ 修正2: 受信側サニタイザーを削除 + 更新通知を追加
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
       const update = base64ToUint8Array(msg.payload.update);
       Y.applyUpdate(ydoc, update, 'supabase');
+      // サニタイズは行わない
+      // リモート更新があったことを通知
       setHasRemoteUpdate(true);
       if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
-      remoteUpdateTimerRef.current = setTimeout(() => { setHasRemoteUpdate(false); }, 5000);
+      remoteUpdateTimerRef.current = setTimeout(() => {
+        setHasRemoteUpdate(false);
+      }, 5000);
     });
 
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -1739,7 +1773,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // ---- ハンドラ（一部省略、完全版と同じ） ----
+  // ---- ハンドラ ----
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -2099,7 +2133,33 @@ const MindMapApp = ({ user }: { user: User }) => {
   const canvasScrollClass = `w-full h-full overflow-auto relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
-    const flatNodes = mindMap ? flattenTree(mindMap) : [];
+
+  // ★ 自動リロード：リモート更新時にユーザーが操作中でなければリロード
+  useEffect(() => {
+    if (hasRemoteUpdate) {
+      if (!isUserInteractingRef.current && !isDirtyRef.current) {
+        if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      }
+    }
+    return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    };
+  }, [hasRemoteUpdate]);
+
+  // 編集中になったら自動リロードをキャンセル
+  useEffect(() => {
+    if (isUserInteractingRef.current || isDirtyRef.current) {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = null;
+      }
+    }
+  }, [isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge, isDirty]);
+
+  const flatNodes = mindMap ? flattenTree(mindMap) : [];
   const edgeLines: { id: string; pathD: string; selected: boolean; arrow: string; sourceX: number; sourceY: number; targetX: number; targetY: number }[] = [];
   if (mindMap) {
     for (const edge of edges) {
@@ -2121,6 +2181,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       });
     }
   }
+
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`
