@@ -774,7 +774,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  const addLog = (msg: string) => { if (process.env.NODE_ENV === 'development') console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -1228,6 +1228,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
+  // ★ 修正1: updatePosition のバリデーションから x <= 0, y <= 0 を削除
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => {
     if (!nodeId || isNaN(x) || isNaN(y)) return;
     
@@ -1432,9 +1433,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           if (!error) {
             setIsDirty(false);
             if (roomId) {
-              if (typeof window !== 'undefined') {
-                localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
-              }
+              localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
             }
           }
         } else if (roomId) {
@@ -1453,9 +1452,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             setMapId(data[0].id);
             setMapOwnerId(data[0].user_id);
             setIsDirty(false);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
-            }
+            localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!)));
           }
         }
       } catch (err) {
@@ -1518,6 +1515,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
+  // 修正版 initYjs（debounce化 + functional updater + 古いydocガード、サニタイズ削除）
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1547,6 +1545,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
     });
 
+    // 修正4：localStorageからの復元をobserve登録前に行う
     if (typeof window !== 'undefined') {
       try {
         const draft = localStorage.getItem(`mindmap-draft-${room}`);
@@ -1559,6 +1558,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
 
     const updateReact = () => {
+      // 古いydoc参照ガード
       if (ydocRef.current !== ydoc) {
         return;
       }
@@ -1568,7 +1568,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       const rootData = yNodes.get(rootId);
       if (!rootData) return;
 
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         yNodes.forEach((nodeData, nodeId) => {
           if (nodeData.children) {
             nodeData.children.forEach((childId: string) => {
@@ -1620,6 +1620,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
+    // debounce時間を1msに変更
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedUpdateReact = () => {
       if (updateTimer) clearTimeout(updateTimer);
@@ -1657,9 +1658,11 @@ const MindMapApp = ({ user }: { user: User }) => {
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
+    // ★ 修正2: 受信側サニタイザーを削除（座標の正当性判断はYjsに委ねる）
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
       const update = base64ToUint8Array(msg.payload.update);
       Y.applyUpdate(ydoc, update, 'supabase');
+      // サニタイズは行わない
     });
 
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -1714,6 +1717,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
+  // ハンドラたち
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -1775,7 +1779,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleMapDragEnd = useCallback(async () => { if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) { const newSavedMaps = [...savedMaps]; const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0]; newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem); setSavedMaps(newSavedMaps); try { await Promise.all(newSavedMaps.map((map, index) => supabase.from('maps').update({ sort_order: index }).eq('id', map.id))); } catch (err) { console.error('並び替え保存エラー', err); } } dragMapItemIndex.current = null; dragOverMapItemIndex.current = null; }, [savedMaps]);
 
   const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
-  const handleInviteSubmit = useCallback(async () => { if (!inviteEmail.trim() || !mapId) { if (!mapId) setInviteMessage('マップを保存してから招待してください'); return; } setInviteLoading(true); setInviteMessage(''); setInviteLink(''); try { const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() }); if (error) throw error; if (data.status === 'added') { setInviteMessage('招待しました！'); setInviteEmail(''); await fetchMapMembers(); } else if (data.status === 'invited') { const link = `${window.location.origin}?invite=${data.invite_code}`; setInviteLink(link); setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); } } catch (err: unknown) { const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? String((err as Record<string, unknown>).message) : String(err); setInviteMessage('エラーが発生しました: ' + errorMessage); } finally { setInviteLoading(false); } }, [inviteEmail, mapId, fetchMapMembers]);
+  const handleInviteSubmit = useCallback(async () => { if (!inviteEmail.trim() || !mapId) { if (!mapId) setInviteMessage('マップを保存してから招待してください'); return; } setInviteLoading(true); setInviteMessage(''); setInviteLink(''); try { const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() }); if (error) throw error; if (data.status === 'added') { setInviteMessage('招待しました！'); setInviteEmail(''); await fetchMapMembers(); } else if (data.status === 'invited') { const link = `${window.location.origin}?invite=${data.invite_code}`; setInviteLink(link); setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); } } catch (err: unknown) { const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err); setInviteMessage('エラーが発生しました: ' + errorMessage); } finally { setInviteLoading(false); } }, [inviteEmail, mapId, fetchMapMembers]);
 
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
@@ -1940,6 +1944,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, updateStampPosition, images, stickies, outlines, isCanvasPanning]);
 
+  // ★ 修正3: handleMouseUp の guard から pos.x > 0, pos.y > 0 を削除
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
@@ -1954,7 +1959,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); } setSelectionRect(null); return; }
     if (draggingNodeId) {
       if (hasDraggedRef.current) {
-        const pos = dragPositionsRef.current[draggingNodeId]; 
+        const pos = dragPositionsRef.current[draggingNodeId];  // ← refから読む
         if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' &&
             !isNaN(pos.x) && !isNaN(pos.y)) {
           updatePosition(draggingNodeId, pos.x, pos.y);
@@ -1968,7 +1973,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       const nodeIdToClean = draggingNodeId;
       setDraggingNodeId(null);
       setDragTargetNodeId(null);
-      
+      // refもクリア
       const { [nodeIdToClean]: _r, ...restRef } = dragPositionsRef.current;
       dragPositionsRef.current = restRef;
       setDragPositions(prev => {
@@ -2114,6 +2119,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
+  // JSX
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -2269,7 +2275,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             {contextMenu.type === 'sticky' && contextMenu.stickyId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteSticky')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">付箋を削除</button></>)}
             {contextMenu.type === 'outline' && contextMenu.outlineId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteOutline')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">図形/テキストを削除</button></>)}
             {contextMenu.type === 'stamp' && contextMenu.stampId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteStamp')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">印鑑を削除</button></>)}
-            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addImageNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像専用ノードを追加</button><button onClick={() => executeContextAction('addSticky')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">付箋を追加</button><button onClick={() => executeContextAction('addStamp')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像を添付（自由配置）</button></>)}
+            {contextMenu.type === 'canvas' && (<><button onClick={() => executeContextAction('addNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">独立トピックを追加</button><button onClick={() => executeContextAction('addImageNode')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像専用ノードを追加</button><button onClick={() => executeContextAction('addSticky')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">付箋を追加</button><button onClick={() => executeContextAction('addStamp')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">印鑑を追加</button><button onClick={() => executeContextAction('addImage')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">画像を添付（自由配置）</button></>)}
           </div>
         )}
         {showColorPalette && (
@@ -2369,7 +2375,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
-  // ★ 修正3: displayPos に fallback
+  // displayPos に fallback
   const displayPos = (() => {
     if (isMultiDragging && dragPositions[node.id]) {
       const p = dragPositions[node.id];
