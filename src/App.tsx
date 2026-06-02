@@ -453,7 +453,6 @@ const AlignHorizontalIcon = () => (
     <circle cx="17" cy="6" r="2" strokeWidth={2} />
   </svg>
 );
-// ★追加：更新通知アイコン
 const RefreshIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -784,7 +783,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (process.env.NODE_ENV === 'development') console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -1578,7 +1577,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       const rootData = yNodes.get(rootId);
       if (!rootData) return;
 
-      if (import.meta.env.DEV) {
+      if (process.env.NODE_ENV === 'development') {
         yNodes.forEach((nodeData, nodeId) => {
           if (nodeData.children) {
             nodeData.children.forEach((childId: string) => {
