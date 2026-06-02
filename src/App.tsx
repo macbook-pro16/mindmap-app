@@ -1574,6 +1574,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
     ydocRef.current?.destroy(); if (undoManagerRef.current) { undoManagerRef.current.destroy(); undoManagerRef.current = null; }
+    // ★ 修正1: マップ切り替え時にawarenessStatesをリセット
+    setAwarenessStates({});
     setConnectionStatus('接続中...'); setCanUndo(false); setCanRedo(false); setIsDirty(false);
     
     const ydoc = new Y.Doc(); ydocRef.current = ydoc;
@@ -1848,7 +1850,15 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleMapDragEnter = useCallback((_e: DragEvent<HTMLDivElement>, index: number) => { dragOverMapItemIndex.current = index; }, []);
   const handleMapDragEnd = useCallback(async () => { if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) { const newSavedMaps = [...savedMaps]; const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0]; newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem); setSavedMaps(newSavedMaps); try { await Promise.all(newSavedMaps.map((map, index) => supabase.from('maps').update({ sort_order: index }).eq('id', map.id))); } catch (err) { console.error('並び替え保存エラー', err); } } dragMapItemIndex.current = null; dragOverMapItemIndex.current = null; }, [savedMaps]);
 
-  const handleShare = useCallback(() => { if (!roomId) return; setShowInviteModal(true); setInviteLink(''); setInviteMessage(''); }, [roomId]);
+  // ★ 修正2: 共有モーダルを開く前にメンバー情報を更新
+  const handleShare = useCallback(() => { 
+    if (!roomId) return; 
+    fetchMapMembers();
+    setShowInviteModal(true); 
+    setInviteLink(''); 
+    setInviteMessage(''); 
+  }, [roomId, fetchMapMembers]);
+
   const handleInviteSubmit = useCallback(async () => { if (!inviteEmail.trim() || !mapId) { if (!mapId) setInviteMessage('マップを保存してから招待してください'); return; } setInviteLoading(true); setInviteMessage(''); setInviteLink(''); try { const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() }); if (error) throw error; if (data.status === 'added') { setInviteMessage('招待しました！'); setInviteEmail(''); await fetchMapMembers(); } else if (data.status === 'invited') { const link = `${window.location.origin}?invite=${data.invite_code}`; setInviteLink(link); setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); } } catch (err: unknown) { const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err); setInviteMessage('エラーが発生しました: ' + errorMessage); } finally { setInviteLoading(false); } }, [inviteEmail, mapId, fetchMapMembers]);
 
   const dragMapItemIndex = useRef<number | null>(null);
@@ -2112,7 +2122,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 参加者情報の計算
+  // ★ 参加者情報の計算（修正1: awarenessStatesをマップメンバーとオーナーのみにフィルタリング）
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
@@ -2128,7 +2138,11 @@ const MindMapApp = ({ user }: { user: User }) => {
     }); 
   });
   Object.entries(awarenessStates).forEach(([userId, state]) => { 
-    if (userId === myUserId || !state) return; 
+    if (userId === myUserId || !state) return;
+    // 現在のマップのメンバーか、マップオーナーか確認
+    const isMapMember = mapMembers.some(m => m.user_id === userId);
+    const isMapOwner = userId === mapOwnerId;
+    if (!isMapMember && !isMapOwner) return; // このマップに無関係なユーザーは除外
     participantsMap.set(userId, { 
       user_id: userId, 
       email: state.email || 'Unknown', 
@@ -2186,7 +2200,85 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       {imageModalUrl && (<div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}><div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}><button onClick={() => setImageModalUrl(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-1 shadow-lg hover:bg-slate-100 transition-colors z-10"><CloseIcon /></button><img src={imageModalUrl} alt="拡大画像" className="max-w-full max-h-[85vh] object-contain rounded" /></div></div>)}
-      {showInviteModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold text-slate-800">チームメンバーを招待</h3><button onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><p className="text-sm text-slate-500 mb-4">Googleアカウントのメールアドレスを入力して、共同編集者を招待します。</p><div className="flex gap-2 mb-3"><input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="colleague@example.com" className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all" disabled={inviteLoading || !!inviteLink} /><button onClick={handleInviteSubmit} disabled={inviteLoading || !inviteEmail.trim() || !mapId || !!inviteLink} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">{inviteLoading ? '招待中...' : '招待する'}</button></div>{!mapId && <p className="text-sm text-amber-600 mb-2 font-medium">⚠️ マップを保存してから招待してください。</p>}{inviteMessage && !inviteLink && (<p className={`text-sm font-medium ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-rose-500' : 'text-emerald-600'}`}>{inviteMessage}</p>)}{inviteLink && (<div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200"><p className="text-xs font-medium text-slate-700 mb-2">招待リンク（未登録ユーザー用）:</p><div className="flex items-center gap-2"><input readOnly value={inviteLink} className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none" /><button onClick={() => { navigator.clipboard.writeText(inviteLink); setInviteMessage('コピーしました！'); }} className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 transition-colors">コピー</button></div><p className="text-[10px] text-slate-400 mt-1">相手がこのリンクを開いてログインすると、自動的にマップに参加できます。</p></div>)}</div></div>)}
+      {/* ★ 修正2: 共有モーダルに既存メンバー選択UIを追加 */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" 
+          onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-slate-100" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800">チームメンバーを招待</h3>
+              <button onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }} 
+                className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Googleアカウントのメールアドレスを入力して、共同編集者を招待します。</p>
+            
+            {/* ★ 追加: 既存メンバーの選択肢 */}
+            {mapMembers.filter(m => m.user_id !== user.id).length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">過去に招待したメンバー</p>
+                <div className="flex flex-wrap gap-2">
+                  {mapMembers
+                    .filter(m => m.user_id !== user.id)
+                    .map(m => (
+                      <button
+                        key={m.user_id}
+                        onClick={() => setInviteEmail(m.email)}
+                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                          inviteEmail === m.email 
+                            ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-semibold' 
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600'
+                        }`}
+                      >
+                        {m.email}
+                      </button>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 mb-3">
+              <input 
+                type="email" 
+                value={inviteEmail} 
+                onChange={(e) => setInviteEmail(e.target.value)} 
+                placeholder="colleague@example.com" 
+                className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all" 
+                disabled={inviteLoading || !!inviteLink} 
+              />
+              <button 
+                onClick={handleInviteSubmit} 
+                disabled={inviteLoading || !inviteEmail.trim() || !mapId || !!inviteLink} 
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              >
+                {inviteLoading ? '招待中...' : '招待する'}
+              </button>
+            </div>
+            
+            {!mapId && <p className="text-sm text-amber-600 mb-2 font-medium">⚠️ マップを保存してから招待してください。</p>}
+            {inviteMessage && !inviteLink && (
+              <p className={`text-sm font-medium ${inviteMessage.includes('エラー') || inviteMessage.includes('保存') ? 'text-rose-500' : 'text-emerald-600'}`}>
+                {inviteMessage}
+              </p>
+            )}
+            {inviteLink && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="text-xs font-medium text-slate-700 mb-2">招待リンク（未登録ユーザー用）:</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={inviteLink} className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none" />
+                  <button 
+                    onClick={() => { navigator.clipboard.writeText(inviteLink); setInviteMessage('コピーしました！'); }} 
+                    className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 transition-colors"
+                  >
+                    コピー
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">相手がこのリンクを開いてログインすると、自動的にマップに参加できます。</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {showHelpModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><HelpIcon /> 操作コマンド一覧</h3><button onClick={() => setShowHelpModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">ノード操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">子を追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Tab</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">下に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">上に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Shift + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li></ul></div><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">キャンバス操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">画面移動 (パン)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Space + ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズームイン/アウト</span><div className="flex gap-1"><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Wheel</kbd></div></li><li className="flex justify-between items-center"><span className="text-slate-600">全体表示に戻る</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Homeボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">範囲選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">背景をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">線を引く</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">〇をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">図形/テキスト配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ツール選択後クリック</kbd></li></ul></div><div className="md:col-span-2 pt-4 border-t border-slate-100"><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム・グループ・その他</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">レイヤー変更</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右クリックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像ドロップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像を直接ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">印鑑を配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + Shift + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト図形の文字サイズ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">選択中にサイズメニュー</kbd></li></ul><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">元に戻す</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Z</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全画面表示 (Zen)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Alt + Cmd + F</kbd></li></ul></div></div></div></div></div>)}
 
       {announcements.length > 0 && (
