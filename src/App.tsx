@@ -6,7 +6,6 @@ import * as Y from 'yjs';
 import { supabase } from './supabaseClient';
 import type { RealtimeChannel, User } from '@supabase/supabase-js';
 
-// ★ エラーバウンダリ（レンダリングエラー時に表示）
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -690,6 +689,7 @@ const App = () => {
 
 // --------------------- 共同編集マインドマップ ---------------------
 const MindMapApp = ({ user }: { user: User }) => {
+  // ... すべての state と ref は以前と同じ ...
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
@@ -796,7 +796,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     return true;
   });
 
-  // ★追加：リモート更新通知のステート
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
   const remoteUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -865,7 +864,8 @@ const MindMapApp = ({ user }: { user: User }) => {
            selectionRect !== null || isCanvasPanning || isMultiDragging;
   }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
 
-  // --- Layer Management ---
+  // --- レイヤー管理など、すべての useCallback / useEffect は変更なし ---
+  // (紙面の都合で省略しますが、前回のコードと完全に同じ)
   const getMaxZIndex = useCallback(() => {
     let max = 10;
     yNodesRef.current?.forEach(v => { if (v.zIndex && v.zIndex > max) max = v.zIndex; });
@@ -1264,10 +1264,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 修正1: updatePosition のバリデーションから x <= 0, y <= 0 を削除
   const updatePosition = useCallback((nodeId: string, x: number, y: number) => {
     if (!nodeId || isNaN(x) || isNaN(y)) return;
-    
     ydocRef.current?.transact(() => {
       const nodes = yNodesRef.current;
       if (!nodes) return;
@@ -1551,7 +1549,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // 修正版 initYjs（debounce化 + functional updater + 古いydocガード、サニタイズ削除）
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
@@ -1581,7 +1578,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       }
     });
 
-    // 修正4：localStorageからの復元をobserve登録前に行う
     if (typeof window !== 'undefined') {
       try {
         const draft = localStorage.getItem(`mindmap-draft-${room}`);
@@ -1594,10 +1590,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
 
     const updateReact = () => {
-      // 古いydoc参照ガード
-      if (ydocRef.current !== ydoc) {
-        return;
-      }
+      if (ydocRef.current !== ydoc) return;
       const rootId = yRootRef.current;
       if (!rootId) return;
 
@@ -1656,13 +1649,10 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (currentStyle) setEdgeStyle(currentStyle);
     };
     
-    // debounce時間を1msに変更
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedUpdateReact = () => {
       if (updateTimer) clearTimeout(updateTimer);
-      updateTimer = setTimeout(() => {
-        updateReact();
-      }, 1);
+      updateTimer = setTimeout(() => { updateReact(); }, 1);
     };
 
     yNodes.observe(debouncedUpdateReact);
@@ -1674,9 +1664,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     yStamps.observe(debouncedUpdateReact);
     updateReact();
 
-    ydoc.on('destroy', () => {
-      if (updateTimer) clearTimeout(updateTimer);
-    });
+    ydoc.on('destroy', () => { if (updateTimer) clearTimeout(updateTimer); });
     
     const undoManager = new Y.UndoManager([yNodes, yEdges, yImages, yStickies, yOutlines, ySettings, yStamps]);
     undoManagerRef.current = undoManager;
@@ -1688,23 +1676,15 @@ const MindMapApp = ({ user }: { user: User }) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
       setIsDirty(true);
       if (origin === 'supabase' || origin === 'local') return;
-      if (origin !== 'supabase' && origin !== 'local' && origin !== 'user') {
-        addLog(`Unknown update origin: ${origin}, broadcasting.`);
-      }
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
-    // ★ 修正2: 受信側サニタイザーを削除 + 更新通知を追加
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
       const update = base64ToUint8Array(msg.payload.update);
       Y.applyUpdate(ydoc, update, 'supabase');
-      // サニタイズは行わない
-      // リモート更新があったことを通知
       setHasRemoteUpdate(true);
       if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
-      remoteUpdateTimerRef.current = setTimeout(() => {
-        setHasRemoteUpdate(false);
-      }, 5000);
+      remoteUpdateTimerRef.current = setTimeout(() => { setHasRemoteUpdate(false); }, 5000);
     });
 
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -1759,7 +1739,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // ハンドラたち
+  // ---- ハンドラ（一部省略、完全版と同じ） ----
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
     const { error } = await supabase.from('maps').update({ title: newTitle.trim() }).eq('id', id);
@@ -1826,7 +1806,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
 
-  // --------------------- マウスイベントハンドラ ---------------------
+  // --- マウスイベント ---
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -1835,7 +1815,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     const targetGroupId = node.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
-
     if (e.ctrlKey || e.metaKey) {
       isMulti = true;
       selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
@@ -1857,7 +1836,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         newSelectedNodeIds.add(nodeId); setSelectedNodeIds([nodeId]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
       }
     }
-
     if (isMulti) {
       groupDragStartMouse.current = { x: coords.x, y: coords.y };
       const initNodePos: Record<string, { x: number; y: number }> = {}; const initImgPos: Record<string, { x: number; y: number }> = {}; const initStickyPos: Record<string, { x: number; y: number }> = {}; const initOutlinePos: Record<string, { x: number; y: number }> = {}; const initStampPos: Record<string, { x: number; y: number }> = {};
@@ -1963,12 +1941,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (selectionRect) { setSelectionRect(prev => prev ? { ...prev, x2: coords.x, y2: coords.y } : null); return; }
     if (draggingNodeId) {
       const newX = coords.x - dragOffset.current.x, newY = coords.y - dragOffset.current.y;
-      if (dragStartPosRef.current) {
-        const dist = Math.hypot(newX - dragStartPosRef.current.x, newY - dragStartPosRef.current.y);
-        if (dist >= DRAG_THRESHOLD) {
-          hasDraggedRef.current = true;
-        }
-      }
+      if (dragStartPosRef.current) { const dist = Math.hypot(newX - dragStartPosRef.current.x, newY - dragStartPosRef.current.y); if (dist >= DRAG_THRESHOLD) hasDraggedRef.current = true; }
       const newPos = { x: newX, y: newY };
       dragPositionsRef.current = { ...dragPositionsRef.current, [draggingNodeId]: newPos };
       setDragPositions(prev => ({ ...prev, [draggingNodeId]: newPos }));
@@ -1976,8 +1949,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       return;
     }
     if (isMultiDragging && multiDragOffsets) {
-      const deltaX = coords.x - groupDragStartMouse.current.x;
-      const deltaY = coords.y - groupDragStartMouse.current.y;
+      const deltaX = coords.x - groupDragStartMouse.current.x, deltaY = coords.y - groupDragStartMouse.current.y;
       setMultiDragOffsets({ dx: deltaX, dy: deltaY });
       const newPositions: Record<string, { x: number; y: number }> = {};
       selectedNodeIds.forEach(id => { const init = initialGroupDragPositions.current[id]; if(init) newPositions[id] = { x: init.x + deltaX, y: init.y + deltaY }; });
@@ -1986,7 +1958,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, dragPositions, mindMap, edges, updateEdgeEndpoint, zoomLevel, updateImagePosition, updateStickyPosition, updateOutlinePosition, updateStickySize, updateOutlineSize, updateStampPosition, images, stickies, outlines, isCanvasPanning]);
 
-  // ★ 修正3: handleMouseUp の guard から pos.x > 0, pos.y > 0 を削除
   const handleMouseUp = useCallback(() => {
     if (isCanvasPanning) { setIsCanvasPanning(false); return; }
     if (editingEdgeEndpoint) { setEditingEdgeEndpoint(null); return; }
@@ -2001,9 +1972,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); } setSelectionRect(null); return; }
     if (draggingNodeId) {
       if (hasDraggedRef.current) {
-        const pos = dragPositionsRef.current[draggingNodeId];  // ← refから読む
-        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' &&
-            !isNaN(pos.x) && !isNaN(pos.y)) {
+        const pos = dragPositionsRef.current[draggingNodeId];
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && !isNaN(pos.x) && !isNaN(pos.y)) {
           updatePosition(draggingNodeId, pos.x, pos.y);
         }
         if (dragTargetNodeId && dragTargetNodeId !== draggingNodeId) {
@@ -2015,13 +1985,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       const nodeIdToClean = draggingNodeId;
       setDraggingNodeId(null);
       setDragTargetNodeId(null);
-      // refもクリア
       const { [nodeIdToClean]: _r, ...restRef } = dragPositionsRef.current;
       dragPositionsRef.current = restRef;
-      setDragPositions(prev => {
-        const { [nodeIdToClean]: _, ...rest } = prev;
-        return rest;
-      });
+      setDragPositions(prev => { const { [nodeIdToClean]: _, ...rest } = prev; return rest; });
       return;
     }
     if (isMultiDragging && multiDragOffsets) { ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { const p = initialGroupDragPositions.current[id]; if (p) { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); }); setDragPositions({}); initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {}; setMultiDragOffsets(null); return; }
@@ -2090,7 +2056,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId!, mindMap, dragPositions, draggingNodeId) : null;
   const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
 
-  // ★更新通知ボタンの表示
   const dismissRemoteUpdate = useCallback(() => {
     setHasRemoteUpdate(false);
     if (remoteUpdateTimerRef.current) {
@@ -2099,7 +2064,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 以下の変数を定義
+  // ★ 参加者情報の計算
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
@@ -2163,7 +2128,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
-      {/* ★リモート更新通知ボタン */}
       {hasRemoteUpdate && (
         <div className="fixed top-4 right-4 z-[250] animate-blink-update">
           <button
@@ -2277,12 +2241,12 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="absolute top-4 right-4 z-40 flex items-center">
               <div className="relative bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
                 <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1 transition-colors" title="参加者一覧">
-                  <div className="flex flex-wrap -space-x-2 max-w-[200px]">{allParticipants.map((p) => (<div key={p.user_id} className="relative"><div className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div><div className={`absolute -bottom-0.5 right-0 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div></div>))}</div>
+                  <div className="flex flex-wrap -space-x-2 max-w-[200px]">{allParticipants.map((p: Participant) => (<div key={p.user_id} className="relative"><div className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div><div className={`absolute -bottom-0.5 right-0 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div></div>))}</div>
                 </button>
                 {showParticipants && (
                   <div className="absolute top-full right-0 mt-3 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50">
                     <h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">メンバー ({allParticipants.length})</h3>
-                    <div className="space-y-3 max-h-64 overflow-y-auto">{allParticipants.map((p) => (<div key={p.user_id} className="flex items-center gap-3 text-sm"><div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}<div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div></div><div className="flex-1 min-w-0"><div className={`text-slate-800 font-medium truncate leading-tight ${!p.isOnline ? 'text-slate-400' : ''}`}>{p.email}{p.isSelf ? ' (You)' : ''}</div><div className="text-slate-400 text-[10px] mt-0.5">{p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}</div></div></div>))}</div>
+                    <div className="space-y-3 max-h-64 overflow-y-auto">{allParticipants.map((p: Participant) => (<div key={p.user_id} className="flex items-center gap-3 text-sm"><div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}<div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div></div><div className="flex-1 min-w-0"><div className={`text-slate-800 font-medium truncate leading-tight ${!p.isOnline ? 'text-slate-400' : ''}`}>{p.email}{p.isSelf ? ' (You)' : ''}</div><div className="text-slate-400 text-[10px] mt-0.5">{p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}</div></div></div>))}</div>
                     <button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button>
                   </div>
                 )}
@@ -2325,13 +2289,61 @@ const MindMapApp = ({ user }: { user: User }) => {
         {mindMap ? (
           <div ref={scrollContainerRef} className={canvasScrollClass + ' hide-scrollbar bg-slate-50'} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop} style={hideScrollbarStyle as React.CSSProperties}>
             <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: '#f8fafc' }}>
-              {remoteCursors.map((p) => (<div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}><svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg><span className="ml-5 text-xs font-bold px-1.5 py-0.5 rounded text-white shadow" style={{ backgroundColor: p.color }}>{getInitial(p.email)}</span></div>))}
-              {showFloatingToolbar && floatingToolbarPos && (<div className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5" style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y - floatingToolbarPos.height / 2 - 50, transform: 'translate(-50%, 0)', animation: 'fadeIn 0.15s ease-out' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}><style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style><button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="色を変更"><PaletteIcon /></button><div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button><button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button><div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-rose-900/50 rounded-md text-rose-400 hover:text-rose-300 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button><div className="w-px h-5 bg-slate-600 mx-0.5" />{selectedNodeId !== yRootRef.current && (<button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">{mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}</button>)}{selectedOutlineId && outlines.find(o => o.id === selectedOutlineId)?.type === 'text' && (<div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300" title="文字サイズ"><span className="text-xs">Aa</span></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg p-1 z-50">{FONT_SIZES.map(size => (<button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 rounded">{size}px</button>))}</div></div>)}{mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (<><div className="w-px h-5 bg-slate-600 mx-0.5" /><div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更"><ResizeIcon /></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">{IMAGE_SCALE_PRESETS.map(scale => { const percent = Math.round(scale * 100); return (<button key={scale} onClick={() => resizeImageNode(selectedNodeId!, scale)} className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors">{percent}%</button>); })}</div></div></>)}</div>)}
-              {/* アウトライン、画像、付箋、スタンプのレンダリング */}
+              {remoteCursors.map((p: Participant) => (<div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}><svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg><span className="ml-5 text-xs font-bold px-1.5 py-0.5 rounded text-white shadow" style={{ backgroundColor: p.color }}>{getInitial(p.email)}</span></div>))}
+              {showFloatingToolbar && floatingToolbarPos && (
+                <div className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5" style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y - floatingToolbarPos.height / 2 - 50, transform: 'translate(-50%, 0)', animation: 'fadeIn 0.15s ease-out' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                  <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
+                  <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="色を変更"><PaletteIcon /></button>
+                  <div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
+                  <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
+                  <div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-rose-900/50 rounded-md text-rose-400 hover:text-rose-300 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+                  <div className="w-px h-5 bg-slate-600 mx-0.5" />{selectedNodeId !== yRootRef.current && (<button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">{mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}</button>)}
+                  {selectedOutlineId && outlines.find(o => o.id === selectedOutlineId)?.type === 'text' && (
+                    <div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300" title="文字サイズ"><span className="text-xs">Aa</span></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg p-1 z-50">{FONT_SIZES.map(size => (<button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 rounded">{size}px</button>))}</div></div>
+                  )}
+                  {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
+                    <><div className="w-px h-5 bg-slate-600 mx-0.5" /><div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更"><ResizeIcon /></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">{IMAGE_SCALE_PRESETS.map(scale => { const percent = Math.round(scale * 100); return (<button key={scale} onClick={() => resizeImageNode(selectedNodeId!, scale)} className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors">{percent}%</button>); })}</div></div></>
+                  )}
+                </div>
+              )}
               {outlines.map((outline: OutlineData) => { const isEditing = editingOutlineId === outline.id; const isSelected = selectedOutlineIds.includes(outline.id); const fontSize = outline.fontSize ?? NODE_DEFAULT_FONT_SIZE; return (<div key={outline.id} className={`absolute cursor-move transition-shadow group ${isSelected ? 'ring-2 ring-indigo-500/50 shadow-md' : 'hover:ring-2 hover:ring-slate-300/50'} ${outline.type === 'text' ? '' : 'bg-transparent'}`} style={{ left: outline.x, top: outline.y, width: outline.width, height: outline.height, zIndex: outline.zIndex ?? 4, borderRadius: outline.type === 'circle' ? '50%' : '0' }} onMouseDown={(e) => handleMouseDownOnOutline(e, outline.id)} onContextMenu={(e) => handleOutlineContextMenu(e, outline.id)} onDoubleClick={(e) => { e.stopPropagation(); if (outline.type === 'text') setEditingOutlineId(outline.id); }} onClick={(e) => handleOutlineClick(e, outline.id)}>{outline.type === 'rectangle' && (<div className="w-full h-full border-4 rounded" style={{ borderColor: outline.color }}></div>)}{outline.type === 'circle' && (<div className="w-full h-full border-4 rounded-full" style={{ borderColor: outline.color }}></div>)}{outline.type === 'triangle' && (<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none"><polygon points="50,0 100,100 0,100" fill="none" stroke={outline.color} strokeWidth="4" vectorEffect="non-scaling-stroke" /></svg>)}{outline.type === 'text' && (<div className="w-full h-full flex items-start">{isEditing ? (<textarea autoFocus className="w-full h-full resize-none bg-transparent border-none outline-none font-bold text-lg pointer-events-auto" style={{ color: outline.color, fontSize }} defaultValue={outline.text} onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateOutlineText(outline.id, trimmed || 'テキスト'); setEditingOutlineId(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEditingOutlineId(null); }} onMouseDown={(e) => e.stopPropagation()} />) : (<div className="w-full h-full whitespace-pre-wrap overflow-auto font-bold text-lg cursor-text select-none pointer-events-none" style={{ color: outline.color, fontSize }}>{outline.text}</div>)}</div>)}{isSelected && outline.type !== 'text' && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (<div className="absolute top-2 right-2 flex gap-1 pointer-events-auto"><button onClick={(e) => { e.stopPropagation(); setShowColorPalette({ outlineId: outline.id, x: window.innerWidth / 2, y: window.innerHeight / 2 }); }} className="p-1 hover:bg-slate-200/50 rounded text-slate-500"><PaletteIcon /></button></div>)}{isSelected && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'se')} /></>)}</div>); })}
               {images.map((image: ImageData) => { const isSelected = selectedImageIds.includes(image.id); return (<div key={image.id} className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${isSelected ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-transparent shadow-md hover:shadow-lg'}`} style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: image.zIndex ?? 6 }} onMouseDown={(e) => handleMouseDownOnImage(e, image.id)} onContextMenu={(e) => handleImageContextMenu(e, image.id)} onClick={(e) => handleImageClick(e, image.id)}><img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />{isSelected && selectedImageIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'se')} /></>)}</div>); })}
               {stickies.map((sticky: StickyData) => { const isEditing = editingStickyId === sticky.id; const isSelected = selectedStickyIds.includes(sticky.id); return (<div key={sticky.id} className={`absolute cursor-move rounded-sm overflow-visible transition-shadow group ${isSelected ? 'ring-4 ring-indigo-500/20 shadow-2xl' : 'shadow-lg hover:shadow-xl'}`} style={{ left: sticky.x, top: sticky.y, width: sticky.width, height: sticky.height, zIndex: sticky.zIndex ?? 5 }} onMouseDown={(e) => handleMouseDownOnSticky(e, sticky.id)} onContextMenu={(e) => handleStickyContextMenu(e, sticky.id)} onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }} onClick={(e) => handleStickyClick(e, sticky.id)}><div className="absolute -bottom-1.5 right-2 w-[70%] h-[50%] -z-10 opacity-40" style={{ backgroundColor: 'rgba(0,0,0,0.3)', transform: 'rotate(3deg)', filter: 'blur(6px)' }} /><div className="relative w-full h-full rounded-sm flex flex-col p-3" style={{ backgroundColor: sticky.bgColor, color: sticky.textColor, boxShadow: '1px 2px 4px rgba(0,0,0,0.05)' }}><div className="absolute top-0 left-0 w-0 h-0 border-r-[16px] border-r-transparent border-b-[16px] rounded-br-sm" style={{ borderBottomColor: 'rgba(0,0,0,0.08)' }} /><div className="flex-1 flex items-start overflow-hidden">{isEditing ? (<textarea autoFocus className="w-full h-full resize-none bg-transparent border-none outline-none text-sm font-medium pointer-events-auto" defaultValue={sticky.text} onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateStickyText(sticky.id, trimmed); setEditingStickyId(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEditingStickyId(null); }} onMouseDown={(e) => e.stopPropagation()} />) : (<div className="w-full h-full whitespace-pre-wrap overflow-auto text-sm font-medium cursor-text select-none pointer-events-none">{sticky.text}</div>)}</div>{isSelected && selectedStickyIds.length === 1 && totalSelectedCount === 1 && !isEditing && (<div className="flex justify-end gap-1 mt-1 pointer-events-auto"><button onClick={(e) => { e.stopPropagation(); setShowColorPalette({ stickyId: sticky.id, x: window.innerWidth / 2, y: window.innerHeight / 2 }); }} className="p-1 hover:bg-black/10 rounded"><PaletteIcon /></button><button onClick={(e) => { e.stopPropagation(); deleteSticky(sticky.id); }} className="p-1 hover:bg-black/10 rounded text-rose-500"><TrashIcon /></button></div>)}</div>{isSelected && selectedStickyIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'se')} /></>)}</div>); })}
               {stamps.map((stamp) => (<div key={stamp.id} className={`absolute cursor-move flex items-center justify-center transition-all duration-300 ${selectedStampIds.includes(stamp.id) ? 'ring-4 ring-indigo-500/30 scale-105 shadow-2xl' : 'hover:shadow-xl hover:scale-105 hover:-translate-y-1'}`} style={{ left: stamp.x, top: stamp.y, width: stamp.width, height: stamp.height, backgroundColor: 'transparent', color: stamp.color, zIndex: stamp.zIndex ?? 3, fontFamily: "'MS Mincho', 'Yu Mincho', serif" }} onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)} onContextMenu={(e) => handleStampContextMenu(e, stamp.id)} onClick={(e) => handleStampClick(e, stamp.id)} title={`${stamp.email} の印鑑`}><div className="flex flex-col items-center justify-center w-full h-full rounded-full border-[2.5px] bg-white/90 backdrop-blur-sm relative overflow-hidden" style={{ borderColor: stamp.color, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}><div className="w-full text-center border-b-[1.5px] pb-1 pt-2" style={{ borderColor: stamp.color }}><span className="text-[8px] font-bold tracking-tighter leading-none block font-sans">{new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}</span></div><div className="w-full text-center pt-1 flex-1 flex items-center justify-center"><span className="text-[13px] font-extrabold tracking-widest leading-none block pb-1">{stamp.text}</span></div><div className="absolute inset-0 pointer-events-none rounded-full opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPgo8cGF0aCBkPSJNMCAwdjRoNFYweiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4=')]"></div></div></div>))}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+                <defs>
+                  <marker id="arrowStart" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#94a3b8" /></marker>
+                  <marker id="arrowEnd" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#94a3b8" /></marker>
+                  <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
+                  <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
+                </defs>
+                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; if (Math.abs(dx) > Math.abs(dy)) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; return (<g key={edgeId} className="pointer-events-auto"><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#cbd5e1'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
+                {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : '#94a3b8'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-indigo-500' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
+                {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
+                {selectionRect && (<rect x={Math.min(selectionRect.x1, selectionRect.x2)} y={Math.min(selectionRect.y1, selectionRect.y2)} width={Math.abs(selectionRect.x2 - selectionRect.x1)} height={Math.abs(selectionRect.y2 - selectionRect.y1)} fill="rgba(99, 102, 241, 0.15)" stroke="#6366f1" strokeWidth={2} strokeDasharray="6 6" className="rounded-sm" />)}
+              </svg>
+              <RecursiveNode 
+                node={mindMap} 
+                selectedNodeId={selectedNodeId} 
+                selectedNodeIds={selectedNodeIds} 
+                editingNodeId={editingNodeId} 
+                draggingNodeId={draggingNodeId} 
+                dragPositions={dragPositions} 
+                dragTargetNodeId={dragTargetNodeId} 
+                isMultiDragging={isMultiDragging} 
+                awarenessStates={awarenessStates} 
+                myUserId={myUserId} 
+                onNodeClick={handleNodeClick} 
+                onNodeDoubleClick={handleNodeDoubleClick} 
+                onMouseDownOnNode={handleMouseDownOnNode} 
+                onTextEditComplete={handleTextEditComplete} 
+                onContextMenu={handleNodeContextMenu} 
+                onConnectionPointMouseDown={handleConnectionPointMouseDown} 
+                depth={0} 
+                isAnyDragging={isAnyDragging} 
+                updateNodeFontSize={updateNodeFontSize}
+                toggleCollapse={toggleNodeCollapse}
+              />
             </div>
           </div>
         ) : (
@@ -2390,7 +2402,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
-  // displayPos に fallback
   const displayPos = (() => {
     if (isMultiDragging && dragPositions[node.id]) {
       const p = dragPositions[node.id];
