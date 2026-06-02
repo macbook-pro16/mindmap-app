@@ -47,6 +47,11 @@ export interface YjsNodeData {
   imageWidth?: number;
   imageHeight?: number;
   imageScale?: number;
+  // タスク管理フィールド
+  taskEnabled?: boolean;
+  taskDone?: boolean;
+  taskDueDate?: string;
+  taskPriority?: 'high' | 'medium' | 'low' | null;
 }
 
 export interface YjsEdgeData {
@@ -125,6 +130,11 @@ export interface MindNode {
   imageWidth?: number;
   imageHeight?: number;
   imageScale?: number;
+  // タスク管理フィールド
+  taskEnabled?: boolean;
+  taskDone?: boolean;
+  taskDueDate?: string;
+  taskPriority?: 'high' | 'medium' | 'low' | null;
 }
 
 export interface FlatNode {
@@ -480,6 +490,12 @@ const RefreshIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
   </svg>
 );
+// タスク関連のアイコン追加
+const TaskIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+  </svg>
+);
 
 // --------------------- データ変換ユーティリティ (純粋版) ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -519,6 +535,11 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       imageWidth: data.imageWidth,
       imageHeight: data.imageHeight,
       imageScale: data.imageScale ?? 1.0,
+      // タスクフィールド追加
+      taskEnabled: data.taskEnabled ?? false,
+      taskDone: data.taskDone ?? false,
+      taskDueDate: data.taskDueDate,
+      taskPriority: data.taskPriority ?? null,
       children,
     };
   };
@@ -541,6 +562,11 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     imageWidth: root.imageWidth,
     imageHeight: root.imageHeight,
     imageScale: root.imageScale ?? 1.0,
+    // タスクフィールド追加
+    taskEnabled: root.taskEnabled ?? false,
+    taskDone: root.taskDone ?? false,
+    taskDueDate: root.taskDueDate,
+    taskPriority: root.taskPriority ?? null,
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -805,6 +831,27 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isDirty, setIsDirty] = useState(false);
   const isDirtyRef = useRef(false);
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+
+  // ★ 招待履歴の状態
+  const [inviteHistory, setInviteHistory] = useState<{ invited_email: string; invite_count: number }[]>([]);
+
+  // 招待履歴の取得
+  const fetchInviteHistory = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('user_invite_history')
+      .select('invited_email, invite_count')
+      .eq('inviter_user_id', user.id)
+      .order('invite_count', { ascending: false })
+      .order('last_invited_at', { ascending: false })
+      .limit(10);
+    if (data) setInviteHistory(data);
+  }, [user]);
+
+  // マウント時に招待履歴を取得
+  useEffect(() => {
+    fetchInviteHistory();
+  }, [fetchInviteHistory]);
 
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
@@ -1569,6 +1616,22 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
+  // ★ タスク更新関数
+  const updateNodeTask = useCallback((nodeId: string, taskData: {
+    taskEnabled?: boolean;
+    taskDone?: boolean;
+    taskDueDate?: string;
+    taskPriority?: 'high' | 'medium' | 'low' | null;
+  }) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data) {
+      ydocRef.current?.transact(() => {
+        nodes.set(nodeId, { ...data, ...taskData });
+      });
+    }
+  }, []);
+
   // 修正版 initYjs (リモート更新の処理を分離)
   const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
@@ -1859,12 +1922,54 @@ const MindMapApp = ({ user }: { user: User }) => {
     setInviteMessage(''); 
   }, [roomId, fetchMapMembers]);
 
-  const handleInviteSubmit = useCallback(async () => { if (!inviteEmail.trim() || !mapId) { if (!mapId) setInviteMessage('マップを保存してから招待してください'); return; } setInviteLoading(true); setInviteMessage(''); setInviteLink(''); try { const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() }); if (error) throw error; if (data.status === 'added') { setInviteMessage('招待しました！'); setInviteEmail(''); await fetchMapMembers(); } else if (data.status === 'invited') { const link = `${window.location.origin}?invite=${data.invite_code}`; setInviteLink(link); setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); } } catch (err: unknown) { const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err); setInviteMessage('エラーが発生しました: ' + errorMessage); } finally { setInviteLoading(false); } }, [inviteEmail, mapId, fetchMapMembers]);
+  const handleInviteSubmit = useCallback(async () => { 
+    if (!inviteEmail.trim() || !mapId) { 
+      if (!mapId) setInviteMessage('マップを保存してから招待してください'); 
+      return; 
+    } 
+    setInviteLoading(true); 
+    setInviteMessage(''); 
+    setInviteLink(''); 
+    try { 
+      const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() }); 
+      if (error) throw error; 
+      if (data.status === 'added') { 
+        // 招待成功（直接追加）
+        await supabase
+          .from('user_invite_history')
+          .upsert(
+            { inviter_user_id: user.id, invited_email: inviteEmail.trim(), invite_count: 1, last_invited_at: new Date().toISOString() },
+            { onConflict: 'inviter_user_id,invited_email', ignoreDuplicates: false }
+          );
+        setInviteMessage('招待しました！'); 
+        setInviteEmail(''); 
+        await fetchMapMembers();
+        fetchInviteHistory(); // 履歴更新
+      } else if (data.status === 'invited') { 
+        // 招待リンク生成
+        await supabase
+          .from('user_invite_history')
+          .upsert(
+            { inviter_user_id: user.id, invited_email: inviteEmail.trim(), invite_count: 1, last_invited_at: new Date().toISOString() },
+            { onConflict: 'inviter_user_id,invited_email', ignoreDuplicates: false }
+          );
+        const link = `${window.location.origin}?invite=${data.invite_code}`; 
+        setInviteLink(link); 
+        setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); 
+        fetchInviteHistory(); // 履歴更新
+      } 
+    } catch (err: unknown) { 
+      const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err); 
+      setInviteMessage('エラーが発生しました: ' + errorMessage); 
+    } finally { 
+      setInviteLoading(false); 
+    } 
+  }, [inviteEmail, mapId, fetchMapMembers, user.id, fetchInviteHistory]);
 
   const dragMapItemIndex = useRef<number | null>(null);
   const dragOverMapItemIndex = useRef<number | null>(null);
 
-  // --- マウスイベント ---
+  // --- マウスイベント (変更なし) ---
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
@@ -1915,6 +2020,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, isSpacePressed, images, stickies, outlines, stamps]);
 
+  // 他のマウスハンドラ (handleMouseDownOnImage, handleMouseDownOnSticky, ...) は変更なし
   const handleMouseDownOnImage = useCallback((e: ReactMouseEvent, imageId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const image = images.find((img: ImageData) => img.id === imageId); if (!image) return;
@@ -2142,7 +2248,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     // 現在のマップのメンバーか、マップオーナーか確認
     const isMapMember = mapMembers.some(m => m.user_id === userId);
     const isMapOwner = userId === mapOwnerId;
-    if (!isMapMember && !isMapOwner) return; // このマップに無関係なユーザーは除外
+    if (!isMapMember && !isMapOwner) return;
     participantsMap.set(userId, { 
       user_id: userId, 
       email: state.email || 'Unknown', 
@@ -2200,7 +2306,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       {imageModalUrl && (<div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}><div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}><button onClick={() => setImageModalUrl(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-1 shadow-lg hover:bg-slate-100 transition-colors z-10"><CloseIcon /></button><img src={imageModalUrl} alt="拡大画像" className="max-w-full max-h-[85vh] object-contain rounded" /></div></div>)}
-      {/* ★ 修正2: 共有モーダルに既存メンバー選択UIを追加 */}
+      {/* ★ 共有モーダル (招待履歴対応) */}
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" 
           onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
@@ -2212,27 +2318,34 @@ const MindMapApp = ({ user }: { user: User }) => {
             </div>
             <p className="text-sm text-slate-500 mb-4">Googleアカウントのメールアドレスを入力して、共同編集者を招待します。</p>
             
-            {/* ★ 追加: 既存メンバーの選択肢 */}
-            {mapMembers.filter(m => m.user_id !== user.id).length > 0 && (
+            {/* ★ よく招待するユーザー (招待履歴) */}
+            {inviteHistory.length > 0 && (
               <div className="mb-4">
-                <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">過去に招待したメンバー</p>
+                <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">よく招待するユーザー</p>
                 <div className="flex flex-wrap gap-2">
-                  {mapMembers
-                    .filter(m => m.user_id !== user.id)
-                    .map(m => (
+                  {inviteHistory.map(h => {
+                    const alreadyMember = mapMembers.some(m => m.email === h.invited_email) || h.invited_email === user.email;
+                    return (
                       <button
-                        key={m.user_id}
-                        onClick={() => setInviteEmail(m.email)}
-                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                          inviteEmail === m.email 
-                            ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-semibold' 
-                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600'
+                        key={h.invited_email}
+                        onClick={() => !alreadyMember && setInviteEmail(h.invited_email)}
+                        disabled={alreadyMember}
+                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1 ${
+                          alreadyMember
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-600 cursor-default opacity-70'
+                            : inviteEmail === h.invited_email
+                              ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-semibold'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600'
                         }`}
                       >
-                        {m.email}
+                        {alreadyMember && <span>✓</span>}
+                        {h.invited_email}
+                        {h.invite_count > 1 && !alreadyMember && (
+                          <span className="text-[10px] text-slate-400">×{h.invite_count}</span>
+                        )}
                       </button>
-                    ))
-                  }
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -2454,20 +2567,105 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: '#f8fafc' }}>
               {remoteCursors.map((p: Participant) => (<div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}><svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg><span className="ml-5 text-xs font-bold px-1.5 py-0.5 rounded text-white shadow" style={{ backgroundColor: p.color }}>{getInitial(p.email)}</span></div>))}
               {showFloatingToolbar && floatingToolbarPos && (
-                <div className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5" style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y - floatingToolbarPos.height / 2 - 50, transform: 'translate(-50%, 0)', animation: 'fadeIn 0.15s ease-out' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                  <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
-                  <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="色を変更"><PaletteIcon /></button>
-                  <div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
-                  <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
-                  <div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-rose-900/50 rounded-md text-rose-400 hover:text-rose-300 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
-                  <div className="w-px h-5 bg-slate-600 mx-0.5" />{selectedNodeId !== yRootRef.current && (<button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">{mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}</button>)}
-                  {selectedOutlineId && outlines.find(o => o.id === selectedOutlineId)?.type === 'text' && (
-                    <div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300" title="文字サイズ"><span className="text-xs">Aa</span></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg p-1 z-50">{FONT_SIZES.map(size => (<button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 rounded">{size}px</button>))}</div></div>
+                <>
+                  <div className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5" style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y - floatingToolbarPos.height / 2 - 50, transform: 'translate(-50%, 0)', animation: 'fadeIn 0.15s ease-out' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                    <style>{`@keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
+                    <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="色を変更"><PaletteIcon /></button>
+                    <div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
+                    <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 hover:bg-indigo-900/50 rounded-md text-indigo-300 hover:text-indigo-200 flex items-center gap-1 transition-colors" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
+                    <div className="w-px h-5 bg-slate-600 mx-0.5" /><button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 hover:bg-rose-900/50 rounded-md text-rose-400 hover:text-rose-300 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
+                    <div className="w-px h-5 bg-slate-600 mx-0.5" />{selectedNodeId !== yRootRef.current && (<button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="折りたたみ/展開">{mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}</button>)}
+                    {selectedOutlineId && outlines.find(o => o.id === selectedOutlineId)?.type === 'text' && (
+                      <div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300" title="文字サイズ"><span className="text-xs">Aa</span></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg p-1 z-50">{FONT_SIZES.map(size => (<button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-700 rounded">{size}px</button>))}</div></div>
+                    )}
+                    {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
+                      <><div className="w-px h-5 bg-slate-600 mx-0.5" /><div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更"><ResizeIcon /></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">{IMAGE_SCALE_PRESETS.map(scale => { const percent = Math.round(scale * 100); return (<button key={scale} onClick={() => resizeImageNode(selectedNodeId!, scale)} className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors">{percent}%</button>); })}</div></div></>
+                    )}
+                    {/* ★ タスクボタン */}
+                    <div className="w-px h-5 bg-slate-600 mx-0.5" />
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          const node = mindMap && findNodeById(mindMap, selectedNodeId!);
+                          updateNodeTask(selectedNodeId!, { taskEnabled: !node?.taskEnabled });
+                        }}
+                        className={`p-1.5 rounded-md transition-colors ${
+                          mindMap && findNodeById(mindMap, selectedNodeId!)?.taskEnabled
+                            ? 'bg-indigo-600 text-white'
+                            : 'hover:bg-slate-700 text-slate-300 hover:text-white'
+                        }`}
+                        title="タスク管理"
+                      >
+                        <TaskIcon />
+                      </button>
+                    </div>
+                  </div>
+                  {/* ★ タスク詳細パネル */}
+                  {mindMap && findNodeById(mindMap, selectedNodeId!)?.taskEnabled && (
+                    <div
+                      className="absolute z-[59] bg-white border border-slate-200 rounded-xl shadow-xl p-3 flex flex-col gap-2"
+                      style={{
+                        left: floatingToolbarPos.x,
+                        top: floatingToolbarPos.y - floatingToolbarPos.height / 2 + 10,
+                        transform: 'translate(-50%, 0)',
+                        minWidth: '220px',
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                    >
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">タスク設定</div>
+                      {/* 完了チェック */}
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!findNodeById(mindMap, selectedNodeId!)?.taskDone}
+                          onChange={e => updateNodeTask(selectedNodeId!, { taskDone: e.target.checked })}
+                          className="w-4 h-4 rounded accent-emerald-500"
+                        />
+                        <span className="text-sm text-slate-700">完了</span>
+                      </label>
+                      {/* 優先度 */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 w-12">優先度</span>
+                        <div className="flex gap-1">
+                          {(['high', 'medium', 'low'] as const).map(p => (
+                            <button
+                              key={p}
+                              onClick={() => updateNodeTask(selectedNodeId!, {
+                                taskPriority: findNodeById(mindMap, selectedNodeId!)?.taskPriority === p ? null : p
+                              })}
+                              className={`text-[10px] px-2 py-0.5 rounded font-bold border transition-colors ${
+                                findNodeById(mindMap, selectedNodeId!)?.taskPriority === p
+                                  ? p === 'high' ? 'bg-rose-500 text-white border-rose-500'
+                                    : p === 'medium' ? 'bg-amber-500 text-white border-amber-500'
+                                    : 'bg-slate-500 text-white border-slate-500'
+                                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+                              }`}
+                            >
+                              {p === 'high' ? '高' : p === 'medium' ? '中' : '低'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* 期限 */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 w-12">期限</span>
+                        <input
+                          type="date"
+                          value={findNodeById(mindMap, selectedNodeId!)?.taskDueDate || ''}
+                          onChange={e => updateNodeTask(selectedNodeId!, { taskDueDate: e.target.value || undefined })}
+                          className="text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 text-slate-700"
+                        />
+                        {findNodeById(mindMap, selectedNodeId!)?.taskDueDate && (
+                          <button
+                            onClick={() => updateNodeTask(selectedNodeId!, { taskDueDate: undefined })}
+                            className="text-[10px] text-slate-400 hover:text-rose-500"
+                          >✕</button>
+                        )}
+                      </div>
+                    </div>
                   )}
-                  {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
-                    <><div className="w-px h-5 bg-slate-600 mx-0.5" /><div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更"><ResizeIcon /></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">{IMAGE_SCALE_PRESETS.map(scale => { const percent = Math.round(scale * 100); return (<button key={scale} onClick={() => resizeImageNode(selectedNodeId!, scale)} className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors">{percent}%</button>); })}</div></div></>
-                  )}
-                </div>
+                </>
               )}
               {outlines.map((outline: OutlineData) => { const isEditing = editingOutlineId === outline.id; const isSelected = selectedOutlineIds.includes(outline.id); const fontSize = outline.fontSize ?? NODE_DEFAULT_FONT_SIZE; return (<div key={outline.id} className={`absolute cursor-move transition-shadow group ${isSelected ? 'ring-2 ring-indigo-500/50 shadow-md' : 'hover:ring-2 hover:ring-slate-300/50'} ${outline.type === 'text' ? '' : 'bg-transparent'}`} style={{ left: outline.x, top: outline.y, width: outline.width, height: outline.height, zIndex: outline.zIndex ?? 4, borderRadius: outline.type === 'circle' ? '50%' : '0' }} onMouseDown={(e) => handleMouseDownOnOutline(e, outline.id)} onContextMenu={(e) => handleOutlineContextMenu(e, outline.id)} onDoubleClick={(e) => { e.stopPropagation(); if (outline.type === 'text') setEditingOutlineId(outline.id); }} onClick={(e) => handleOutlineClick(e, outline.id)}>{outline.type === 'rectangle' && (<div className="w-full h-full border-4 rounded" style={{ borderColor: outline.color }}></div>)}{outline.type === 'circle' && (<div className="w-full h-full border-4 rounded-full" style={{ borderColor: outline.color }}></div>)}{outline.type === 'triangle' && (<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none"><polygon points="50,0 100,100 0,100" fill="none" stroke={outline.color} strokeWidth="4" vectorEffect="non-scaling-stroke" /></svg>)}{outline.type === 'text' && (<div className="w-full h-full flex items-start">{isEditing ? (<textarea autoFocus className="w-full h-full resize-none bg-transparent border-none outline-none font-bold text-lg pointer-events-auto" style={{ color: outline.color, fontSize }} defaultValue={outline.text} onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateOutlineText(outline.id, trimmed || 'テキスト'); setEditingOutlineId(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEditingOutlineId(null); }} onMouseDown={(e) => e.stopPropagation()} />) : (<div className="w-full h-full whitespace-pre-wrap overflow-auto font-bold text-lg cursor-text select-none pointer-events-none" style={{ color: outline.color, fontSize }}>{outline.text}</div>)}</div>)}{isSelected && outline.type !== 'text' && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (<div className="absolute top-2 right-2 flex gap-1 pointer-events-auto"><button onClick={(e) => { e.stopPropagation(); setShowColorPalette({ outlineId: outline.id, x: window.innerWidth / 2, y: window.innerHeight / 2 }); }} className="p-1 hover:bg-slate-200/50 rounded text-slate-500"><PaletteIcon /></button></div>)}{isSelected && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'se')} /></>)}</div>); })}
               {images.map((image: ImageData) => { const isSelected = selectedImageIds.includes(image.id); return (<div key={image.id} className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${isSelected ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-transparent shadow-md hover:shadow-lg'}`} style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: image.zIndex ?? 6 }} onMouseDown={(e) => handleMouseDownOnImage(e, image.id)} onContextMenu={(e) => handleImageContextMenu(e, image.id)} onClick={(e) => handleImageClick(e, image.id)}><img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />{isSelected && selectedImageIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'se')} /></>)}</div>); })}
@@ -2506,6 +2704,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 isAnyDragging={isAnyDragging} 
                 updateNodeFontSize={updateNodeFontSize}
                 toggleCollapse={toggleNodeCollapse}
+                updateNodeTask={updateNodeTask}
               />
             </div>
           </div>
@@ -2546,9 +2745,15 @@ interface RecursiveNodeProps {
   isAnyDragging: boolean;
   updateNodeFontSize: (nodeId: string, fontSize: number) => void;
   toggleCollapse: (nodeId: string) => void;
+  updateNodeTask: (nodeId: string, taskData: {
+    taskEnabled?: boolean;
+    taskDone?: boolean;
+    taskDueDate?: string;
+    taskPriority?: 'high' | 'medium' | 'low' | null;
+  }) => void;
 }
 
-const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse }: RecursiveNodeProps) => {
+const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
   const isEditing = editingNodeId === node.id;
@@ -2562,6 +2767,10 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     const scale = node.imageScale ?? 1.0;
     nodeWidth = node.imageWidth * scale;
     nodeHeight = node.imageHeight * scale;
+  }
+  // タスクが有効で画像ノードでない場合、高さを確保
+  if (node.taskEnabled && !node.imageUrl) {
+    nodeHeight = Math.max(nodeHeight, 72);
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
@@ -2608,7 +2817,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   return (
     <>
       <div
-        className={`absolute flex items-center justify-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
+        className={`absolute flex flex-col items-center justify-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
         style={{
           left: displayPos.x - nodeWidth/2, top: displayPos.y - nodeHeight/2,
           width: nodeWidth, height: nodeHeight, zIndex: node.zIndex ?? (10 + depth),
@@ -2632,13 +2841,63 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
           </div>
         ) : (
-          <>
+          <div className="flex flex-col items-center justify-center w-full h-full relative">
             {isEditing ? (
-              <input ref={inputRef} className={`w-full h-full bg-transparent text-center outline-none border-none focus:ring-0`} style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+              <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
             ) : (
-              <span className="whitespace-nowrap" style={{ color: node.textColor || '#1e293b', fontSize }}>{node.text}</span>
+              <span
+                className="whitespace-nowrap"
+                style={{
+                  color: node.textColor || '#1e293b',
+                  fontSize,
+                  textDecoration: node.taskDone ? 'line-through' : 'none',
+                  opacity: node.taskDone ? 0.6 : 1,
+                }}
+              >
+                {node.text}
+              </span>
             )}
-          </>
+            {/* ★ タスクステータスバッジ */}
+            {node.taskEnabled && (
+              <div className="absolute bottom-1 left-2 right-2 flex items-center gap-1.5 overflow-hidden">
+                <div
+                  className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
+                    node.taskDone
+                      ? 'bg-emerald-500 border-emerald-500'
+                      : 'border-slate-400 hover:border-emerald-400'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateNodeTask(node.id, { taskDone: !node.taskDone });
+                  }}
+                >
+                  {node.taskDone && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                {node.taskPriority && (
+                  <span className={`text-[9px] px-1 rounded font-bold flex-shrink-0 ${
+                    node.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
+                    node.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
+                    'bg-slate-100 text-slate-500'
+                  }`}>
+                    {node.taskPriority === 'high' ? '高' : node.taskPriority === 'medium' ? '中' : '低'}
+                  </span>
+                )}
+                {node.taskDueDate && (
+                  <span className={`text-[9px] flex-shrink-0 ${
+                    new Date(node.taskDueDate) < new Date() && !node.taskDone
+                      ? 'text-rose-600 font-bold'
+                      : 'text-slate-500'
+                  }`}>
+                    {new Date(node.taskDueDate).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         )}
         {remoteEditors.length > 0 && (
           <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
@@ -2710,7 +2969,8 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           depth={depth+1} 
           isAnyDragging={isAnyDragging} 
           updateNodeFontSize={updateNodeFontSize}
-          toggleCollapse={toggleCollapse} 
+          toggleCollapse={toggleCollapse}
+          updateNodeTask={updateNodeTask}
         />
       ))}
     </>
