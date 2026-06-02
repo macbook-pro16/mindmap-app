@@ -2099,7 +2099,28 @@ const MindMapApp = ({ user }: { user: User }) => {
   const canvasScrollClass = `w-full h-full overflow-auto relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
-
+    const flatNodes = mindMap ? flattenTree(mindMap) : [];
+  const edgeLines: { id: string; pathD: string; selected: boolean; arrow: string; sourceX: number; sourceY: number; targetX: number; targetY: number }[] = [];
+  if (mindMap) {
+    for (const edge of edges) {
+      const sourcePos = getNodeDisplayPos(edge.sourceNodeId, mindMap, dragPositions, draggingNodeId);
+      const targetPos = getNodeDisplayPos(edge.targetNodeId, mindMap, dragPositions, draggingNodeId);
+      if (!sourcePos || !targetPos) continue;
+      const startPt = getConnectionPoint(sourcePos.x, sourcePos.y, edge.sourcePoint, sourcePos.width, sourcePos.height);
+      const endPt = getConnectionPoint(targetPos.x, targetPos.y, edge.targetPoint, targetPos.width, targetPos.height);
+      const pathD = getEdgePath(startPt, endPt, edge.sourcePoint, edge.targetPoint, edgeStyle);
+      edgeLines.push({
+        id: edge.id,
+        pathD,
+        selected: selectedEdgeId === edge.id,
+        arrow: edge.arrow || 'none',
+        sourceX: startPt.x,
+        sourceY: startPt.y,
+        targetX: endPt.x,
+        targetY: endPt.y
+      });
+    }
+  }
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`
