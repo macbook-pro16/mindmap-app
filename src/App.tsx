@@ -453,6 +453,12 @@ const AlignHorizontalIcon = () => (
     <circle cx="17" cy="6" r="2" strokeWidth={2} />
   </svg>
 );
+// ★追加：更新通知アイコン
+const RefreshIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+  </svg>
+);
 
 // --------------------- データ変換ユーティリティ (純粋版) ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -763,6 +769,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
     return true;
   });
+
+  // ★追加：リモート更新通知のステート
+  const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
+  const remoteUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
@@ -1658,11 +1668,17 @@ const MindMapApp = ({ user }: { user: User }) => {
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
-    // ★ 修正2: 受信側サニタイザーを削除（座標の正当性判断はYjsに委ねる）
+    // ★ 修正2: 受信側サニタイザーを削除 + 更新通知を追加
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
       const update = base64ToUint8Array(msg.payload.update);
       Y.applyUpdate(ydoc, update, 'supabase');
       // サニタイズは行わない
+      // リモート更新があったことを通知
+      setHasRemoteUpdate(true);
+      if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
+      remoteUpdateTimerRef.current = setTimeout(() => {
+        setHasRemoteUpdate(false);
+      }, 5000);
     });
 
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -2119,10 +2135,27 @@ const MindMapApp = ({ user }: { user: User }) => {
   const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
-  // JSX
+  // ★更新通知ボタンの表示
+  const dismissRemoteUpdate = useCallback(() => {
+    setHasRemoteUpdate(false);
+    if (remoteUpdateTimerRef.current) {
+      clearTimeout(remoteUpdateTimerRef.current);
+      remoteUpdateTimerRef.current = null;
+    }
+  }, []);
+
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
-      <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+      <style>{`
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        @keyframes blink-update {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        .animate-blink-update {
+          animation: blink-update 1s ease-in-out infinite;
+        }
+      `}</style>
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       {imageModalUrl && (<div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}><div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}><button onClick={() => setImageModalUrl(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-1 shadow-lg hover:bg-slate-100 transition-colors z-10"><CloseIcon /></button><img src={imageModalUrl} alt="拡大画像" className="max-w-full max-h-[85vh] object-contain rounded" /></div></div>)}
@@ -2136,6 +2169,19 @@ const MindMapApp = ({ user }: { user: User }) => {
               {a.email} さんが「{a.nodeText}」を編集中です
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ★リモート更新通知ボタン */}
+      {hasRemoteUpdate && (
+        <div className="fixed top-4 right-4 z-[250] animate-blink-update">
+          <button
+            onClick={dismissRemoteUpdate}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-lg font-bold text-sm flex items-center gap-2 transition-all"
+          >
+            <RefreshIcon />
+            更新あり（他ユーザーが編集しました）
+          </button>
         </div>
       )}
 
