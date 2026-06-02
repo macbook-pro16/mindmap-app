@@ -816,7 +816,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  const addLog = (msg: string) => { if (process.env.NODE_ENV !== 'production') console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -1618,7 +1618,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       const rootData = yNodes.get(rootId);
       if (!rootData) return;
 
-      if (process.env.NODE_ENV !== 'production') {
+      if (import.meta.env.DEV) {
         yNodes.forEach((nodeData, nodeId) => {
           if (nodeData.children) {
             nodeData.children.forEach((childId: string) => {
