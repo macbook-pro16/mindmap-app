@@ -863,7 +863,7 @@ const MindMapApp = ({ user }: { user: User }) => {
            selectionRect !== null || isCanvasPanning || isMultiDragging;
   }, [draggingNodeId, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, isCanvasPanning, isMultiDragging]);
 
-  // ★ 自動リロード用の ref とタイマー（isDirty, isAnyDragging より後に定義）
+  // ★ 自動リロード用の ref とタイマー
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDirtyRef = useRef(isDirty);
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
@@ -1695,12 +1695,24 @@ const MindMapApp = ({ user }: { user: User }) => {
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
+    // ★ 修正: リモート更新時に直接リロードタイマーを開始
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
       const update = base64ToUint8Array(msg.payload.update);
       Y.applyUpdate(ydoc, update, 'supabase');
+      // 更新通知を表示
       setHasRemoteUpdate(true);
+      // 条件が満たされていればリロードタイマーを開始
+      if (!isUserInteractingRef.current && !isDirtyRef.current) {
+        if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      }
+      // 通知の自動非表示タイマー
       if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
-      remoteUpdateTimerRef.current = setTimeout(() => { setHasRemoteUpdate(false); }, 5000);
+      remoteUpdateTimerRef.current = setTimeout(() => {
+        setHasRemoteUpdate(false);
+      }, 5000);
     });
 
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
@@ -2079,21 +2091,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       remoteUpdateTimerRef.current = null;
     }
   }, []);
-
-  // ★ 自動リロード：リモート更新時にユーザーが操作中でなければリロード
-  useEffect(() => {
-    if (hasRemoteUpdate) {
-      if (!isUserInteractingRef.current && !isDirtyRef.current) {
-        if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-        reloadTimerRef.current = setTimeout(() => {
-          window.location.reload();
-        }, 3000);
-      }
-    }
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-    };
-  }, [hasRemoteUpdate]);
 
   // 編集中になったら自動リロードをキャンセル
   useEffect(() => {
