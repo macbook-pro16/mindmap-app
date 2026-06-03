@@ -52,9 +52,9 @@ export interface YjsNodeData {
   taskDone?: boolean;
   taskDueDate?: string;
   taskPriority?: 'high' | 'medium' | 'low' | null;
-  taskAssigneeUserId?: string;    // 担当者のユーザーID
-  taskAssigneeEmail?: string;     // 担当者のメールアドレス
-  taskAssigneeAvatarUrl?: string; // 担当者のプロフィール画像URL
+  taskAssigneeUserId?: string;
+  taskAssigneeEmail?: string;
+  taskAssigneeAvatarUrl?: string;
 }
 
 export interface YjsEdgeData {
@@ -138,9 +138,9 @@ export interface MindNode {
   taskDone?: boolean;
   taskDueDate?: string;
   taskPriority?: 'high' | 'medium' | 'low' | null;
-  taskAssigneeUserId?: string;    // 担当者のユーザーID
-  taskAssigneeEmail?: string;     // 担当者のメールアドレス
-  taskAssigneeAvatarUrl?: string; // 担当者のプロフィール画像URL
+  taskAssigneeUserId?: string;
+  taskAssigneeEmail?: string;
+  taskAssigneeAvatarUrl?: string;
 }
 
 export interface FlatNode {
@@ -185,7 +185,7 @@ export interface AwarenessState {
   cursorX?: number;
   cursorY?: number;
   mouseInCanvas?: boolean;
-  avatarUrl?: string; // ★ 追加
+  avatarUrl?: string;
 }
 
 export interface Participant {
@@ -199,7 +199,7 @@ export interface Participant {
   cursorX?: number;
   cursorY?: number;
   mouseInCanvas?: boolean;
-  avatarUrl?: string; // ★ 追加
+  avatarUrl?: string;
 }
 
 export interface ContextMenuInfo {
@@ -947,6 +947,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     collect(rootNode);
     return tasks;
   }, [getFocusedNodeIds]);
+
+  // ★ タスク情報の表示/非表示
+  const [showTaskInfo, setShowTaskInfo] = useState(true);
 
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
@@ -1732,12 +1735,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) {
       ydocRef.current?.transact(() => {
         let updatedData = { ...data, ...taskData };
-        // タスクを有効にする場合、幅も確保する
         if (taskData.taskEnabled === true && !data.imageUrl) {
           const currentWidth = data.width ?? computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
           updatedData.width = Math.max(currentWidth, 160);
         }
-        // タスクを無効にする場合、元のテキストベースの幅に戻す
         if (taskData.taskEnabled === false && !data.imageUrl) {
           updatedData.width = computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
         }
@@ -2735,6 +2736,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <button onClick={() => changeZoom(0.1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors" title="拡大">＋</button>
                 <div className="w-px h-5 bg-slate-200 mx-0.5" />
                 <button onClick={toggleGrid} className={`p-2 rounded-lg transition-colors ${showGrid ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="背景グリッドの表示/非表示"><GridIcon /></button>
+                {/* ★ タスク情報表示/非表示のトグル */}
+                <div className="w-px h-5 bg-slate-200 mx-0.5" />
+                <button onClick={() => setShowTaskInfo(prev => !prev)} className={`p-2 rounded-lg transition-colors ${showTaskInfo ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="タスク情報の表示/非表示">
+                  <TaskIcon />
+                </button>
               </div>
             </div>
           </>
@@ -2952,6 +2958,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 updateNodeTask={updateNodeTask}
                 focusedNodeIds={focusedNodeIds}
                 allParticipants={allParticipants}
+                showTaskInfo={showTaskInfo}
               />
             </div>
             {/* ★ フォーカスパネル */}
@@ -3102,9 +3109,10 @@ interface RecursiveNodeProps {
   }) => void;
   focusedNodeIds?: Set<string>;
   allParticipants: Participant[];
+  showTaskInfo: boolean;
 }
 
-const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask, focusedNodeIds, allParticipants }: RecursiveNodeProps) => {
+const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask, focusedNodeIds, allParticipants, showTaskInfo }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
   const isEditing = editingNodeId === node.id;
@@ -3119,8 +3127,8 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     nodeWidth = node.imageWidth * scale;
     nodeHeight = node.imageHeight * scale;
   }
-  // タスクが有効で画像ノードでない場合、右側にタスクUIの幅を確保、最低サイズも確保
-  if (node.taskEnabled && !node.imageUrl) {
+  // タスクが有効で画像ノードでない場合、最低サイズを確保
+  if (node.taskEnabled && !node.imageUrl && showTaskInfo) {
     nodeHeight = Math.max(nodeHeight, 72);
     const taskMinWidth = 160;
     nodeWidth = Math.max(nodeWidth, taskMinWidth);
@@ -3170,7 +3178,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   return (
     <>
       <div
-        className={`absolute flex flex-row items-stretch rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
+        className={`absolute flex flex-col items-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
         style={{
           left: displayPos.x - nodeWidth/2, top: displayPos.y - nodeHeight/2,
           width: nodeWidth, height: nodeHeight, zIndex: node.zIndex ?? (10 + depth),
@@ -3197,9 +3205,9 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
           </div>
         ) : (
-          <>
-            {/* 左: テキストエリア */}
-            <div className="flex-1 flex items-center justify-center overflow-hidden">
+          <div className="flex flex-col items-center justify-center w-full h-full">
+            {/* テキスト */}
+            <div className="w-full flex items-center justify-center overflow-hidden flex-1">
               {isEditing ? (
                 <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
               ) : (
@@ -3218,47 +3226,41 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
                 </span>
               )}
             </div>
-            {/* 右: タスクUIパネル（taskEnabledの場合のみ表示） */}
-            {node.taskEnabled && (
+            {/* タスクバー（下部） */}
+            {node.taskEnabled && showTaskInfo && (
               <div
-                className="flex flex-col justify-center gap-1 pl-2 border-l border-slate-200 ml-2"
-                style={{ minWidth: 72 }}
+                className="w-full flex items-center justify-center gap-1.5 px-2 pb-1 pt-0.5"
                 onClick={e => e.stopPropagation()}
                 onMouseDown={e => e.stopPropagation()}
               >
-                <div className="flex items-center gap-1">
-                  {/* チェックボックス */}
-                  <div
-                    className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
-                      node.taskDone
-                        ? 'bg-emerald-500 border-emerald-500'
-                        : 'border-slate-400 hover:border-emerald-400'
-                    }`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateNodeTask(node.id, { taskDone: !node.taskDone });
-                    }}
-                  >
-                    {node.taskDone && (
-                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  {/* 優先度バッジ */}
-                  {node.taskPriority && (
-                    <span className={`text-[9px] px-1 rounded font-bold flex-shrink-0 ${
-                      node.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
-                      node.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
-                      'bg-slate-100 text-slate-500'
-                    }`}>
-                      {node.taskPriority === 'high' ? '高' : node.taskPriority === 'medium' ? '中' : '低'}
-                    </span>
+                <div
+                  className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
+                    node.taskDone
+                      ? 'bg-emerald-500 border-emerald-500'
+                      : 'border-slate-400 hover:border-emerald-400'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateNodeTask(node.id, { taskDone: !node.taskDone });
+                  }}
+                >
+                  {node.taskDone && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
                   )}
                 </div>
-                {/* 期限 */}
+                {node.taskPriority && (
+                  <span className={`text-[9px] px-1 rounded font-bold flex-shrink-0 ${
+                    node.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
+                    node.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
+                    'bg-slate-100 text-slate-500'
+                  }`}>
+                    {node.taskPriority === 'high' ? '高' : node.taskPriority === 'medium' ? '中' : '低'}
+                  </span>
+                )}
                 {node.taskDueDate && (
-                  <span className={`text-[9px] leading-tight ${
+                  <span className={`text-[9px] flex-shrink-0 ${
                     new Date(node.taskDueDate) < new Date() && !node.taskDone
                       ? 'text-rose-600 font-bold'
                       : 'text-slate-500'
@@ -3266,19 +3268,18 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
                     {new Date(node.taskDueDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
                   </span>
                 )}
-                {/* 担当者バッジ */}
                 {(node.taskAssigneeAvatarUrl || node.taskAssigneeEmail) && (
-                  <div className="flex justify-end w-full mt-1">
+                  <div className="flex items-center flex-shrink-0 ml-auto">
                     {node.taskAssigneeAvatarUrl ? (
                       <img
                         src={node.taskAssigneeAvatarUrl}
                         alt={node.taskAssigneeEmail}
-                        className="w-5 h-5 rounded-full border border-white shadow-sm object-cover"
+                        className="w-4 h-4 rounded-full border border-white shadow-sm object-cover"
                         title={node.taskAssigneeEmail}
                       />
                     ) : (
                       <div
-                        className="w-5 h-5 rounded-full border border-white shadow-sm flex items-center justify-center text-[8px] font-bold text-white"
+                        className="w-4 h-4 rounded-full border border-white shadow-sm flex items-center justify-center text-[7px] font-bold text-white"
                         style={{ backgroundColor: stringToColor(node.taskAssigneeEmail || '') }}
                         title={node.taskAssigneeEmail}
                       >
@@ -3289,7 +3290,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
                 )}
               </div>
             )}
-          </>
+          </div>
         )}
         {remoteEditors.length > 0 && (
           <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
@@ -3365,6 +3366,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           updateNodeTask={updateNodeTask}
           focusedNodeIds={focusedNodeIds}
           allParticipants={allParticipants}
+          showTaskInfo={showTaskInfo}
         />
       ))}
     </>
