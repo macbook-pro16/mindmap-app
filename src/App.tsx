@@ -431,7 +431,7 @@ const NodeShapeBackground = ({
       const points = `${cx},${pad} ${width - pad},${cy} ${cx},${height - pad} ${pad},${cy}`;
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
-          <polygon points={points} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
+          <polygon points={points} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
         </svg>
       );
     }
@@ -450,7 +450,7 @@ const NodeShapeBackground = ({
       ].map(([x, y]) => `${x},${y}`).join(' ');
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
-          <polygon points={pts} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
+          <polygon points={pts} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
         </svg>
       );
     }
@@ -727,7 +727,6 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       width = computeNodeWidth(data.text, fontSize);
       height = computeNodeHeight(fontSize);
     }
-    // Ensure height is defined if not set by the above (e.g., width was defined but height undefined)
     if (!height && !data.imageUrl) {
       height = computeNodeHeight(fontSize);
     }
@@ -942,6 +941,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const shapeMenuRef = useRef<HTMLDivElement>(null);
   const [mapId, setMapId] = useState<number | null>(null);
   const [mapTitle, setMapTitle] = useState('NEW');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -1057,6 +1057,19 @@ const MindMapApp = ({ user }: { user: User }) => {
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
 
   const [inviteHistory, setInviteHistory] = useState<{ invited_email: string; invite_count: number }[]>([]);
+
+  const [showShapeMenu, setShowShapeMenu] = useState(false);
+
+  useEffect(() => {
+    if (!showShapeMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (shapeMenuRef.current && !shapeMenuRef.current.contains(e.target as Node)) {
+        setShowShapeMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showShapeMenu]);
 
   const fetchInviteHistory = useCallback(async () => {
     if (!user) return;
@@ -3063,42 +3076,45 @@ const MindMapApp = ({ user }: { user: User }) => {
                     {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
                       <><div className="w-px h-5 bg-slate-600 mx-0.5" /><div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更"><ResizeIcon /></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">{IMAGE_SCALE_PRESETS.map(scale => { const percent = Math.round(scale * 100); return (<button key={scale} onClick={() => resizeImageNode(selectedNodeId!, scale)} className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors">{percent}%</button>); })}</div></div></>
                     )}
-                    {/* 形状切り替え */}
+                    {/* 形状切り替え - クリックで開く */}
                     <div className="w-px h-5 bg-slate-600 mx-0.5" />
-                    <div className="relative group">
+                    <div className="relative" ref={shapeMenuRef}>
                       <button
                         className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors"
                         title="ノード形状"
+                        onClick={() => setShowShapeMenu(prev => !prev)}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <polygon points="12,2 22,12 12,22 2,12" strokeWidth={2} strokeLinejoin="round" />
                         </svg>
                       </button>
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-row bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1.5 z-50 gap-1 whitespace-nowrap">
-                        {([
-                          { shape: 'rounded', label: '角丸', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="4" strokeWidth={2} /></svg> },
-                          { shape: 'circle', label: '正円', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" strokeWidth={2} /></svg> },
-                          { shape: 'diamond', label: '菱形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,3 21,12 12,21 3,12" strokeWidth={2} strokeLinejoin="round" /></svg> },
-                          { shape: 'hexagon', label: '六角形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,2 20.66,7 20.66,17 12,22 3.34,17 3.34,7" strokeWidth={2} strokeLinejoin="round" /></svg> },
-                        ] as const).map(({ shape, label, icon }) => {
-                          const currentShape = mindMap && selectedNodeId ? (findNodeById(mindMap, selectedNodeId)?.nodeShape ?? 'rounded') : 'rounded';
-                          return (
-                            <button
-                              key={shape}
-                              onClick={() => { if (selectedNodeId) { if (selectedNodeIds.length > 1) updateMultipleNodeShapes(selectedNodeIds, shape); else updateNodeShape(selectedNodeId, shape); } }}
-                              title={label}
-                              className={`p-1.5 rounded transition-colors flex flex-col items-center gap-0.5 min-w-[36px] ${
-                                currentShape === shape
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                              }`}
-                            >
-                              {icon}
-                              <span className="text-[8px]">{label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {showShapeMenu && (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 flex flex-row bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1.5 z-50 gap-1 whitespace-nowrap">
+                          {([
+                            { shape: 'rounded', label: '角丸', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="4" strokeWidth={2} /></svg> },
+                            { shape: 'circle', label: '正円', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" strokeWidth={2} /></svg> },
+                            { shape: 'diamond', label: '菱形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,3 21,12 12,21 3,12" strokeWidth={2} strokeLinejoin="round" /></svg> },
+                            { shape: 'hexagon', label: '六角形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,2 20.66,7 20.66,17 12,22 3.34,17 3.34,7" strokeWidth={2} strokeLinejoin="round" /></svg> },
+                          ] as const).map(({ shape, label, icon }) => {
+                            const currentShape = mindMap && selectedNodeId ? (findNodeById(mindMap, selectedNodeId)?.nodeShape ?? 'rounded') : 'rounded';
+                            return (
+                              <button
+                                key={shape}
+                                onClick={() => { if (selectedNodeId) { if (selectedNodeIds.length > 1) updateMultipleNodeShapes(selectedNodeIds, shape); else updateNodeShape(selectedNodeId, shape); } setShowShapeMenu(false); }}
+                                title={label}
+                                className={`p-1.5 rounded transition-colors flex flex-col items-center gap-0.5 min-w-[36px] ${
+                                  currentShape === shape
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                                }`}
+                              >
+                                {icon}
+                                <span className="text-[8px]">{label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div className="w-px h-5 bg-slate-600 mx-0.5" />
                     <div className="relative">
