@@ -314,6 +314,7 @@ const getMeasureCanvas = (): CanvasRenderingContext2D => {
   }
   const ctx = _measureCanvas?.getContext('2d');
   if (ctx) {
+    // デフォルトフォントは computeNodeWidth で上書きされるため、問題ない
     ctx.font = `${NODE_DEFAULT_FONT_SIZE}px 'Inter', 'Noto Sans JP', sans-serif`;
     return ctx;
   }
@@ -326,7 +327,7 @@ const computeNodeWidth = (text: string, fontSize: number = NODE_DEFAULT_FONT_SIZ
   if (ctx.measureText) {
     ctx.font = `bold ${fontSize}px 'Inter', 'Noto Sans JP', sans-serif`;
     const metrics = ctx.measureText(text);
-    return Math.max(NODE_MIN_WIDTH, metrics.width + NODE_PADDING_HORIZONTAL);
+    return Math.max(NODE_MIN_WIDTH, Math.ceil(metrics.width) + NODE_PADDING_HORIZONTAL);
   }
   return NODE_MIN_WIDTH;
 };
@@ -515,6 +516,8 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       height = IMAGE_NODE_MAX_INITIAL_SIZE;
     } else if (!width) {
       width = computeNodeWidth(data.text, fontSize);
+      // タスクが有効な場合はタスクUI幅を加算
+      if (data.taskEnabled) width += 84;
       height = NODE_HEIGHT;
     }
     if (!width || width <= 0) width = NODE_MIN_WIDTH;
@@ -622,9 +625,9 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
     w = node.imageWidth * node.imageScale;
     h = node.imageHeight * node.imageScale;
   }
-  // タスクが有効なら高さを実際の表示高さに合わせる（マウス座標計算用）
+  // タスクが有効な場合は右側のタスクパネル幅を加算
   if (node.taskEnabled && !node.imageUrl) {
-    h = Math.max(h, 72);
+    w = w + 84;
   }
   if (nodeId === draggingNodeId && dragPositions[nodeId]) return { x: dragPositions[nodeId].x, y: dragPositions[nodeId].y, width: w, height: h };
   return { x: node.x, y: node.y, width: w, height: h };
@@ -853,7 +856,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) setInviteHistory(data);
   }, [user]);
 
-  // マウント時およびユーザーID変更時に招待履歴を取得
   useEffect(() => {
     fetchInviteHistory();
   }, [fetchInviteHistory]);
@@ -1327,7 +1329,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data && !data.imageUrl) {
       const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
       const newWidth = computeNodeWidth(text, fontSize);
-      nodes.set(nodeId, { ...data, text, width: newWidth });
+      const taskOffset = data.taskEnabled ? 84 : 0;
+      nodes.set(nodeId, { ...data, text, width: newWidth + taskOffset });
     } else if (data) {
       nodes.set(nodeId, { ...data, text });
     }
@@ -1372,7 +1375,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     const data = nodes.get(nodeId);
     if (data && !data.imageUrl) {
       const newWidth = computeNodeWidth(data.text, fontSize);
-      nodes.set(nodeId, { ...data, fontSize, width: newWidth });
+      const taskOffset = data.taskEnabled ? 84 : 0;
+      nodes.set(nodeId, { ...data, fontSize, width: newWidth + taskOffset });
     }
   }, []);
 
@@ -1937,30 +1941,38 @@ const MindMapApp = ({ user }: { user: User }) => {
     try { 
       const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() }); 
       if (error) throw error; 
+      
+      // 招待成功したら履歴を更新
+      const { data: existingHistory } = await supabase
+        .from('user_invite_history')
+        .select('invite_count')
+        .eq('inviter_user_id', user.id)
+        .eq('invited_email', inviteEmail.trim())
+        .single();
+
+      const newCount = (existingHistory?.invite_count ?? 0) + 1;
+
+      await supabase
+        .from('user_invite_history')
+        .upsert(
+          {
+            inviter_user_id: user.id,
+            invited_email: inviteEmail.trim(),
+            invite_count: newCount,
+            last_invited_at: new Date().toISOString()
+          },
+          { onConflict: 'inviter_user_id,invited_email' }
+        );
+      await fetchInviteHistory();
+
       if (data.status === 'added') { 
-        // 招待成功（直接追加）
-        await supabase
-          .from('user_invite_history')
-          .upsert(
-            { inviter_user_id: user.id, invited_email: inviteEmail.trim(), invite_count: 1, last_invited_at: new Date().toISOString() },
-            { onConflict: 'inviter_user_id,invited_email', ignoreDuplicates: false }
-          );
         setInviteMessage('招待しました！'); 
         setInviteEmail(''); 
         await fetchMapMembers();
-        fetchInviteHistory(); // 履歴更新
       } else if (data.status === 'invited') { 
-        // 招待リンク生成
-        await supabase
-          .from('user_invite_history')
-          .upsert(
-            { inviter_user_id: user.id, invited_email: inviteEmail.trim(), invite_count: 1, last_invited_at: new Date().toISOString() },
-            { onConflict: 'inviter_user_id,invited_email', ignoreDuplicates: false }
-          );
         const link = `${window.location.origin}?invite=${data.invite_code}`; 
         setInviteLink(link); 
         setInviteMessage('招待リンクを生成しました。以下のリンクを共有してください。'); 
-        fetchInviteHistory(); // 履歴更新
       } 
     } catch (err: unknown) { 
       const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err) ? (err as any).message : String(err); 
@@ -2327,11 +2339,18 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">よく招待するユーザー</p>
                 <div className="flex flex-wrap gap-2">
                   {inviteHistory.map(h => {
-                    const alreadyMember = mapMembers.some(m => m.email === h.invited_email) || h.invited_email === user.email;
+                    const alreadyMember = mapMembers.some(m => m.email.toLowerCase() === h.invited_email.toLowerCase()) || h.invited_email.toLowerCase() === user.email?.toLowerCase();
                     return (
                       <button
                         key={h.invited_email}
-                        onClick={() => !alreadyMember && setInviteEmail(h.invited_email)}
+                        onClick={() => {
+                          if (!alreadyMember) {
+                            setInviteEmail(h.invited_email);
+                            setTimeout(() => {
+                              document.querySelector<HTMLInputElement>('input[type="email"]')?.focus();
+                            }, 0);
+                          }
+                        }}
                         disabled={alreadyMember}
                         className={`text-xs px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1 ${
                           alreadyMember
@@ -2355,7 +2374,8 @@ const MindMapApp = ({ user }: { user: User }) => {
 
             <div className="flex gap-2 mb-3">
               <input 
-                type="email" 
+                type="email"
+                autoFocus
                 value={inviteEmail} 
                 onChange={(e) => setInviteEmail(e.target.value)} 
                 placeholder="colleague@example.com" 
@@ -2771,9 +2791,10 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     nodeWidth = node.imageWidth * scale;
     nodeHeight = node.imageHeight * scale;
   }
-  // タスクが有効で画像ノードでない場合、高さを確保
+  // タスクが有効で画像ノードでない場合、右側にタスクUIの幅を確保
   if (node.taskEnabled && !node.imageUrl) {
-    nodeHeight = Math.max(nodeHeight, 72);
+    nodeWidth = nodeWidth + 84;
+    nodeHeight = Math.max(nodeHeight, NODE_HEIGHT);
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
@@ -2820,7 +2841,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   return (
     <>
       <div
-        className={`absolute flex flex-col items-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
+        className={`absolute flex flex-row items-stretch rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
         style={{
           left: displayPos.x - nodeWidth/2, top: displayPos.y - nodeHeight/2,
           width: nodeWidth, height: nodeHeight, zIndex: node.zIndex ?? (10 + depth),
@@ -2844,65 +2865,78 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
           </div>
         ) : (
-          <div className="flex flex-col items-center w-full h-full">
-            <div className="flex-1 flex items-center justify-center w-full overflow-hidden">
+          <>
+            {/* 左: テキストエリア */}
+            <div className="flex-1 flex items-center justify-center overflow-hidden">
               {isEditing ? (
                 <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
               ) : (
                 <span
-                  className="whitespace-nowrap"
+                  className="block w-full text-center"
                   style={{
                     color: node.textColor || '#1e293b',
                     fontSize,
                     textDecoration: node.taskDone ? 'line-through' : 'none',
                     opacity: node.taskDone ? 0.6 : 1,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
                   }}
                 >
                   {node.text}
                 </span>
               )}
             </div>
-            {/* ★ タスクステータスバッジ - 下部固定 */}
+            {/* 右: タスクUIパネル（taskEnabledの場合のみ表示） */}
             {node.taskEnabled && (
-              <div className="flex items-center gap-1.5 overflow-hidden px-2 pb-1 w-full justify-center">
-                <div
-                  className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
-                    node.taskDone
-                      ? 'bg-emerald-500 border-emerald-500'
-                      : 'border-slate-400 hover:border-emerald-400'
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    updateNodeTask(node.id, { taskDone: !node.taskDone });
-                  }}
-                >
-                  {node.taskDone && (
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
+              <div
+                className="flex flex-col justify-center gap-1 pl-2 border-l border-slate-200 ml-2"
+                style={{ minWidth: 72 }}
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-1">
+                  {/* チェックボックス */}
+                  <div
+                    className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
+                      node.taskDone
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : 'border-slate-400 hover:border-emerald-400'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateNodeTask(node.id, { taskDone: !node.taskDone });
+                    }}
+                  >
+                    {node.taskDone && (
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  {/* 優先度バッジ */}
+                  {node.taskPriority && (
+                    <span className={`text-[9px] px-1 rounded font-bold flex-shrink-0 ${
+                      node.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
+                      node.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
+                      'bg-slate-100 text-slate-500'
+                    }`}>
+                      {node.taskPriority === 'high' ? '高' : node.taskPriority === 'medium' ? '中' : '低'}
+                    </span>
                   )}
                 </div>
-                {node.taskPriority && (
-                  <span className={`text-[9px] px-1 rounded font-bold flex-shrink-0 ${
-                    node.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
-                    node.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
-                    'bg-slate-100 text-slate-500'
-                  }`}>
-                    {node.taskPriority === 'high' ? '高' : node.taskPriority === 'medium' ? '中' : '低'}
-                  </span>
-                )}
+                {/* 期限 */}
                 {node.taskDueDate && (
-                  <span className={`text-[9px] flex-shrink-0 ${
+                  <span className={`text-[9px] leading-tight ${
                     new Date(node.taskDueDate) < new Date() && !node.taskDone
                       ? 'text-rose-600 font-bold'
                       : 'text-slate-500'
                   }`}>
-                    {new Date(node.taskDueDate).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                    {new Date(node.taskDueDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
                   </span>
                 )}
               </div>
             )}
-          </div>
+          </>
         )}
         {remoteEditors.length > 0 && (
           <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
