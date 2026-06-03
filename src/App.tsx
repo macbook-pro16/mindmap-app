@@ -52,7 +52,9 @@ export interface YjsNodeData {
   taskDone?: boolean;
   taskDueDate?: string;
   taskPriority?: 'high' | 'medium' | 'low' | null;
-  taskAssignee?: string; // 担当者メールアドレス
+  taskAssigneeUserId?: string;    // 担当者のユーザーID
+  taskAssigneeEmail?: string;     // 担当者のメールアドレス
+  taskAssigneeAvatarUrl?: string; // 担当者のプロフィール画像URL
 }
 
 export interface YjsEdgeData {
@@ -136,7 +138,9 @@ export interface MindNode {
   taskDone?: boolean;
   taskDueDate?: string;
   taskPriority?: 'high' | 'medium' | 'low' | null;
-  taskAssignee?: string; // 担当者
+  taskAssigneeUserId?: string;    // 担当者のユーザーID
+  taskAssigneeEmail?: string;     // 担当者のメールアドレス
+  taskAssigneeAvatarUrl?: string; // 担当者のプロフィール画像URL
 }
 
 export interface FlatNode {
@@ -181,6 +185,7 @@ export interface AwarenessState {
   cursorX?: number;
   cursorY?: number;
   mouseInCanvas?: boolean;
+  avatarUrl?: string; // ★ 追加
 }
 
 export interface Participant {
@@ -194,6 +199,7 @@ export interface Participant {
   cursorX?: number;
   cursorY?: number;
   mouseInCanvas?: boolean;
+  avatarUrl?: string; // ★ 追加
 }
 
 export interface ContextMenuInfo {
@@ -541,9 +547,9 @@ const FocusTaskCard = ({ task, done = false, onClick }: { task: MindNode; done?:
               {new Date(task.taskDueDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
             </span>
           )}
-          {task.taskAssignee && (
+          {task.taskAssigneeEmail && (
             <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[80px]">
-              {task.taskAssignee.split('@')[0]}
+              {task.taskAssigneeEmail.split('@')[0]}
             </span>
           )}
         </div>
@@ -571,7 +577,6 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       height = IMAGE_NODE_MAX_INITIAL_SIZE;
     } else if (!width) {
       width = computeNodeWidth(data.text, fontSize);
-      // タスクが有効な場合はタスクUI幅を加算
       if (data.taskEnabled) width += 84;
       height = computeNodeHeight(fontSize);
     }
@@ -596,7 +601,9 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       taskDone: data.taskDone ?? false,
       taskDueDate: data.taskDueDate,
       taskPriority: data.taskPriority ?? null,
-      taskAssignee: data.taskAssignee,
+      taskAssigneeUserId: data.taskAssigneeUserId,
+      taskAssigneeEmail: data.taskAssigneeEmail,
+      taskAssigneeAvatarUrl: data.taskAssigneeAvatarUrl,
       children,
     };
   };
@@ -623,7 +630,9 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     taskDone: root.taskDone ?? false,
     taskDueDate: root.taskDueDate,
     taskPriority: root.taskPriority ?? null,
-    taskAssignee: root.taskAssignee,
+    taskAssigneeUserId: root.taskAssigneeUserId,
+    taskAssigneeEmail: root.taskAssigneeEmail,
+    taskAssigneeAvatarUrl: root.taskAssigneeAvatarUrl,
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -680,7 +689,6 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
     w = node.imageWidth * node.imageScale;
     h = node.imageHeight * node.imageScale;
   }
-  // タスクが有効な場合は右側のタスクパネル幅を加算
   if (node.taskEnabled && !node.imageUrl) {
     w = w + 84;
   }
@@ -1709,19 +1717,31 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ タスク更新関数 (taskAssignee 追加)
+  // ★ タスク更新関数（タスク有効/無効時の幅調整を含む、assigneeフィールド対応）
   const updateNodeTask = useCallback((nodeId: string, taskData: {
     taskEnabled?: boolean;
     taskDone?: boolean;
     taskDueDate?: string;
     taskPriority?: 'high' | 'medium' | 'low' | null;
-    taskAssignee?: string;
+    taskAssigneeUserId?: string;
+    taskAssigneeEmail?: string;
+    taskAssigneeAvatarUrl?: string;
   }) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
     if (data) {
       ydocRef.current?.transact(() => {
-        nodes.set(nodeId, { ...data, ...taskData });
+        let updatedData = { ...data, ...taskData };
+        // タスクを有効にする場合、幅も確保する
+        if (taskData.taskEnabled === true && !data.imageUrl) {
+          const currentWidth = data.width ?? computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
+          updatedData.width = Math.max(currentWidth, 160);
+        }
+        // タスクを無効にする場合、元のテキストベースの幅に戻す
+        if (taskData.taskEnabled === false && !data.imageUrl) {
+          updatedData.width = computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
+        }
+        nodes.set(nodeId, updatedData);
       });
     }
   }, []);
@@ -1731,7 +1751,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
     ydocRef.current?.destroy(); if (undoManagerRef.current) { undoManagerRef.current.destroy(); undoManagerRef.current = null; }
-    // ★ 修正1: マップ切り替え時にawarenessStatesをリセット
     setAwarenessStates({});
     setConnectionStatus('接続中...'); setCanUndo(false); setCanRedo(false); setIsDirty(false);
     
@@ -1855,18 +1874,16 @@ const MindMapApp = ({ user }: { user: User }) => {
     const channel = supabase.channel(`map-${room}`, { config: { broadcast: { ack: false } } });
     ydoc.on('update', (update: Uint8Array, origin: string) => {
       if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${room}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydoc))); } catch(e) {} }
-      // ★ 修正: supabase/local からの更新はisDirtyにしない
       if (origin === 'supabase' || origin === 'local') return;
       setIsDirty(true);
       channel.send({ type: 'broadcast', event: 'yjs-update', payload: { update: uint8ArrayToBase64(update) } });
     });
     
-    // リモート更新受信 → フラグを立てるだけにする
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
       const update = base64ToUint8Array(msg.payload.update);
       Y.applyUpdate(ydoc, update, 'supabase');
       setHasRemoteUpdate(true);
-      setRemoteUpdateReceived(true);  // 自動リロード用フラグ
+      setRemoteUpdateReceived(true);
       if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
       remoteUpdateTimerRef.current = setTimeout(() => {
         setHasRemoteUpdate(false);
@@ -1891,7 +1908,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     channel.subscribe((status: string, err?: Error) => {
       if (status === 'SUBSCRIBED') {
         setConnectionStatus('接続済み');
-        // 再接続時にも差分同期を要求する
         channel.send({
           type: 'broadcast',
           event: 'sync-step-1',
@@ -1902,7 +1918,16 @@ const MindMapApp = ({ user }: { user: User }) => {
       else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト');
       else setConnectionStatus('接続中...');
       if (err) console.error('Supabase Error:', err);
-      if (status === 'SUBSCRIBED') { channel.send({ type: 'broadcast', event: 'sync-step-1', payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) } }); broadcastAwareness(channel, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }
+      if (status === 'SUBSCRIBED') { 
+        channel.send({ type: 'broadcast', event: 'sync-step-1', payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) } }); 
+        broadcastAwareness(channel, myUserId, { 
+          email: myEmail, 
+          color: myColor, 
+          selectedNodeId: selectedNodeIds[0] || null, 
+          editingNodeId,
+          avatarUrl: user.user_metadata?.avatar_url ?? undefined,
+        }); 
+      }
     });
     
     channelRef.current = channel; setRoomId(room); return channel;
@@ -1931,12 +1956,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  // ★ 自動リロード用 useEffect（リモート更新フラグを監視）
   useEffect(() => {
     if (!remoteUpdateReceived) return;
     setRemoteUpdateReceived(false);
     const isUserInteracting = isAnyDragging || editingNodeId !== null || editingStickyId !== null || editingOutlineId !== null || editingMapId !== null || drawingEdge !== null;
-    // isDirty の代わりに isDirtyRef を参照する
     if (!isUserInteracting && !isDirtyRef.current) {
       if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
       reloadTimerRef.current = setTimeout(() => {
@@ -1995,9 +2018,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const initialScrollDone = useRef(false);
   useEffect(() => { if (mindMap && !initialScrollDone.current) { requestAnimationFrame(() => { scrollToHome(); initialScrollDone.current = true; }); } }, [mindMap, scrollToHome]);
 
-  useEffect(() => { const container = scrollContainerRef.current; if (!container || !channelRef.current) return; const handleMouseMove = (e: MouseEvent) => { if (cursorBroadcastTimerRef.current) return; cursorBroadcastTimerRef.current = window.setTimeout(() => { cursorBroadcastTimerRef.current = null; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); broadcastAwareness(channelRef.current!, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId, cursorX: coords.x, cursorY: coords.y, mouseInCanvas: true }); }, 50); }; const handleMouseLeave = () => { broadcastAwareness(channelRef.current!, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId, mouseInCanvas: false }); }; container.addEventListener('mousemove', handleMouseMove); container.addEventListener('mouseleave', handleMouseLeave); return () => { container.removeEventListener('mousemove', handleMouseMove); container.removeEventListener('mouseleave', handleMouseLeave); if (cursorBroadcastTimerRef.current) clearTimeout(cursorBroadcastTimerRef.current); }; }, [myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, broadcastAwareness, zoomLevel]);
+  useEffect(() => { const container = scrollContainerRef.current; if (!container || !channelRef.current) return; const handleMouseMove = (e: MouseEvent) => { if (cursorBroadcastTimerRef.current) return; cursorBroadcastTimerRef.current = window.setTimeout(() => { cursorBroadcastTimerRef.current = null; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); broadcastAwareness(channelRef.current!, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId, cursorX: coords.x, cursorY: coords.y, mouseInCanvas: true, avatarUrl: user.user_metadata?.avatar_url ?? undefined }); }, 50); }; const handleMouseLeave = () => { broadcastAwareness(channelRef.current!, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId, mouseInCanvas: false, avatarUrl: user.user_metadata?.avatar_url ?? undefined }); }; container.addEventListener('mousemove', handleMouseMove); container.addEventListener('mouseleave', handleMouseLeave); return () => { container.removeEventListener('mousemove', handleMouseMove); container.removeEventListener('mouseleave', handleMouseLeave); if (cursorBroadcastTimerRef.current) clearTimeout(cursorBroadcastTimerRef.current); }; }, [myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, broadcastAwareness, zoomLevel, user.user_metadata?.avatar_url]);
 
-  useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness]);
+  useEffect(() => { if (!channelRef.current || !roomId) return; broadcastAwareness(channelRef.current, myUserId, { email: myEmail, color: myColor, selectedNodeId: selectedNodeIds[0] || null, editingNodeId, avatarUrl: user.user_metadata?.avatar_url ?? undefined }); }, [selectedNodeIds, editingNodeId, myUserId, myEmail, myColor, roomId, broadcastAwareness, user.user_metadata?.avatar_url]);
 
   const handleSave = useCallback(async () => { if (!yNodesRef.current || !yRootRef.current || !roomId) { alert('保存に必要なデータが不足しています（roomIdが未設定）'); return; } const tree = yMapToTree(yNodesRef.current, yRootRef.current); if (!tree) { alert('マップデータの変換に失敗しました'); return; } setSaveMessage('保存中...'); let resultData; let resultError; if (mapId) { const { data, error } = await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: new Date().toISOString() }).eq('id', mapId).select(); resultData = data; resultError = error; } else { const { data, error } = await supabase.from('maps').insert([{ title: mapTitle, data: tree, room_id: roomId, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }]).select(); resultData = data; resultError = error; } if (resultError) { alert(`保存エラー: ${resultError.message}`); setSaveMessage(`保存に失敗: ${resultError.message}`); return; } if (resultData && resultData.length > 0) { setMapId(resultData[0].id); setMapOwnerId(resultData[0].user_id); setSaveMessage('保存完了'); setIsDirty(false); if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} } setTimeout(() => setSaveMessage(''), 2500); await fetchMaps(); } else { alert('保存に成功しましたが、データが返ってきませんでした'); } }, [mapId, mapTitle, roomId, user.id, user.email, fetchMaps]);
 
@@ -2011,11 +2034,10 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleMapDragEnter = useCallback((_e: DragEvent<HTMLDivElement>, index: number) => { dragOverMapItemIndex.current = index; }, []);
   const handleMapDragEnd = useCallback(async () => { if (dragMapItemIndex.current !== null && dragOverMapItemIndex.current !== null && dragMapItemIndex.current !== dragOverMapItemIndex.current) { const newSavedMaps = [...savedMaps]; const draggedItem = newSavedMaps.splice(dragMapItemIndex.current, 1)[0]; newSavedMaps.splice(dragOverMapItemIndex.current, 0, draggedItem); setSavedMaps(newSavedMaps); try { await Promise.all(newSavedMaps.map((map, index) => supabase.from('maps').update({ sort_order: index }).eq('id', map.id))); } catch (err) { console.error('並び替え保存エラー', err); } } dragMapItemIndex.current = null; dragOverMapItemIndex.current = null; }, [savedMaps]);
 
-  // ★ 共有モーダルを開く前にメンバー情報を更新
   const handleShare = useCallback(() => { 
     if (!roomId) return; 
     fetchMapMembers();
-    fetchInviteHistory(); // モーダル表示時に履歴も再取得
+    fetchInviteHistory();
     setShowInviteModal(true); 
     setInviteLink(''); 
     setInviteMessage(''); 
@@ -2033,7 +2055,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       const { data, error } = await supabase.rpc('create_invitation', { p_map_id: mapId, p_email: inviteEmail.trim() }); 
       if (error) throw error; 
       
-      // 招待成功したら履歴を更新
       const { data: existingHistory } = await supabase
         .from('user_invite_history')
         .select('invite_count')
@@ -2334,10 +2355,22 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 参加者情報の計算
+  // ★ 参加者情報の計算（avatarUrl 付き）
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
-  participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
+  participantsMap.set(myUserId, { 
+    user_id: myUserId, 
+    email: myEmail, 
+    color: myColor, 
+    isOnline: true, 
+    isSelf: true, 
+    selectedNodeId: ownAwareness?.selectedNodeId ?? null, 
+    editingNodeId: ownAwareness?.editingNodeId ?? null, 
+    cursorX: ownAwareness?.cursorX, 
+    cursorY: ownAwareness?.cursorY, 
+    mouseInCanvas: ownAwareness?.mouseInCanvas,
+    avatarUrl: user.user_metadata?.avatar_url ?? undefined,
+  });
   mapMembers.forEach((member) => { 
     if (member.user_id !== myUserId) participantsMap.set(member.user_id, { 
       user_id: member.user_id, 
@@ -2346,7 +2379,8 @@ const MindMapApp = ({ user }: { user: User }) => {
       isOnline: false, 
       isSelf: false, 
       selectedNodeId: null, 
-      editingNodeId: null 
+      editingNodeId: null,
+      avatarUrl: undefined,
     }); 
   });
   Object.entries(awarenessStates).forEach(([userId, state]) => { 
@@ -2364,7 +2398,8 @@ const MindMapApp = ({ user }: { user: User }) => {
       editingNodeId: state.editingNodeId, 
       cursorX: state.cursorX, 
       cursorY: state.cursorY, 
-      mouseInCanvas: state.mouseInCanvas 
+      mouseInCanvas: state.mouseInCanvas,
+      avatarUrl: state.avatarUrl ?? undefined,
     }); 
   });
   const allParticipants = Array.from(participantsMap.values());
@@ -2650,12 +2685,40 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="absolute top-4 right-4 z-40 flex items-center">
               <div className="relative bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
                 <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1 transition-colors" title="参加者一覧">
-                  <div className="flex flex-wrap -space-x-2 max-w-[200px]">{allParticipants.map((p: Participant) => (<div key={p.user_id} className="relative"><div className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }} title={p.email}>{getInitial(p.email)}</div><div className={`absolute -bottom-0.5 right-0 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div></div>))}</div>
+                  <div className="flex flex-wrap -space-x-2 max-w-[200px]">{allParticipants.map((p: Participant) => (
+                    <div key={p.user_id} className="relative">
+                      {p.avatarUrl ? (
+                        <img src={p.avatarUrl} alt={p.email} className="w-8 h-8 rounded-full border-2 border-white shadow-sm object-cover" />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
+                          {getInitial(p.email)}
+                        </div>
+                      )}
+                      <div className={`absolute -bottom-0.5 right-0 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                    </div>
+                  ))}</div>
                 </button>
                 {showParticipants && (
                   <div className="absolute top-full right-0 mt-3 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 z-50">
                     <h3 className="text-xs font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2 uppercase tracking-wide">メンバー ({allParticipants.length})</h3>
-                    <div className="space-y-3 max-h-64 overflow-y-auto">{allParticipants.map((p: Participant) => (<div key={p.user_id} className="flex items-center gap-3 text-sm"><div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>{getInitial(p.email)}<div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div></div><div className="flex-1 min-w-0"><div className={`text-slate-800 font-medium truncate leading-tight ${!p.isOnline ? 'text-slate-400' : ''}`}>{p.email}{p.isSelf ? ' (You)' : ''}</div><div className="text-slate-400 text-[10px] mt-0.5">{p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}</div></div></div>))}</div>
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {allParticipants.map((p: Participant) => (
+                        <div key={p.user_id} className="flex items-center gap-3 text-sm">
+                          {p.avatarUrl ? (
+                            <img src={p.avatarUrl} alt={p.email} className={`w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} />
+                          ) : (
+                            <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
+                              {getInitial(p.email)}
+                              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-slate-800 font-medium truncate leading-tight ${!p.isOnline ? 'text-slate-400' : ''}`}>{p.email}{p.isSelf ? ' (You)' : ''}</div>
+                            <div className="text-slate-400 text-[10px] mt-0.5">{p.isOnline ? (p.editingNodeId ? '📝 編集中...' : p.selectedNodeId ? '👆 ノード選択中' : '🟢 オンライン') : '⚫ オフライン'}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                     <button onClick={() => setShowParticipants(false)} className="mt-4 text-xs font-medium text-slate-500 hover:text-slate-700 w-full text-center py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">閉じる</button>
                   </div>
                 )}
@@ -2698,7 +2761,18 @@ const MindMapApp = ({ user }: { user: User }) => {
         {mindMap ? (
           <div ref={scrollContainerRef} className={canvasScrollClass + ' hide-scrollbar bg-slate-50'} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop} style={hideScrollbarStyle as React.CSSProperties}>
             <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: '#f8fafc' }}>
-              {remoteCursors.map((p: Participant) => (<div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}><svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg><span className="ml-5 text-xs font-bold px-1.5 py-0.5 rounded text-white shadow" style={{ backgroundColor: p.color }}>{getInitial(p.email)}</span></div>))}
+              {remoteCursors.map((p: Participant) => (
+                <div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}>
+                  {p.avatarUrl ? (
+                    <img src={p.avatarUrl} alt={p.email} className="w-6 h-6 rounded-full border border-white shadow object-cover" />
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill={p.color} stroke="white" strokeWidth="1.5">
+                      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+                    </svg>
+                  )}
+                  <span className="ml-5 text-xs font-bold px-1.5 py-0.5 rounded text-white shadow" style={{ backgroundColor: p.color }}>{getInitial(p.email)}</span>
+                </div>
+              ))}
               {showFloatingToolbar && floatingToolbarPos && (
                 <>
                   <div className="absolute z-[60] bg-slate-800 rounded-lg shadow-xl border border-slate-700 flex items-center p-1.5 gap-1.5" style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y - floatingToolbarPos.height / 2 - 50, transform: 'translate(-50%, 0)', animation: 'fadeIn 0.15s ease-out' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
@@ -2796,21 +2870,43 @@ const MindMapApp = ({ user }: { user: User }) => {
                           >✕</button>
                         )}
                       </div>
-                      {/* ★ 担当者 */}
+                      {/* ★ 担当者選択（参加者アバター一覧） */}
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-500 w-12">担当者</span>
-                        <select
-                          value={findNodeById(mindMap, selectedNodeId!)?.taskAssignee || ''}
-                          onChange={e => updateNodeTask(selectedNodeId!, { taskAssignee: e.target.value || undefined })}
-                          className="text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 text-slate-700 flex-1"
-                        >
-                          <option value="">未割り当て</option>
-                          {allParticipants.map(p => (
-                            <option key={p.user_id} value={p.email}>
-                              {p.email.split('@')[0]}{p.isSelf ? ' (自分)' : ''}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex flex-wrap gap-1">
+                          {allParticipants.map(p => {
+                            const isAssigned = findNodeById(mindMap, selectedNodeId!)?.taskAssigneeUserId === p.user_id;
+                            return (
+                              <button
+                                key={p.user_id}
+                                onClick={() => updateNodeTask(selectedNodeId!, isAssigned
+                                  ? { taskAssigneeUserId: undefined, taskAssigneeEmail: undefined, taskAssigneeAvatarUrl: undefined }
+                                  : { taskAssigneeUserId: p.user_id, taskAssigneeEmail: p.email, taskAssigneeAvatarUrl: p.avatarUrl }
+                                )}
+                                title={p.email}
+                                className={`relative rounded-full transition-all ${isAssigned ? 'ring-2 ring-indigo-500 ring-offset-1' : 'opacity-60 hover:opacity-100'}`}
+                              >
+                                {p.avatarUrl ? (
+                                  <img src={p.avatarUrl} alt={p.email} className="w-7 h-7 rounded-full object-cover" />
+                                ) : (
+                                  <div
+                                    className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                                    style={{ backgroundColor: p.color }}
+                                  >
+                                    {getInitial(p.email)}
+                                  </div>
+                                )}
+                                {isAssigned && (
+                                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-indigo-500 rounded-full border border-white flex items-center justify-center">
+                                    <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -2855,6 +2951,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 toggleCollapse={toggleNodeCollapse}
                 updateNodeTask={updateNodeTask}
                 focusedNodeIds={focusedNodeIds}
+                allParticipants={allParticipants}
               />
             </div>
             {/* ★ フォーカスパネル */}
@@ -2999,12 +3096,15 @@ interface RecursiveNodeProps {
     taskDone?: boolean;
     taskDueDate?: string;
     taskPriority?: 'high' | 'medium' | 'low' | null;
-    taskAssignee?: string;
+    taskAssigneeUserId?: string;
+    taskAssigneeEmail?: string;
+    taskAssigneeAvatarUrl?: string;
   }) => void;
   focusedNodeIds?: Set<string>;
+  allParticipants: Participant[];
 }
 
-const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask, focusedNodeIds }: RecursiveNodeProps) => {
+const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask, focusedNodeIds, allParticipants }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
   const isEditing = editingNodeId === node.id;
@@ -3019,10 +3119,11 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     nodeWidth = node.imageWidth * scale;
     nodeHeight = node.imageHeight * scale;
   }
-  // タスクが有効で画像ノードでない場合、右側にタスクUIの幅を確保
+  // タスクが有効で画像ノードでない場合、右側にタスクUIの幅を確保、最低サイズも確保
   if (node.taskEnabled && !node.imageUrl) {
-    nodeWidth = nodeWidth + 84;
-    nodeHeight = Math.max(nodeHeight, NODE_HEIGHT);
+    nodeHeight = Math.max(nodeHeight, 72);
+    const taskMinWidth = 160;
+    nodeWidth = Math.max(nodeWidth, taskMinWidth);
   }
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
@@ -3166,13 +3267,25 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
                   </span>
                 )}
                 {/* 担当者バッジ */}
-                {node.taskAssignee && (
-                  <span
-                    className="text-[9px] bg-indigo-50 text-indigo-600 px-1 rounded-full font-medium truncate max-w-full leading-tight"
-                    title={node.taskAssignee}
-                  >
-                    {node.taskAssignee.split('@')[0]}
-                  </span>
+                {(node.taskAssigneeAvatarUrl || node.taskAssigneeEmail) && (
+                  <div className="flex justify-end w-full mt-1">
+                    {node.taskAssigneeAvatarUrl ? (
+                      <img
+                        src={node.taskAssigneeAvatarUrl}
+                        alt={node.taskAssigneeEmail}
+                        className="w-5 h-5 rounded-full border border-white shadow-sm object-cover"
+                        title={node.taskAssigneeEmail}
+                      />
+                    ) : (
+                      <div
+                        className="w-5 h-5 rounded-full border border-white shadow-sm flex items-center justify-center text-[8px] font-bold text-white"
+                        style={{ backgroundColor: stringToColor(node.taskAssigneeEmail || '') }}
+                        title={node.taskAssigneeEmail}
+                      >
+                        {getInitial(node.taskAssigneeEmail)}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -3251,6 +3364,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           toggleCollapse={toggleCollapse}
           updateNodeTask={updateNodeTask}
           focusedNodeIds={focusedNodeIds}
+          allParticipants={allParticipants}
         />
       ))}
     </>
