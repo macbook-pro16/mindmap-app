@@ -981,7 +981,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  const addLog = (msg: string) => { if (process.env.NODE_ENV === 'development') console.log(`[MindMap] ${msg}`); };
+  const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
   const [connectionStatus, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
@@ -1826,7 +1826,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       const rootData = yNodes.get(rootId);
       if (!rootData) return;
 
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         yNodes.forEach((nodeData, nodeId) => {
           if (nodeData.children) {
             nodeData.children.forEach((childId: string) => {
@@ -2720,7 +2720,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               <div className="w-px h-6 bg-slate-200 mx-1" />
               <button onClick={() => alignNodes('vertical')} disabled={selectedNodeIds.length < 2} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="垂直に整列"><AlignVerticalIcon /></button>
               <button onClick={() => alignNodes('horizontal')} disabled={selectedNodeIds.length < 2} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" title="水平に整列"><AlignHorizontalIcon /></button>
-              {/* ★ フォーカスボタン（整列アイコンの隣に移動） */}
               <button
                 onClick={() => {
                   if (focusNodeId) {
