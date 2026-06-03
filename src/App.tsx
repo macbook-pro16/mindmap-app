@@ -3566,12 +3566,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   
   const borderColor = isTarget ? '#10b981' : (isSelected ? (isSingleSelected ? '#6366f1' : '#9333ea') : (isEditing ? '#f59e0b' : (node.textColor || '#0ea5e9')));
   
-  // 画像ノードのボーダーカラークラス
-  const imageBorderClasses = node.imageUrl
-    ? (isSelected ? 'border-indigo-600' : (isEditing ? 'border-amber-400' : (isTarget ? 'border-emerald-500' : 'border-slate-300')))
-    : '';
-  const imageBorderStyle = node.imageUrl ? { border: '2px solid', borderColor: isSelected ? '#6366f1' : (isEditing ? '#f59e0b' : (isTarget ? '#10b981' : '#cbd5e1')) } : {};
-  
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
 
   return (
