@@ -52,6 +52,7 @@ export interface YjsNodeData {
   taskDone?: boolean;
   taskDueDate?: string;
   taskPriority?: 'high' | 'medium' | 'low' | null;
+  taskAssignee?: string; // 担当者メールアドレス
 }
 
 export interface YjsEdgeData {
@@ -135,6 +136,7 @@ export interface MindNode {
   taskDone?: boolean;
   taskDueDate?: string;
   taskPriority?: 'high' | 'medium' | 'low' | null;
+  taskAssignee?: string; // 担当者
 }
 
 export interface FlatNode {
@@ -314,7 +316,6 @@ const getMeasureCanvas = (): CanvasRenderingContext2D => {
   }
   const ctx = _measureCanvas?.getContext('2d');
   if (ctx) {
-    // デフォルトフォントは computeNodeWidth で上書きされるため、問題ない
     ctx.font = `${NODE_DEFAULT_FONT_SIZE}px 'Inter', 'Noto Sans JP', sans-serif`;
     return ctx;
   }
@@ -330,6 +331,12 @@ const computeNodeWidth = (text: string, fontSize: number = NODE_DEFAULT_FONT_SIZ
     return Math.max(NODE_MIN_WIDTH, Math.ceil(metrics.width) + NODE_PADDING_HORIZONTAL);
   }
   return NODE_MIN_WIDTH;
+};
+
+const NODE_PADDING_VERTICAL = 24;
+
+const computeNodeHeight = (fontSize: number = NODE_DEFAULT_FONT_SIZE): number => {
+  return Math.max(NODE_HEIGHT, Math.ceil(fontSize * 1.4) + NODE_PADDING_VERTICAL);
 };
 
 // --------------------- 幾何学・座標・描画ユーティリティ ---------------------
@@ -497,6 +504,54 @@ const TaskIcon = () => (
   </svg>
 );
 
+// --------------------- フォーカスタスクカード ---------------------
+const FocusTaskCard = ({ task, done = false, onClick }: { task: MindNode; done?: boolean; onClick: () => void }) => (
+  <button
+    onClick={onClick}
+    className={`w-full text-left p-2.5 rounded-lg border transition-colors hover:bg-slate-50 ${
+      done ? 'border-slate-100 opacity-60' : 'border-slate-200 hover:border-indigo-300'
+    }`}
+  >
+    <div className="flex items-start gap-2">
+      <div className={`w-4 h-4 rounded border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${
+        done ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'
+      }`}>
+        {done && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className={`text-xs font-semibold text-slate-800 truncate ${done ? 'line-through text-slate-400' : ''}`}>
+          {task.text || '（無題）'}
+        </div>
+        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+          {task.taskPriority && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+              task.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
+              task.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
+              'bg-slate-100 text-slate-500'
+            }`}>
+              {task.taskPriority === 'high' ? '高' : task.taskPriority === 'medium' ? '中' : '低'}
+            </span>
+          )}
+          {task.taskDueDate && (
+            <span className={`text-[9px] font-medium ${
+              !done && task.taskDueDate < new Date().toISOString().slice(0, 10)
+                ? 'text-rose-600'
+                : 'text-slate-400'
+            }`}>
+              {new Date(task.taskDueDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
+            </span>
+          )}
+          {task.taskAssignee && (
+            <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[80px]">
+              {task.taskAssignee.split('@')[0]}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  </button>
+);
+
 // --------------------- データ変換ユーティリティ (純粋版) ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
   const convert = (id: string): MindNode | null => {
@@ -518,7 +573,7 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       width = computeNodeWidth(data.text, fontSize);
       // タスクが有効な場合はタスクUI幅を加算
       if (data.taskEnabled) width += 84;
-      height = NODE_HEIGHT;
+      height = computeNodeHeight(fontSize);
     }
     if (!width || width <= 0) width = NODE_MIN_WIDTH;
     if (!height || height <= 0) height = NODE_HEIGHT;
@@ -537,11 +592,11 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       imageWidth: data.imageWidth,
       imageHeight: data.imageHeight,
       imageScale: data.imageScale ?? 1.0,
-      // タスクフィールド追加
       taskEnabled: data.taskEnabled ?? false,
       taskDone: data.taskDone ?? false,
       taskDueDate: data.taskDueDate,
       taskPriority: data.taskPriority ?? null,
+      taskAssignee: data.taskAssignee,
       children,
     };
   };
@@ -564,11 +619,11 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     imageWidth: root.imageWidth,
     imageHeight: root.imageHeight,
     imageScale: root.imageScale ?? 1.0,
-    // タスクフィールド追加
     taskEnabled: root.taskEnabled ?? false,
     taskDone: root.taskDone ?? false,
     taskDueDate: root.taskDueDate,
     taskPriority: root.taskPriority ?? null,
+    taskAssignee: root.taskAssignee,
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -836,10 +891,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const isDirtyRef = useRef(false);
   useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
 
-  // ★ 招待履歴の状態
   const [inviteHistory, setInviteHistory] = useState<{ invited_email: string; invite_count: number }[]>([]);
 
-  // 招待履歴の取得（エラーハンドリング付き）
   const fetchInviteHistory = useCallback(async () => {
     if (!user) return;
     const { data, error } = await supabase
@@ -859,6 +912,33 @@ const MindMapApp = ({ user }: { user: User }) => {
   useEffect(() => {
     fetchInviteHistory();
   }, [fetchInviteHistory]);
+
+  // ★ フォーカスモード
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+
+  const getFocusedNodeIds = useCallback((rootNode: MindNode | null, targetId: string): Set<string> => {
+    const result = new Set<string>();
+    if (!rootNode) return result;
+    const collect = (node: MindNode) => {
+      result.add(node.id);
+      node.children.forEach(collect);
+    };
+    const target = findNodeById(rootNode, targetId);
+    if (target) collect(target);
+    return result;
+  }, []);
+
+  const getFocusedTasks = useCallback((rootNode: MindNode | null, targetId: string) => {
+    const ids = getFocusedNodeIds(rootNode, targetId);
+    const tasks: MindNode[] = [];
+    if (!rootNode) return tasks;
+    const collect = (node: MindNode) => {
+      if (ids.has(node.id) && node.taskEnabled) tasks.push(node);
+      node.children.forEach(collect);
+    };
+    collect(rootNode);
+    return tasks;
+  }, [getFocusedNodeIds]);
 
   const toggleGrid = useCallback(() => {
     setShowGrid(prev => {
@@ -1148,8 +1228,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '新しいトピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    const initialHeight = computeNodeHeight(defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
       nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
     });
     setSelectedNodeIds([childId]);
@@ -1164,8 +1245,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '新しいトピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    const initialHeight = computeNodeHeight(defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
       nodes.set(parentId, { ...parent, children: newChildren });
     });
     setSelectedNodeIds([siblingId]);
@@ -1179,8 +1261,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '新しいトピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    const initialHeight = computeNodeHeight(defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
       const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
     });
     setSelectedNodeIds([newParentId]);
@@ -1204,11 +1287,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       const defaultText = '独立トピック';
       const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
       const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+      const initialHeight = computeNodeHeight(defaultFontSize);
       ydocRef.current?.transact(() => {
         nodes.set(childId, {
           text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true,
           bgColor: '#f8fafc', textColor: '#334155',
-          width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize,
+          width: initialWidth, height: initialHeight, fontSize: defaultFontSize,
           collapsed: false
         });
         const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
@@ -1256,8 +1340,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '独立トピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
+    const initialHeight = computeNodeHeight(defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
       const root = nodes.get(rootId); if (root) {
         const curChildren: string[] = root.children ?? [];
         const targetIndex = curChildren.indexOf(targetId);
@@ -1375,8 +1460,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const data = nodes.get(nodeId);
     if (data && !data.imageUrl) {
       const newWidth = computeNodeWidth(data.text, fontSize);
+      const newHeight = computeNodeHeight(fontSize);
       const taskOffset = data.taskEnabled ? 84 : 0;
-      nodes.set(nodeId, { ...data, fontSize, width: newWidth + taskOffset });
+      nodes.set(nodeId, { ...data, fontSize, width: newWidth + taskOffset, height: newHeight });
     }
   }, []);
 
@@ -1623,12 +1709,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ タスク更新関数
+  // ★ タスク更新関数 (taskAssignee 追加)
   const updateNodeTask = useCallback((nodeId: string, taskData: {
     taskEnabled?: boolean;
     taskDone?: boolean;
     taskDueDate?: string;
     taskPriority?: 'high' | 'medium' | 'low' | null;
+    taskAssignee?: string;
   }) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
@@ -1666,7 +1753,8 @@ const MindMapApp = ({ user }: { user: User }) => {
         const defaultText = '中心テーマ';
         const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
         const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false }); 
+        const initialHeight = computeNodeHeight(defaultFontSize);
+        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false }); 
         yRootRef.current = rootId; 
       }
     });
@@ -1875,6 +1963,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     setMapId(null); setMapTitle('NEW'); setMapMembers([]); setMapOwnerId(null);
     setMindMap(null); setEdges([]); setImages([]); setStickies([]); setOutlines([]); setStamps([]);
     setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
+    setFocusNodeId(null);
   }, []);
 
   const handleNewMap = useCallback(async () => {
@@ -1883,18 +1972,20 @@ const MindMapApp = ({ user }: { user: User }) => {
     if(typeof window !== 'undefined') window.history.replaceState(null, '', `#${newRoom}`);
     const newTitle = 'NEW'; const rootId = crypto.randomUUID(); const defaultText = '中心テーマ'; const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: NODE_HEIGHT, fontSize: defaultFontSize, collapsed: false };
+    const initialHeight = computeNodeHeight(defaultFontSize);
+    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false };
     initYjs(newRoom, initialTree);
     setMapId(null); setMapTitle(newTitle); setMapMembers([]); setMapOwnerId(user.id); setSaveMessage('保存中...');
     const { data, error } = await supabase.from('maps').insert([{ title: newTitle, data: initialTree, room_id: newRoom, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }]).select();
     if (error) { alert(`新規作成エラー: ${error.message}`); setSaveMessage(`作成に失敗: ${error.message}`); return; }
     if (data && data.length > 0) { setMapId(data[0].id); setMapOwnerId(data[0].user_id); setSaveMessage('保存完了'); setIsDirty(false); setTimeout(() => setSaveMessage(''), 2500); await fetchMaps(); }
+    setFocusNodeId(null);
   }, [user.id, user.email, fetchMaps]);
 
   const handleUndo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.undo(); }, []);
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = useCallback(async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); }, [broadcastAwareness, myUserId]);
-  const handleLoadMap = useCallback((map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); if(typeof window !== 'undefined') window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); setMapOwnerId(map.user_id); initYjs(map.room_id, map.data); }, []);
+  const handleLoadMap = useCallback((map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); if(typeof window !== 'undefined') window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); setMapOwnerId(map.user_id); initYjs(map.room_id, map.data); setFocusNodeId(null); }, []);
 
   const inviteAcceptedRef = useRef(false);
   useEffect(() => { const processInvite = async () => { if (inviteAcceptedRef.current || !user) return; const urlParams = new URLSearchParams(window.location.search); const inviteCode = urlParams.get('invite'); if (!inviteCode) return; inviteAcceptedRef.current = true; try { const { data: invitation, error } = await supabase.from('map_invitations').select('*, maps:maps!inner(id, title, room_id, data, user_id, owner_email, updated_at)').eq('invite_code', inviteCode).single(); if (error || !invitation) { alert('招待が無効か、既に削除されています。'); return; } if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) { alert('この招待は別のメールアドレス宛です。'); return; } const { error: memberError } = await supabase.from('map_members').upsert({ map_id: invitation.map_id, user_id: user.id, role: 'editor', email: user.email }, { onConflict: 'map_id,user_id' }); if (memberError) throw memberError; await supabase.from('map_invitations').delete().eq('id', invitation.id); window.history.replaceState(null, '', window.location.pathname); handleLoadMap(invitation.maps); } catch (err) { console.error('招待の受け入れに失敗しました:', err); alert('招待の受け入れに失敗しました。'); } }; processInvite(); }, [user, handleLoadMap]);
@@ -2243,7 +2334,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  // ★ 参加者情報の計算（修正1: awarenessStatesをマップメンバーとオーナーのみにフィルタリング）
+  // ★ 参加者情報の計算
   const ownAwareness = awarenessStates[myUserId];
   const participantsMap = new Map<string, Participant>();
   participantsMap.set(myUserId, { user_id: myUserId, email: myEmail, color: myColor, isOnline: true, isSelf: true, selectedNodeId: ownAwareness?.selectedNodeId ?? null, editingNodeId: ownAwareness?.editingNodeId ?? null, cursorX: ownAwareness?.cursorX, cursorY: ownAwareness?.cursorY, mouseInCanvas: ownAwareness?.mouseInCanvas });
@@ -2260,7 +2351,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   });
   Object.entries(awarenessStates).forEach(([userId, state]) => { 
     if (userId === myUserId || !state) return;
-    // 現在のマップのメンバーか、マップオーナーか確認
     const isMapMember = mapMembers.some(m => m.user_id === userId);
     const isMapOwner = userId === mapOwnerId;
     if (!isMapMember && !isMapOwner) return;
@@ -2306,6 +2396,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }
 
+  const focusedNodeIds = focusNodeId ? getFocusedNodeIds(mindMap, focusNodeId) : undefined;
+
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`
@@ -2321,7 +2413,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
       <input type="file" ref={imageFileInputRef} accept="image/*" className="hidden" />
       {imageModalUrl && (<div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setImageModalUrl(null)}><div className="relative max-w-[90vw] max-h-[90vh] bg-white rounded-xl shadow-2xl p-2" onClick={e => e.stopPropagation()}><button onClick={() => setImageModalUrl(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-1 shadow-lg hover:bg-slate-100 transition-colors z-10"><CloseIcon /></button><img src={imageModalUrl} alt="拡大画像" className="max-w-full max-h-[85vh] object-contain rounded" /></div></div>)}
-      {/* ★ 共有モーダル (招待履歴対応) */}
       {showInviteModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" 
           onClick={() => { setShowInviteModal(false); setInviteMessage(''); setInviteEmail(''); setInviteLink(''); }}>
@@ -2333,7 +2424,6 @@ const MindMapApp = ({ user }: { user: User }) => {
             </div>
             <p className="text-sm text-slate-500 mb-4">Googleアカウントのメールアドレスを入力して、共同編集者を招待します。</p>
             
-            {/* ★ よく招待するユーザー (招待履歴) */}
             {inviteHistory.length > 0 && (
               <div className="mb-4">
                 <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">よく招待するユーザー</p>
@@ -2536,6 +2626,26 @@ const MindMapApp = ({ user }: { user: User }) => {
               <select value={edgeStyle} onChange={e => handleEdgeStyleChange(e.target.value as EdgeStyle)} className="text-[11px] border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 cursor-pointer shadow-sm transition-colors font-medium">
                 <option value="bezier">曲線</option><option value="step">直角</option><option value="straight">直線</option>
               </select>
+              {/* ★ フォーカスボタン */}
+              <div className="w-px h-6 bg-slate-200 mx-0.5" />
+              <button
+                onClick={() => {
+                  if (focusNodeId) {
+                    setFocusNodeId(null);
+                  } else if (selectedNodeId) {
+                    setFocusNodeId(selectedNodeId);
+                  }
+                }}
+                disabled={!selectedNodeId && !focusNodeId}
+                className={`p-2 rounded-lg transition-colors text-sm font-bold ${
+                  focusNodeId
+                    ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
+                    : 'hover:bg-slate-100 text-slate-600 disabled:opacity-40'
+                }`}
+                title={focusNodeId ? 'フォーカス解除' : '選択ノードにフォーカス'}
+              >
+                🎯
+              </button>
             </div>
             <div className="absolute top-4 right-4 z-40 flex items-center">
               <div className="relative bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
@@ -2686,6 +2796,22 @@ const MindMapApp = ({ user }: { user: User }) => {
                           >✕</button>
                         )}
                       </div>
+                      {/* ★ 担当者 */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 w-12">担当者</span>
+                        <select
+                          value={findNodeById(mindMap, selectedNodeId!)?.taskAssignee || ''}
+                          onChange={e => updateNodeTask(selectedNodeId!, { taskAssignee: e.target.value || undefined })}
+                          className="text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 text-slate-700 flex-1"
+                        >
+                          <option value="">未割り当て</option>
+                          {allParticipants.map(p => (
+                            <option key={p.user_id} value={p.email}>
+                              {p.email.split('@')[0]}{p.isSelf ? ' (自分)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   )}
                 </>
@@ -2701,7 +2827,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
                   <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
                 </defs>
-                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; if (Math.abs(dx) > Math.abs(dy)) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; return (<g key={edgeId} className="pointer-events-auto"><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#cbd5e1'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
+                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; if (Math.abs(dx) > Math.abs(dy)) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; const isVisible = !focusedNodeIds || (focusedNodeIds.has(fn.parentId as string) && focusedNodeIds.has(fn.id)); return (<g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#cbd5e1'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
                 {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : '#94a3b8'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-indigo-500' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
                 {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
                 {selectionRect && (<rect x={Math.min(selectionRect.x1, selectionRect.x2)} y={Math.min(selectionRect.y1, selectionRect.y2)} width={Math.abs(selectionRect.x2 - selectionRect.x1)} height={Math.abs(selectionRect.y2 - selectionRect.y1)} fill="rgba(99, 102, 241, 0.15)" stroke="#6366f1" strokeWidth={2} strokeDasharray="6 6" className="rounded-sm" />)}
@@ -2728,8 +2854,108 @@ const MindMapApp = ({ user }: { user: User }) => {
                 updateNodeFontSize={updateNodeFontSize}
                 toggleCollapse={toggleNodeCollapse}
                 updateNodeTask={updateNodeTask}
+                focusedNodeIds={focusedNodeIds}
               />
             </div>
+            {/* ★ フォーカスパネル */}
+            {focusNodeId && mindMap && (() => {
+              const focusNode = findNodeById(mindMap, focusNodeId);
+              const tasks = getFocusedTasks(mindMap, focusNodeId);
+              const today = new Date().toISOString().slice(0, 10);
+
+              const overdueTasks = tasks.filter(t => !t.taskDone && t.taskDueDate && t.taskDueDate < today);
+              const todayTasks = tasks.filter(t => !t.taskDone && t.taskDueDate === today);
+              const highTasks = tasks.filter(t => !t.taskDone && t.taskPriority === 'high');
+              const doneTasks = tasks.filter(t => t.taskDone);
+              const undoneTasks = tasks.filter(t => !t.taskDone);
+
+              return (
+                <div className="absolute right-4 top-20 bottom-20 z-40 w-72 bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider">フォーカスモード</div>
+                      <div className="text-sm font-bold text-slate-800 truncate max-w-[180px]">{focusNode?.text}</div>
+                    </div>
+                    <button onClick={() => setFocusNodeId(null)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 p-3 border-b border-slate-100">
+                    <div className="text-center bg-rose-50 rounded-lg p-2">
+                      <div className="text-lg font-bold text-rose-600">{overdueTasks.length}</div>
+                      <div className="text-[10px] text-rose-500 font-medium">遅延</div>
+                    </div>
+                    <div className="text-center bg-amber-50 rounded-lg p-2">
+                      <div className="text-lg font-bold text-amber-600">{todayTasks.length}</div>
+                      <div className="text-[10px] text-amber-500 font-medium">今日</div>
+                    </div>
+                    <div className="text-center bg-slate-50 rounded-lg p-2">
+                      <div className="text-lg font-bold text-slate-600">{undoneTasks.length}</div>
+                      <div className="text-[10px] text-slate-500 font-medium">未完了</div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                    {tasks.length === 0 && (
+                      <div className="text-sm text-slate-400 text-center py-8">このサブツリーにタスクはありません</div>
+                    )}
+                    {overdueTasks.length > 0 && (
+                      <>
+                        <div className="text-[10px] font-bold text-rose-500 uppercase tracking-wider mt-1">⚠ 遅延</div>
+                        {overdueTasks.map(t => <FocusTaskCard key={t.id} task={t} onClick={() => {
+                          setFocusNodeId(null);
+                          setSelectedNodeIds([t.id]);
+                          const container = scrollContainerRef.current;
+                          if (container) {
+                            container.scrollTo({ left: t.x * zoomLevel - container.clientWidth / 2, top: t.y * zoomLevel - container.clientHeight / 2, behavior: 'smooth' });
+                          }
+                        }} />)}
+                      </>
+                    )}
+                    {todayTasks.length > 0 && (
+                      <>
+                        <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mt-2">📅 今日</div>
+                        {todayTasks.map(t => <FocusTaskCard key={t.id} task={t} onClick={() => {
+                          setFocusNodeId(null);
+                          setSelectedNodeIds([t.id]);
+                          const container = scrollContainerRef.current;
+                          if (container) {
+                            container.scrollTo({ left: t.x * zoomLevel - container.clientWidth / 2, top: t.y * zoomLevel - container.clientHeight / 2, behavior: 'smooth' });
+                          }
+                        }} />)}
+                      </>
+                    )}
+                    {highTasks.filter(t => !overdueTasks.includes(t) && !todayTasks.includes(t)).length > 0 && (
+                      <>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-2">🔴 高優先度</div>
+                        {highTasks.filter(t => !overdueTasks.includes(t) && !todayTasks.includes(t)).map(t => (
+                          <FocusTaskCard key={t.id} task={t} onClick={() => {
+                            setFocusNodeId(null);
+                            setSelectedNodeIds([t.id]);
+                            const container = scrollContainerRef.current;
+                            if (container) {
+                              container.scrollTo({ left: t.x * zoomLevel - container.clientWidth / 2, top: t.y * zoomLevel - container.clientHeight / 2, behavior: 'smooth' });
+                            }
+                          }} />
+                        ))}
+                      </>
+                    )}
+                    {doneTasks.length > 0 && (
+                      <>
+                        <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider mt-2">✓ 完了済み ({doneTasks.length})</div>
+                        {doneTasks.map(t => <FocusTaskCard key={t.id} task={t} done onClick={() => {
+                          setFocusNodeId(null);
+                          setSelectedNodeIds([t.id]);
+                          const container = scrollContainerRef.current;
+                          if (container) {
+                            container.scrollTo({ left: t.x * zoomLevel - container.clientWidth / 2, top: t.y * zoomLevel - container.clientHeight / 2, behavior: 'smooth' });
+                          }
+                        }} />)}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center bg-slate-50">
@@ -2773,10 +2999,12 @@ interface RecursiveNodeProps {
     taskDone?: boolean;
     taskDueDate?: string;
     taskPriority?: 'high' | 'medium' | 'low' | null;
+    taskAssignee?: string;
   }) => void;
+  focusedNodeIds?: Set<string>;
 }
 
-const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask }: RecursiveNodeProps) => {
+const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask, focusedNodeIds }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
   const isEditing = editingNodeId === node.id;
@@ -2785,7 +3013,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const inputRef = useRef<HTMLInputElement>(null);
 
   let nodeWidth = node.width ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : NODE_WIDTH);
-  let nodeHeight = node.height ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : NODE_HEIGHT);
+  let nodeHeight = node.height ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : computeNodeHeight(node.fontSize ?? NODE_DEFAULT_FONT_SIZE));
   if (node.imageUrl && node.imageWidth && node.imageHeight) {
     const scale = node.imageScale ?? 1.0;
     nodeWidth = node.imageWidth * scale;
@@ -2848,6 +3076,9 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           backgroundColor: node.bgColor || '#ffffff',
           borderColor: isSelected || isEditing || isTarget ? undefined : (node.textColor || '#0ea5e9'),
           color: node.textColor || '#0f172a',
+          opacity: focusedNodeIds && !focusedNodeIds.has(node.id) ? 0.15 : 1,
+          pointerEvents: focusedNodeIds && !focusedNodeIds.has(node.id) ? 'none' : undefined,
+          transition: 'opacity 0.3s ease',
         }}
         onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}
       >
@@ -2934,6 +3165,15 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
                     {new Date(node.taskDueDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
                   </span>
                 )}
+                {/* 担当者バッジ */}
+                {node.taskAssignee && (
+                  <span
+                    className="text-[9px] bg-indigo-50 text-indigo-600 px-1 rounded-full font-medium truncate max-w-full leading-tight"
+                    title={node.taskAssignee}
+                  >
+                    {node.taskAssignee.split('@')[0]}
+                  </span>
+                )}
               </div>
             )}
           </>
@@ -3010,6 +3250,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           updateNodeFontSize={updateNodeFontSize}
           toggleCollapse={toggleCollapse}
           updateNodeTask={updateNodeTask}
+          focusedNodeIds={focusedNodeIds}
         />
       ))}
     </>
