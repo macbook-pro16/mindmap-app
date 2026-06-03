@@ -54,6 +54,7 @@ export interface YjsNodeData {
   taskAssigneeUserId?: string;
   taskAssigneeEmail?: string;
   taskAssigneeAvatarUrl?: string;
+  nodeShape?: 'rounded' | 'circle' | 'diamond' | 'hexagon';
 }
 
 export interface YjsEdgeData {
@@ -100,7 +101,6 @@ export interface YjsOutlineData {
   strokeWidth?: number;
   strokeDasharray?: string;
   textAlign?: 'left' | 'center' | 'right';
-  // fontWeight removed
 }
 
 export interface YjsStampData {
@@ -143,6 +143,7 @@ export interface MindNode {
   taskAssigneeUserId?: string;
   taskAssigneeEmail?: string;
   taskAssigneeAvatarUrl?: string;
+  nodeShape?: 'rounded' | 'circle' | 'diamond' | 'hexagon';
 }
 
 export interface FlatNode {
@@ -270,7 +271,6 @@ export interface OutlineData {
   strokeWidth?: number;
   strokeDasharray?: string;
   textAlign?: 'left' | 'center' | 'right';
-  // fontWeight removed
 }
 
 export interface StampData {
@@ -350,6 +350,129 @@ const NODE_PADDING_VERTICAL = 24;
 
 const computeNodeHeight = (fontSize: number = NODE_DEFAULT_FONT_SIZE): number => {
   return Math.max(NODE_HEIGHT, Math.ceil(fontSize * 1.4) + NODE_PADDING_VERTICAL);
+};
+
+// --------------------- 形状補助関数 ---------------------
+const getNodeShapeSize = (
+  baseWidth: number,
+  baseHeight: number,
+  shape: 'rounded' | 'circle' | 'diamond' | 'hexagon'
+): { width: number; height: number } => {
+  switch (shape) {
+    case 'circle': {
+      const d = Math.max(baseWidth, baseHeight, 70);
+      return { width: d, height: d };
+    }
+    case 'diamond': {
+      return { width: Math.max(baseWidth * 1.4, 120), height: Math.max(baseHeight * 1.8, 80) };
+    }
+    case 'hexagon': {
+      return { width: Math.max(baseWidth * 1.2, 120), height: Math.max(baseHeight * 1.2, 64) };
+    }
+    case 'rounded':
+    default:
+      return { width: baseWidth, height: baseHeight };
+  }
+};
+
+const getShapePadding = (
+  shape: 'rounded' | 'circle' | 'diamond' | 'hexagon',
+  width: number,
+  height: number
+): string => {
+  switch (shape) {
+    case 'circle': return `${height * 0.15}px ${width * 0.15}px`;
+    case 'diamond': return `${height * 0.28}px ${width * 0.2}px`;
+    case 'hexagon': return `${height * 0.2}px ${width * 0.22}px`;
+    default: return '12px 20px';
+  }
+};
+
+// --------------------- NodeShapeBackground コンポーネント ---------------------
+const NodeShapeBackground = ({
+  shape,
+  width,
+  height,
+  bgColor,
+  borderColor,
+  isSelected,
+  isEditing,
+  isTarget,
+}: {
+  shape: 'rounded' | 'circle' | 'diamond' | 'hexagon';
+  width: number;
+  height: number;
+  bgColor: string;
+  borderColor: string;
+  isSelected: boolean;
+  isEditing: boolean;
+  isTarget: boolean;
+}) => {
+  const strokeWidth = isSelected || isEditing || isTarget ? 2.5 : 1.5;
+  const filter = isSelected
+    ? 'drop-shadow(0 8px 24px rgba(99,102,241,0.3))'
+    : 'drop-shadow(0 1px 4px rgba(0,0,0,0.08))';
+
+  switch (shape) {
+    case 'circle': {
+      const cx = width / 2;
+      const cy = height / 2;
+      const r = Math.min(width, height) / 2 - strokeWidth;
+      return (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
+          <circle cx={cx} cy={cy} r={r} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
+        </svg>
+      );
+    }
+    case 'diamond': {
+      const cx = width / 2;
+      const cy = height / 2;
+      const pad = strokeWidth;
+      const points = `${cx},${pad} ${width - pad},${cy} ${cx},${height - pad} ${pad},${cy}`;
+      return (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
+          <polygon points={points} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
+        </svg>
+      );
+    }
+    case 'hexagon': {
+      const cx = width / 2;
+      const cy = height / 2;
+      const rx = width / 2 - strokeWidth;
+      const ry = height / 2 - strokeWidth;
+      const pts = [
+        [cx - rx, cy],
+        [cx - rx * 0.5, cy - ry],
+        [cx + rx * 0.5, cy - ry],
+        [cx + rx, cy],
+        [cx + rx * 0.5, cy + ry],
+        [cx - rx * 0.5, cy + ry],
+      ].map(([x, y]) => `${x},${y}`).join(' ');
+      return (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
+          <polygon points={pts} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
+        </svg>
+      );
+    }
+    case 'rounded':
+    default: {
+      const rx = 16;
+      return (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
+          <rect
+            x={strokeWidth / 2}
+            y={strokeWidth / 2}
+            width={width - strokeWidth}
+            height={height - strokeWidth}
+            rx={rx}
+            fill={bgColor}
+            stroke={borderColor}
+            strokeWidth={strokeWidth}
+          />
+        </svg>
+      );
+    }
+  }
 };
 
 // --------------------- 幾何学・座標・描画ユーティリティ ---------------------
@@ -592,6 +715,7 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
     const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
     let width = data.width;
     let height = data.height;
+    const shape = data.nodeShape ?? 'rounded';
     if (data.imageUrl && data.imageWidth && data.imageHeight) {
       const scale = data.imageScale ?? 1.0;
       width = data.imageWidth * scale;
@@ -602,6 +726,11 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
     } else if (!width) {
       width = computeNodeWidth(data.text, fontSize);
       height = computeNodeHeight(fontSize);
+    }
+    if (!data.imageUrl) {
+      const sized = getNodeShapeSize(width, height, shape);
+      width = sized.width;
+      height = sized.height;
     }
     if (!width || width <= 0) width = NODE_MIN_WIDTH;
     if (!height || height <= 0) height = NODE_HEIGHT;
@@ -627,6 +756,7 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       taskAssigneeUserId: data.taskAssigneeUserId,
       taskAssigneeEmail: data.taskAssigneeEmail,
       taskAssigneeAvatarUrl: data.taskAssigneeAvatarUrl,
+      nodeShape: shape,
       children,
     };
   };
@@ -656,6 +786,7 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     taskAssigneeUserId: root.taskAssigneeUserId,
     taskAssigneeEmail: root.taskAssigneeEmail,
     taskAssigneeAvatarUrl: root.taskAssigneeAvatarUrl,
+    nodeShape: root.nodeShape ?? 'rounded',
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -1270,7 +1401,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeight(defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
       nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
     });
     setSelectedNodeIds([childId]);
@@ -1287,7 +1418,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeight(defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
       nodes.set(parentId, { ...parent, children: newChildren });
     });
     setSelectedNodeIds([siblingId]);
@@ -1303,7 +1434,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeight(defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
       const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
     });
     setSelectedNodeIds([newParentId]);
@@ -1319,7 +1450,8 @@ const MindMapApp = ({ user }: { user: User }) => {
           bgColor: '#f8fafc', textColor: '#334155',
           width: imageWidth, height: imageHeight,
           collapsed: false,
-          imageUrl, imageWidth, imageHeight, imageScale: 1.0
+          imageUrl, imageWidth, imageHeight, imageScale: 1.0,
+          nodeShape: 'rounded'
         });
         const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
       });
@@ -1328,12 +1460,14 @@ const MindMapApp = ({ user }: { user: User }) => {
       const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
       const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
       const initialHeight = computeNodeHeight(defaultFontSize);
+      const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
       ydocRef.current?.transact(() => {
         nodes.set(childId, {
           text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true,
           bgColor: '#f8fafc', textColor: '#334155',
-          width: initialWidth, height: initialHeight, fontSize: defaultFontSize,
-          collapsed: false
+          width: sized.width, height: sized.height, fontSize: defaultFontSize,
+          collapsed: false,
+          nodeShape: 'rounded'
         });
         const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
       });
@@ -1381,8 +1515,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeight(defaultFontSize);
+    const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
     ydocRef.current?.transact(() => {
-      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false });
+      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
       const root = nodes.get(rootId); if (root) {
         const curChildren: string[] = root.children ?? [];
         const targetIndex = curChildren.indexOf(targetId);
@@ -1456,8 +1591,11 @@ const MindMapApp = ({ user }: { user: User }) => {
     const data = nodes.get(nodeId);
     if (data && !data.imageUrl) {
       const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
-      const newWidth = computeNodeWidth(text, fontSize);
-      nodes.set(nodeId, { ...data, text, width: newWidth });
+      const baseWidth = computeNodeWidth(text, fontSize);
+      const baseHeight = computeNodeHeight(fontSize);
+      const shape = data.nodeShape ?? 'rounded';
+      const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
+      nodes.set(nodeId, { ...data, text, width: sized.width, height: sized.height });
     } else if (data) {
       nodes.set(nodeId, { ...data, text });
     }
@@ -1501,10 +1639,42 @@ const MindMapApp = ({ user }: { user: User }) => {
     const nodes = yNodesRef.current; if (!nodes) return;
     const data = nodes.get(nodeId);
     if (data && !data.imageUrl) {
-      const newWidth = computeNodeWidth(data.text, fontSize);
-      const newHeight = computeNodeHeight(fontSize);
-      nodes.set(nodeId, { ...data, fontSize, width: newWidth, height: newHeight });
+      const baseWidth = computeNodeWidth(data.text, fontSize);
+      const baseHeight = computeNodeHeight(fontSize);
+      const shape = data.nodeShape ?? 'rounded';
+      const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
+      nodes.set(nodeId, { ...data, fontSize, width: sized.width, height: sized.height });
     }
+  }, []);
+
+  const updateNodeShape = useCallback((nodeId: string, shape: 'rounded' | 'circle' | 'diamond' | 'hexagon') => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data && !data.imageUrl) {
+      ydocRef.current?.transact(() => {
+        const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+        const baseWidth = computeNodeWidth(data.text, fontSize);
+        const baseHeight = computeNodeHeight(fontSize);
+        const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
+        nodes.set(nodeId, { ...data, nodeShape: shape, width: sized.width, height: sized.height });
+      });
+    }
+  }, []);
+
+  const updateMultipleNodeShapes = useCallback((nodeIds: string[], shape: 'rounded' | 'circle' | 'diamond' | 'hexagon') => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    ydocRef.current?.transact(() => {
+      nodeIds.forEach(nodeId => {
+        const data = nodes.get(nodeId);
+        if (data && !data.imageUrl) {
+          const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+          const baseWidth = computeNodeWidth(data.text, fontSize);
+          const baseHeight = computeNodeHeight(fontSize);
+          const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
+          nodes.set(nodeId, { ...data, nodeShape: shape, width: sized.width, height: sized.height });
+        }
+      });
+    });
   }, []);
 
   const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { 
@@ -1765,11 +1935,20 @@ const MindMapApp = ({ user }: { user: User }) => {
       ydocRef.current?.transact(() => {
         let updatedData = { ...data, ...taskData };
         if (taskData.taskEnabled === true && !data.imageUrl) {
-          const currentWidth = data.width ?? computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
-          updatedData.width = Math.max(currentWidth, 160);
+          const baseWidth = data.width ?? computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
+          const shape = data.nodeShape ?? 'rounded';
+          const sized = getNodeShapeSize(baseWidth, computeNodeHeight(data.fontSize ?? NODE_DEFAULT_FONT_SIZE), shape);
+          updatedData.width = Math.max(sized.width, 160);
+          updatedData.height = sized.height;
         }
         if (taskData.taskEnabled === false && !data.imageUrl) {
-          updatedData.width = computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
+          const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+          const baseWidth = computeNodeWidth(data.text, fontSize);
+          const baseHeight = computeNodeHeight(fontSize);
+          const shape = data.nodeShape ?? 'rounded';
+          const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
+          updatedData.width = sized.width;
+          updatedData.height = sized.height;
         }
         nodes.set(nodeId, updatedData);
       });
@@ -1802,7 +1981,8 @@ const MindMapApp = ({ user }: { user: User }) => {
         const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
         const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
         const initialHeight = computeNodeHeight(defaultFontSize);
-        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false }); 
+        const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
+        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' }); 
         yRootRef.current = rootId; 
       }
     });
@@ -2039,7 +2219,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     const newTitle = 'NEW'; const rootId = crypto.randomUUID(); const defaultText = '中心テーマ'; const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeight(defaultFontSize);
-    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false };
+    const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
+    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' };
     initYjs(newRoom, initialTree);
     setMapId(null); setMapTitle(newTitle); setMapMembers([]); setMapOwnerId(user.id); setSaveMessage('保存中...');
     const { data, error } = await supabase.from('maps').insert([{ title: newTitle, data: initialTree, room_id: newRoom, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }]).select();
@@ -2803,7 +2984,36 @@ const MindMapApp = ({ user }: { user: User }) => {
         {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-4 right-4 z-50 bg-slate-900/80 backdrop-blur text-white border border-slate-700 rounded-full px-5 py-2 text-xs font-bold shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105">ZEN解除 (Alt+Cmd+F)</button>}
         {contextMenu.visible && !showColorPalette && (
           <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
-            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('toggleCollapse')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">折りたたみ/展開</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />{selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
+            {contextMenu.type === 'node' && contextMenu.nodeId && (<><button onClick={() => executeContextAction('addChild')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>右に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Tab</span></button><button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>下に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">Enter</span></button><button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>上に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⇧Enter</span></button><button onClick={() => executeContextAction('addParent')} className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 hover:text-indigo-700 font-medium flex items-center justify-between group transition-colors"><span>左に追加</span><span className="text-[10px] text-slate-400 group-hover:text-indigo-400 border border-slate-200 group-hover:border-indigo-200 rounded px-1">⌘Enter</span></button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('toggleCollapse')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">折りたたみ/展開</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><div className="mx-2 my-1 border-b border-slate-100" />
+            {/* ノード形状メニュー */}
+            <div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">ノード形状</div>
+            <div className="px-2 py-1 flex gap-1">
+              {([
+                { shape: 'rounded', label: '角丸' },
+                { shape: 'circle', label: '正円' },
+                { shape: 'diamond', label: '菱形' },
+                { shape: 'hexagon', label: '六角形' },
+              ] as const).map(({ shape, label }) => {
+                const currentShape = mindMap && contextMenu.nodeId
+                  ? (findNodeById(mindMap, contextMenu.nodeId)?.nodeShape ?? 'rounded')
+                  : 'rounded';
+                return (
+                  <button
+                    key={shape}
+                    onClick={() => { if (contextMenu.nodeId) updateNodeShape(contextMenu.nodeId, shape); closeContextMenu(); }}
+                    className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
+                      currentShape === shape
+                        ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
+                        : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-indigo-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mx-2 my-1 border-b border-slate-100" />
+            {selectedNodeIds.length >= 2 && (<><button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">垂直に整列</button><button onClick={() => executeContextAction('alignHorizontal')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">水平に整列</button><div className="mx-2 my-1 border-b border-slate-100" /></>)}<button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('delete')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>削除</span><span className="text-[10px] text-rose-300 group-hover:text-rose-500 border border-rose-100 group-hover:border-rose-200 rounded px-1">⌫</span></button></>)}
             {contextMenu.type === 'edge' && (<><button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium flex items-center justify-between group transition-colors"><span>線を削除</span><span className="text-[10px] text-rose-300 border border-rose-100 rounded px-1 group-hover:border-rose-200 group-hover:text-rose-500">⌫</span></button><div className="mx-2 my-1 border-b border-slate-100" /><div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">矢印の向き</div><button onClick={() => executeContextAction('arrowNone')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">なし</button><button onClick={() => executeContextAction('arrowStart')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">始点 →</button><button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">終点 →</button><button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-4 py-2 hover:bg-slate-50 font-medium text-slate-700 transition-colors">両方 ⇄</button></>)}
             {contextMenu.type === 'image' && contextMenu.imageId && (<><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteImage')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">画像を削除</button></>)}
             {contextMenu.type === 'sticky' && contextMenu.stickyId && (<><button onClick={() => executeContextAction('changeColor')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">色を変更</button><button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最前面へ移動</button><button onClick={() => executeContextAction('sendToBack')} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 font-medium text-slate-700 transition-colors">最背面へ移動</button><div className="mx-2 my-1 border-b border-slate-100" /><button onClick={() => executeContextAction('deleteSticky')} className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 font-medium transition-colors">付箋を削除</button></>)}
@@ -2849,6 +3059,43 @@ const MindMapApp = ({ user }: { user: User }) => {
                     {mindMap && findNodeById(mindMap, selectedNodeId!)?.imageUrl && (
                       <><div className="w-px h-5 bg-slate-600 mx-0.5" /><div className="relative group"><button className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors" title="サイズ変更"><ResizeIcon /></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1 z-50 whitespace-nowrap">{IMAGE_SCALE_PRESETS.map(scale => { const percent = Math.round(scale * 100); return (<button key={scale} onClick={() => resizeImageNode(selectedNodeId!, scale)} className="px-3 py-1 text-xs text-slate-300 hover:bg-slate-700 rounded transition-colors">{percent}%</button>); })}</div></div></>
                     )}
+                    {/* 形状切り替え */}
+                    <div className="w-px h-5 bg-slate-600 mx-0.5" />
+                    <div className="relative group">
+                      <button
+                        className="p-1.5 hover:bg-slate-700 rounded-md text-slate-300 hover:text-white transition-colors"
+                        title="ノード形状"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <polygon points="12,2 22,12 12,22 2,12" strokeWidth={2} strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-row bg-slate-800 rounded-lg shadow-xl border border-slate-700 p-1.5 z-50 gap-1 whitespace-nowrap">
+                        {([
+                          { shape: 'rounded', label: '角丸', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="4" strokeWidth={2} /></svg> },
+                          { shape: 'circle', label: '正円', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" strokeWidth={2} /></svg> },
+                          { shape: 'diamond', label: '菱形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,3 21,12 12,21 3,12" strokeWidth={2} strokeLinejoin="round" /></svg> },
+                          { shape: 'hexagon', label: '六角形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,2 20.66,7 20.66,17 12,22 3.34,17 3.34,7" strokeWidth={2} strokeLinejoin="round" /></svg> },
+                        ] as const).map(({ shape, label, icon }) => {
+                          const currentShape = mindMap && selectedNodeId ? (findNodeById(mindMap, selectedNodeId)?.nodeShape ?? 'rounded') : 'rounded';
+                          return (
+                            <button
+                              key={shape}
+                              onClick={() => { if (selectedNodeId) { if (selectedNodeIds.length > 1) updateMultipleNodeShapes(selectedNodeIds, shape); else updateNodeShape(selectedNodeId, shape); } }}
+                              title={label}
+                              className={`p-1.5 rounded transition-colors flex flex-col items-center gap-0.5 min-w-[36px] ${
+                                currentShape === shape
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                              }`}
+                            >
+                              {icon}
+                              <span className="text-[8px]">{label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="w-px h-5 bg-slate-600 mx-0.5" />
                     <div className="relative">
                       <button
@@ -3076,6 +3323,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 updateNodeFontSize={updateNodeFontSize}
                 toggleCollapse={toggleNodeCollapse}
                 updateNodeTask={updateNodeTask}
+                updateNodeShape={updateNodeShape}
                 focusedNodeIds={focusedNodeIds}
                 allParticipants={allParticipants}
                 showTaskInfo={showTaskInfo}
@@ -3226,12 +3474,13 @@ interface RecursiveNodeProps {
     taskAssigneeEmail?: string;
     taskAssigneeAvatarUrl?: string;
   }) => void;
+  updateNodeShape: (nodeId: string, shape: 'rounded' | 'circle' | 'diamond' | 'hexagon') => void;
   focusedNodeIds?: Set<string>;
   allParticipants: Participant[];
   showTaskInfo: boolean;
 }
 
-const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask, focusedNodeIds, allParticipants, showTaskInfo }: RecursiveNodeProps) => {
+const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, draggingNodeId, dragPositions, dragTargetNodeId, isMultiDragging, awarenessStates, myUserId, onNodeClick, onNodeDoubleClick, onMouseDownOnNode, onTextEditComplete, onContextMenu, onConnectionPointMouseDown, depth, isAnyDragging, updateNodeFontSize, toggleCollapse, updateNodeTask, updateNodeShape, focusedNodeIds, allParticipants, showTaskInfo }: RecursiveNodeProps) => {
   const isSelected = selectedNodeIds.includes(node.id);
   const isSingleSelected = selectedNodeId === node.id;
   const isEditing = editingNodeId === node.id;
@@ -3239,13 +3488,24 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const isTarget = dragTargetNodeId === node.id;
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const shape = node.nodeShape ?? 'rounded';
   let nodeWidth = node.width ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : NODE_WIDTH);
   let nodeHeight = node.height ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : computeNodeHeight(node.fontSize ?? NODE_DEFAULT_FONT_SIZE));
+  
   if (node.imageUrl && node.imageWidth && node.imageHeight) {
     const scale = node.imageScale ?? 1.0;
     nodeWidth = node.imageWidth * scale;
     nodeHeight = node.imageHeight * scale;
+  } else if (!node.imageUrl) {
+    // 形状に応じたサイズ計算を適用
+    const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+    const baseWidth = computeNodeWidth(node.text, fontSize);
+    const baseHeight = computeNodeHeight(fontSize);
+    const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
+    nodeWidth = sized.width;
+    nodeHeight = sized.height;
   }
+  
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
   const displayPos = (() => {
@@ -3285,25 +3545,42 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     .map(([, state]) => state as AwarenessState)
     .filter(Boolean);
   
-  const borderColorClass = isTarget ? 'border-emerald-500 border-2 ring-4 ring-emerald-500/20' : (isSelected ? (isSingleSelected ? 'border-indigo-600 ring-4 ring-indigo-600/20' : 'border-purple-600 ring-4 ring-purple-600/20') : 'border-transparent');
+  const borderColor = isTarget ? '#10b981' : (isSelected ? (isSingleSelected ? '#6366f1' : '#9333ea') : (isEditing ? '#f59e0b' : (node.textColor || '#0ea5e9')));
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
 
   return (
     <>
       <div
-        className={`absolute flex flex-col items-center rounded-2xl border-2 px-5 py-3 cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'shadow-2xl shadow-indigo-500/30' : ''} ${borderColorClass} ${isEditing ? 'bg-amber-50 ring-4 ring-amber-400/30 border-amber-400' : ''} ${!isSelected && !isTarget && !isEditing ? 'hover:-translate-y-0.5 hover:border-slate-300' : ''}`}
+        className={`absolute cursor-pointer select-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'}`}
         style={{
-          left: displayPos.x - nodeWidth/2, top: displayPos.y - nodeHeight/2,
-          width: nodeWidth, height: nodeHeight, zIndex: node.zIndex ?? (10 + depth),
-          backgroundColor: node.bgColor || '#ffffff',
-          borderColor: isSelected || isEditing || isTarget ? undefined : (node.textColor || '#0ea5e9'),
-          color: node.textColor || '#0f172a',
+          left: displayPos.x - nodeWidth/2,
+          top: displayPos.y - nodeHeight/2,
+          width: nodeWidth,
+          height: nodeHeight,
+          zIndex: node.zIndex ?? (10 + depth),
           opacity: focusedNodeIds && !focusedNodeIds.has(node.id) ? 0.15 : 1,
           pointerEvents: focusedNodeIds && !focusedNodeIds.has(node.id) ? 'none' : undefined,
           transition: 'opacity 0.3s ease',
         }}
-        onClick={e => onNodeClick(e, node.id)} onDoubleClick={e => onNodeDoubleClick(e, node.id)} onMouseDown={e => onMouseDownOnNode(e, node.id)} onContextMenu={e => onContextMenu(e, node.id)}
+        onClick={e => onNodeClick(e, node.id)}
+        onDoubleClick={e => onNodeDoubleClick(e, node.id)}
+        onMouseDown={e => onMouseDownOnNode(e, node.id)}
+        onContextMenu={e => onContextMenu(e, node.id)}
       >
+        {/* 形状背景 */}
+        {!node.imageUrl && (
+          <NodeShapeBackground
+            shape={shape}
+            width={nodeWidth}
+            height={nodeHeight}
+            bgColor={node.bgColor || '#f8fafc'}
+            borderColor={borderColor}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            isTarget={isTarget}
+          />
+        )}
+        {/* 折りたたみボタン */}
         {node.children.length > 0 && (
           <div 
             className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
@@ -3312,32 +3589,32 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             {node.collapsed ? <ExpandIcon /> : <CollapseIcon />}
           </div>
         )}
-        {node.imageUrl ? (
-          <div className="w-full h-full flex flex-col items-center justify-center p-1">
-            <img src={node.imageUrl} alt="node image" className="max-w-full max-h-full object-contain rounded" />
-            {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
-          </div>
-        ) : (
-          <div className="flex items-center justify-center w-full h-full">
-            {isEditing ? (
-              <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
-            ) : (
-              <span
-                className="block w-full text-center"
-                style={{
-                  color: node.textColor || '#1e293b',
-                  fontSize,
-                  textDecoration: node.taskDone ? 'line-through' : 'none',
-                  opacity: node.taskDone ? 0.6 : 1,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                }}
-              >
-                {node.text}
-              </span>
-            )}
-          </div>
-        )}
+        {/* コンテンツ */}
+        <div className="absolute inset-0 flex items-center justify-center" style={{ padding: getShapePadding(node.imageUrl ? 'rounded' : shape, nodeWidth, nodeHeight) }}>
+          {node.imageUrl ? (
+            <div className="w-full h-full flex flex-col items-center justify-center p-1">
+              <img src={node.imageUrl} alt="node image" className="max-w-full max-h-full object-contain rounded" />
+              {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
+            </div>
+          ) : isEditing ? (
+            <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+          ) : (
+            <span
+              className="block w-full text-center"
+              style={{
+                color: node.textColor || '#1e293b',
+                fontSize,
+                textDecoration: node.taskDone ? 'line-through' : 'none',
+                opacity: node.taskDone ? 0.6 : 1,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+              }}
+            >
+              {node.text}
+            </span>
+          )}
+        </div>
+        {/* リモートインジケータ */}
         {remoteEditors.length > 0 && (
           <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
             {remoteEditors.map((editor, i) => (
@@ -3478,6 +3755,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           updateNodeFontSize={updateNodeFontSize}
           toggleCollapse={toggleCollapse}
           updateNodeTask={updateNodeTask}
+          updateNodeShape={updateNodeShape}
           focusedNodeIds={focusedNodeIds}
           allParticipants={allParticipants}
           showTaskInfo={showTaskInfo}
