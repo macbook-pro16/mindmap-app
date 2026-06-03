@@ -577,7 +577,6 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       height = IMAGE_NODE_MAX_INITIAL_SIZE;
     } else if (!width) {
       width = computeNodeWidth(data.text, fontSize);
-      if (data.taskEnabled) width += 84;
       height = computeNodeHeight(fontSize);
     }
     if (!width || width <= 0) width = NODE_MIN_WIDTH;
@@ -688,9 +687,6 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
   if (node.imageUrl && node.imageWidth && node.imageHeight && node.imageScale !== undefined) {
     w = node.imageWidth * node.imageScale;
     h = node.imageHeight * node.imageScale;
-  }
-  if (node.taskEnabled && !node.imageUrl) {
-    w = w + 84;
   }
   if (nodeId === draggingNodeId && dragPositions[nodeId]) return { x: dragPositions[nodeId].x, y: dragPositions[nodeId].y, width: w, height: h };
   return { x: node.x, y: node.y, width: w, height: h };
@@ -1425,8 +1421,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data && !data.imageUrl) {
       const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
       const newWidth = computeNodeWidth(text, fontSize);
-      const taskOffset = data.taskEnabled ? 84 : 0;
-      nodes.set(nodeId, { ...data, text, width: newWidth + taskOffset });
+      nodes.set(nodeId, { ...data, text, width: newWidth });
     } else if (data) {
       nodes.set(nodeId, { ...data, text });
     }
@@ -1472,8 +1467,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data && !data.imageUrl) {
       const newWidth = computeNodeWidth(data.text, fontSize);
       const newHeight = computeNodeHeight(fontSize);
-      const taskOffset = data.taskEnabled ? 84 : 0;
-      nodes.set(nodeId, { ...data, fontSize, width: newWidth + taskOffset, height: newHeight });
+      nodes.set(nodeId, { ...data, fontSize, width: newWidth, height: newHeight });
     }
   }, []);
 
@@ -2813,14 +2807,13 @@ const MindMapApp = ({ user }: { user: User }) => {
                       </button>
                     </div>
                   </div>
-                  {/* ★ タスク詳細パネル */}
+                  {/* ★ タスク詳細パネル（右側にずらして表示） */}
                   {mindMap && findNodeById(mindMap, selectedNodeId!)?.taskEnabled && (
                     <div
                       className="absolute z-[59] bg-white border border-slate-200 rounded-xl shadow-xl p-3 flex flex-col gap-2"
                       style={{
-                        left: floatingToolbarPos.x,
-                        top: floatingToolbarPos.y - floatingToolbarPos.height / 2 + 10,
-                        transform: 'translate(-50%, 0)',
+                        left: floatingToolbarPos.x + floatingToolbarPos.width / 2 + 15,
+                        top: floatingToolbarPos.y - floatingToolbarPos.height / 2,
                         minWidth: '220px',
                       }}
                       onClick={e => e.stopPropagation()}
@@ -3127,12 +3120,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     nodeWidth = node.imageWidth * scale;
     nodeHeight = node.imageHeight * scale;
   }
-  // タスクが有効で画像ノードでない場合、最低サイズを確保
-  if (node.taskEnabled && !node.imageUrl && showTaskInfo) {
-    nodeHeight = Math.max(nodeHeight, 72);
-    const taskMinWidth = 160;
-    nodeWidth = Math.max(nodeWidth, taskMinWidth);
-  }
+  // タスクが有効でもサイズは変えない（バッジは外部に出すため）
   const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
 
   const displayPos = (() => {
@@ -3205,90 +3193,23 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center w-full h-full">
-            {/* テキスト */}
-            <div className="w-full flex items-center justify-center overflow-hidden flex-1">
-              {isEditing ? (
-                <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
-              ) : (
-                <span
-                  className="block w-full text-center"
-                  style={{
-                    color: node.textColor || '#1e293b',
-                    fontSize,
-                    textDecoration: node.taskDone ? 'line-through' : 'none',
-                    opacity: node.taskDone ? 0.6 : 1,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {node.text}
-                </span>
-              )}
-            </div>
-            {/* タスクバー（下部） */}
-            {node.taskEnabled && showTaskInfo && (
-              <div
-                className="w-full flex items-center justify-center gap-1.5 px-2 pb-1 pt-0.5"
-                onClick={e => e.stopPropagation()}
-                onMouseDown={e => e.stopPropagation()}
+          <div className="flex items-center justify-center w-full h-full">
+            {isEditing ? (
+              <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+            ) : (
+              <span
+                className="block w-full text-center"
+                style={{
+                  color: node.textColor || '#1e293b',
+                  fontSize,
+                  textDecoration: node.taskDone ? 'line-through' : 'none',
+                  opacity: node.taskDone ? 0.6 : 1,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                }}
               >
-                <div
-                  className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
-                    node.taskDone
-                      ? 'bg-emerald-500 border-emerald-500'
-                      : 'border-slate-400 hover:border-emerald-400'
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    updateNodeTask(node.id, { taskDone: !node.taskDone });
-                  }}
-                >
-                  {node.taskDone && (
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                {node.taskPriority && (
-                  <span className={`text-[9px] px-1 rounded font-bold flex-shrink-0 ${
-                    node.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
-                    node.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
-                    'bg-slate-100 text-slate-500'
-                  }`}>
-                    {node.taskPriority === 'high' ? '高' : node.taskPriority === 'medium' ? '中' : '低'}
-                  </span>
-                )}
-                {node.taskDueDate && (
-                  <span className={`text-[9px] flex-shrink-0 ${
-                    new Date(node.taskDueDate) < new Date() && !node.taskDone
-                      ? 'text-rose-600 font-bold'
-                      : 'text-slate-500'
-                  }`}>
-                    {new Date(node.taskDueDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
-                  </span>
-                )}
-                {(node.taskAssigneeAvatarUrl || node.taskAssigneeEmail) && (
-                  <div className="flex items-center flex-shrink-0 ml-auto">
-                    {node.taskAssigneeAvatarUrl ? (
-                      <img
-                        src={node.taskAssigneeAvatarUrl}
-                        alt={node.taskAssigneeEmail}
-                        className="w-4 h-4 rounded-full border border-white shadow-sm object-cover"
-                        title={node.taskAssigneeEmail}
-                      />
-                    ) : (
-                      <div
-                        className="w-4 h-4 rounded-full border border-white shadow-sm flex items-center justify-center text-[7px] font-bold text-white"
-                        style={{ backgroundColor: stringToColor(node.taskAssigneeEmail || '') }}
-                        title={node.taskAssigneeEmail}
-                      >
-                        {getInitial(node.taskAssigneeEmail)}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                {node.text}
+              </span>
             )}
           </div>
         )}
@@ -3329,6 +3250,75 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           </div>
         )}
       </div>
+      {/* ★ タスクバッジ（ノード外、右下） */}
+      {node.taskEnabled && showTaskInfo && (
+        <div
+          className="absolute flex items-center gap-1 bg-white/95 border border-slate-200 rounded-full px-2 py-0.5 shadow pointer-events-auto"
+          style={{
+            left: displayPos.x + nodeWidth/2 - 10,
+            top: displayPos.y + nodeHeight/2 - 10,
+            zIndex: 50 + depth,
+          }}
+          onClick={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <div
+            className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center cursor-pointer ${
+              node.taskDone
+                ? 'bg-emerald-500 border-emerald-500'
+                : 'border-slate-400 hover:border-emerald-400'
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateNodeTask(node.id, { taskDone: !node.taskDone });
+            }}
+          >
+            {node.taskDone && (
+              <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </div>
+          {node.taskPriority && (
+            <span className={`text-[9px] px-1 rounded font-bold flex-shrink-0 ${
+              node.taskPriority === 'high' ? 'bg-rose-100 text-rose-600' :
+              node.taskPriority === 'medium' ? 'bg-amber-100 text-amber-600' :
+              'bg-slate-100 text-slate-500'
+            }`}>
+              {node.taskPriority === 'high' ? '高' : node.taskPriority === 'medium' ? '中' : '低'}
+            </span>
+          )}
+          {node.taskDueDate && (
+            <span className={`text-[9px] flex-shrink-0 ${
+              new Date(node.taskDueDate) < new Date() && !node.taskDone
+                ? 'text-rose-600 font-bold'
+                : 'text-slate-500'
+            }`}>
+              {new Date(node.taskDueDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
+            </span>
+          )}
+          {(node.taskAssigneeAvatarUrl || node.taskAssigneeEmail) && (
+            <div className="flex items-center flex-shrink-0 ml-1">
+              {node.taskAssigneeAvatarUrl ? (
+                <img
+                  src={node.taskAssigneeAvatarUrl}
+                  alt={node.taskAssigneeEmail}
+                  className="w-4 h-4 rounded-full border border-white shadow-sm object-cover"
+                  title={node.taskAssigneeEmail}
+                />
+              ) : (
+                <div
+                  className="w-4 h-4 rounded-full border border-white shadow-sm flex items-center justify-center text-[7px] font-bold text-white"
+                  style={{ backgroundColor: stringToColor(node.taskAssigneeEmail || '') }}
+                  title={node.taskAssigneeEmail}
+                >
+                  {getInitial(node.taskAssigneeEmail)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {isSingleSelected && !isMultiDragging && connectionPoints.map((point: ConnectionPoint) => { 
         const pt = getConnectionPoint(displayPos.x, displayPos.y, point, nodeWidth, nodeHeight); 
         return (
