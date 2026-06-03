@@ -727,8 +727,12 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       width = computeNodeWidth(data.text, fontSize);
       height = computeNodeHeight(fontSize);
     }
+    // Ensure height is defined if not set by the above (e.g., width was defined but height undefined)
+    if (!height && !data.imageUrl) {
+      height = computeNodeHeight(fontSize);
+    }
     if (!data.imageUrl) {
-      const sized = getNodeShapeSize(width, height, shape);
+      const sized = getNodeShapeSize(width ?? computeNodeWidth(data.text, fontSize), height ?? computeNodeHeight(fontSize), shape);
       width = sized.width;
       height = sized.height;
     }
@@ -3497,7 +3501,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     nodeWidth = node.imageWidth * scale;
     nodeHeight = node.imageHeight * scale;
   } else if (!node.imageUrl) {
-    // 形状に応じたサイズ計算を適用
     const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
     const baseWidth = computeNodeWidth(node.text, fontSize);
     const baseHeight = computeNodeHeight(fontSize);
@@ -3567,7 +3570,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
         onMouseDown={e => onMouseDownOnNode(e, node.id)}
         onContextMenu={e => onContextMenu(e, node.id)}
       >
-        {/* 形状背景 */}
         {!node.imageUrl && (
           <NodeShapeBackground
             shape={shape}
@@ -3580,7 +3582,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             isTarget={isTarget}
           />
         )}
-        {/* 折りたたみボタン */}
         {node.children.length > 0 && (
           <div 
             className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
@@ -3589,7 +3590,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             {node.collapsed ? <ExpandIcon /> : <CollapseIcon />}
           </div>
         )}
-        {/* コンテンツ */}
         <div className="absolute inset-0 flex items-center justify-center" style={{ padding: getShapePadding(node.imageUrl ? 'rounded' : shape, nodeWidth, nodeHeight) }}>
           {node.imageUrl ? (
             <div className="w-full h-full flex flex-col items-center justify-center p-1">
@@ -3614,7 +3614,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             </span>
           )}
         </div>
-        {/* リモートインジケータ */}
         {remoteEditors.length > 0 && (
           <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
             {remoteEditors.map((editor, i) => (
