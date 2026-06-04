@@ -679,12 +679,10 @@ const TrashIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCo
 const LeaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> );
 const SubNodeIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
 const SiblingNodeIcon = ({ className = '' }: { className?: string }) => ( <svg className={`w-4 h-4 ${className}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg> );
-const CopyIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> );
 const StickyIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> );
 const ImageIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> );
 const PencilIcon = () => ( <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> );
 const HelpIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> );
-const GripVerticalIcon = () => ( <svg className="w-4 h-4 text-slate-300 cursor-move" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5v14M15 5v14" /></svg> );
 const CursorIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg> );
 const SquareIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} /></svg> );
 const CircleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" strokeWidth={2} /></svg> );
@@ -717,16 +715,6 @@ const AlignHorizontalIcon = () => (
     <line x1="2" y1="12" x2="22" y2="12" strokeWidth={2} strokeDasharray="4 4" />
     <polyline points="6,8 2,12 6,16" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     <polyline points="18,8 22,12 18,16" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const FocusIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="3" strokeWidth={2} />
-    <line x1="12" y1="1" x2="12" y2="9" strokeWidth={2} strokeLinecap="round" />
-    <line x1="12" y1="15" x2="12" y2="23" strokeWidth={2} strokeLinecap="round" />
-    <line x1="1" y1="12" x2="9" y2="12" strokeWidth={2} strokeLinecap="round" />
-    <line x1="15" y1="12" x2="23" y2="12" strokeWidth={2} strokeLinecap="round" />
   </svg>
 );
 
@@ -1243,14 +1231,14 @@ const MindMapApp = ({ user }: { user: User }) => {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
 
-  const [stampText, setStampText] = useState<string>(() => {
+  const stampText = useMemo(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('mindmap-stamp-text');
       if (saved) return saved;
     }
     const name = myEmail.split('@')[0];
     return name.length > 8 ? name.substring(0, 8) : name;
-  });
+  }, [myEmail]);
 
   const [announcements, setAnnouncements] = useState<{ id: string; email: string; nodeText: string }[]>([]);
   const prevEditingStates = useRef<Record<string, string | null>>({});
@@ -1259,7 +1247,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const DRAG_THRESHOLD = 3;
   const hasDraggedRef = useRef(false);
 
-  // 新規追加：設定ポップオーバーの表示状態
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
 
   useEffect(() => {
@@ -1857,18 +1844,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const deleteImage = useCallback((imageId: string) => { const yImages = yImagesRef.current; if (!yImages) return; const image = yImages.get(imageId); if (image) { supabase.storage.from('images').remove([image.storagePath]); } ydocRef.current?.transact(() => { yImages.delete(imageId); }); setSelectedImageIds(prev => prev.filter(id => id !== imageId)); closeContextMenu(); }, [closeContextMenu]);
   const updateImagePosition = useCallback((imageId: string, x: number, y: number) => { const yImages = yImagesRef.current; if (!yImages) return; const data = yImages.get(imageId); if (data) yImages.set(imageId, { ...data, x, y }); }, []);
 
-  const handleHeaderColorSelect = useCallback((bgColor: string, textColor: string) => {
-    if (selectedNodeIds.length > 0) {
-      updateMultipleNodeColors(selectedNodeIds, bgColor, textColor);
-    }
-    if (selectedStickyIds.length > 0) {
-      selectedStickyIds.forEach(id => updateStickyColors(id, bgColor, textColor));
-    }
-    if (selectedOutlineIds.length > 0) {
-      selectedOutlineIds.forEach(id => updateOutlineColor(id, textColor));
-    }
-  }, [selectedNodeIds, selectedStickyIds, selectedOutlineIds, updateMultipleNodeColors, updateStickyColors, updateOutlineColor]);
-
   const handleEdgeStyleChange = useCallback((newStyle: EdgeStyle) => {
     if (!ydocRef.current) return;
     const settings = ySettingsRef.current;
@@ -2376,8 +2351,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const handleSave = useCallback(async () => { if (!yNodesRef.current || !yRootRef.current || !roomId) { alert('保存に必要なデータが不足しています（roomIdが未設定）'); return; } const tree = yMapToTree(yNodesRef.current, yRootRef.current); if (!tree) { alert('マップデータの変換に失敗しました'); return; } setSaveMessage('保存中...'); let resultData; let resultError; if (mapId) { const { data, error } = await supabase.from('maps').update({ title: mapTitle, data: tree, updated_at: new Date().toISOString() }).eq('id', mapId).select(); resultData = data; resultError = error; } else { const { data, error } = await supabase.from('maps').insert([{ title: mapTitle, data: tree, room_id: roomId, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }]).select(); resultData = data; resultError = error; } if (resultError) { alert(`保存エラー: ${resultError.message}`); setSaveMessage(`保存に失敗: ${resultError.message}`); return; } if (resultData && resultData.length > 0) { setMapId(resultData[0].id); setMapOwnerId(resultData[0].user_id); setSaveMessage('保存完了'); setIsDirty(false); if(typeof window !== 'undefined') { try { localStorage.setItem(`mindmap-draft-${roomId}`, uint8ArrayToBase64(Y.encodeStateAsUpdate(ydocRef.current!))); } catch(e) {} } setTimeout(() => setSaveMessage(''), 2500); await fetchMaps(); } else { alert('保存に成功しましたが、データが返ってきませんでした'); } }, [mapId, mapTitle, roomId, user.id, user.email, fetchMaps]);
 
-  const handleCopyMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => { e.stopPropagation(); const newRoom = crypto.randomUUID(); const { error: insertError } = await supabase.from('maps').insert({ title: `${map.title} のコピー`, data: map.data, room_id: newRoom, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }); if (insertError) { alert('コピーに失敗しました'); return; } await fetchMaps(); }, [user.id, user.email, fetchMaps]);
-
   const handleDeleteMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => { e.stopPropagation(); if (map.user_id !== user.id) { alert('エラー：共有マップは削除できません。退出機能を利用してください。'); return; } if (typeof window !== 'undefined' && !window.confirm('マップを削除してもよろしいですか？')) return; const { error } = await supabase.from('maps').delete().eq('id', map.id); if (error) { alert('削除に失敗しました'); return; } if (mapId === map.id) { handleResetMap(); } await fetchMaps(); }, [mapId, handleResetMap, fetchMaps, user.id]);
 
   const handleLeaveMap = useCallback(async (map: MapRecord, e: ReactMouseEvent) => { e.stopPropagation(); if (typeof window !== 'undefined' && !window.confirm(`「${map.title}」から退出しますか？`)) return; const { error, count } = await supabase.from('map_members').delete({ count: 'exact' }).eq('map_id', map.id).eq('user_id', user.id); if (error) { alert(`退出に失敗しました: ${error.message}`); return; } if (count === 0) { alert('退出対象が見つかりませんでした。既に退出済みの可能性があります。'); return; } if (mapId === map.id) { handleResetMap(); } await fetchMaps(); alert('マップから退出しました'); }, [mapId, handleResetMap, fetchMaps, user.id]);
@@ -2718,7 +2691,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
   const floatingToolbarPos = showFloatingToolbar && mindMap ? getNodeDisplayPos(selectedNodeId!, mindMap, dragPositions, draggingNodeId) : null;
-  const statusColor = connectionStatus === '接続済み' ? 'bg-emerald-500' : (connectionStatus === '切断' || connectionStatus === 'タイムアウト' ? 'bg-rose-500' : 'bg-amber-500');
 
   const dismissRemoteUpdate = useCallback(() => {
     setHasRemoteUpdate(false);
@@ -2985,7 +2957,6 @@ const MindMapApp = ({ user }: { user: User }) => {
         </div>
       )}
 
-      {/* サイドバー（リデザイン済み） */}
       <div className="w-[260px] flex-shrink-0 h-full bg-white border-r border-slate-200 shadow-sm z-[100] flex flex-col relative">
         <div className="p-4 border-b border-slate-100 flex flex-col gap-3 bg-white">
           <div className="flex items-center gap-2.5">
@@ -3064,7 +3035,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50 overflow-hidden">
         {!zenMode && (
           <>
-            {/* 左ツールバー（タイトル、undo/redo、保存状態） */}
             <div className="absolute top-4 left-4 z-40 flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
               <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} onBlur={handleHeaderTitleBlur} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-48 font-bold outline-none rounded-md transition-all text-slate-800" placeholder="NEW" />
               <div className="w-px h-5 bg-slate-200 mx-1" />
@@ -3076,7 +3046,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 {saveMessage === '保存完了' && <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>保存済み</span>}
               </div>
             </div>
-            {/* 中央ツールバー（ツール選択、付箋、印鑑） */}
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-0.5 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
               {[
                 { tool: 'select', icon: <CursorIcon />, title: '選択' },
@@ -3102,7 +3071,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={handleHeaderAddSticky} className="p-2 rounded-lg text-amber-500 hover:bg-amber-50 transition-all" title="付箋"><StickyIcon /></button>
               <button onClick={() => { const c = scrollContainerRef.current; if (c) addStamp((c.scrollLeft + c.clientWidth/2)/zoomLevel, (c.scrollTop + c.clientHeight/2)/zoomLevel); }} className="p-2 rounded-lg text-rose-500 hover:bg-rose-50 transition-all" title="印鑑"><StampIcon /></button>
             </div>
-            {/* 右ツールバー（参加者・設定） */}
             <div className="absolute top-4 right-4 z-40 flex items-center">
               <div className="relative bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
                 <button onClick={() => setShowParticipants(!showParticipants)} className="flex items-center gap-1 hover:bg-slate-100 rounded-lg px-2 py-1 transition-all" title="参加者一覧">
@@ -3145,7 +3113,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 )}
               </div>
             </div>
-            {/* ボトムコントロールバー */}
             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-2">
               <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
                 <button onClick={scrollToHome} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all" title="ホームに戻る"><HomeIcon /></button>
@@ -3154,7 +3121,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <span className="text-xs text-slate-600 font-semibold w-12 text-center cursor-pointer" onClick={() => setZoomLevel(1.0)}>{Math.round(zoomLevel * 100)}%</span>
                 <button onClick={() => changeZoom(0.1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all">＋</button>
                 <div className="w-px h-5 bg-slate-200" />
-                {/* 設定ポップオーバーボタン */}
                 <button
                   onClick={() => setShowSettingsPopover(prev => !prev)}
                   className={`p-2 rounded-lg transition-colors ${showSettingsPopover ? 'bg-slate-100 text-slate-700' : 'hover:bg-slate-100 text-slate-500'}`}
@@ -3190,6 +3156,23 @@ const MindMapApp = ({ user }: { user: User }) => {
                     </div>
                   </div>
                   <button onClick={() => setShowSettingsPopover(false)} className="mt-2 w-full text-xs py-1.5 text-slate-500 hover:bg-slate-50 rounded">閉じる</button>
+                </div>
+              )}
+              {showCanvasBgPalette && (
+                <div className="absolute bottom-full right-0 mb-2 bg-white border border-slate-200 rounded-xl shadow-2xl p-3 z-50">
+                  <div className="text-xs font-bold text-slate-500 mb-2 text-center uppercase tracking-wide">背景色</div>
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    {COLOR_PALETTE.map((cp, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => { updateCanvasBgColor(cp.bg); setShowCanvasBgPalette(false); }}
+                        className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm"
+                        style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05)` }}
+                        title={cp.label}
+                      />
+                    ))}
+                  </div>
+                  <button onClick={() => setShowCanvasBgPalette(false)} className="w-full py-1.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">キャンセル</button>
                 </div>
               )}
             </div>
@@ -3944,7 +3927,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     if (e.key === 'Enter') {
       if (e.nativeEvent.isComposing) return;
       if (e.shiftKey) {
-        return; // Allow newline
+        return;
       }
       e.preventDefault();
       if (textareaRef.current) {
