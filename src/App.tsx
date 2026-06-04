@@ -388,6 +388,68 @@ const getShapePadding = (
   }
 };
 
+// --------------------- 角丸多角形パス生成 ---------------------
+function createRoundedPolygonPath(points: {x: number; y: number}[], radius: number): string {
+  const len = points.length;
+  if (len < 3) return '';
+  const r = Math.min(radius, 100);
+  const path: string[] = [];
+
+  for (let i = 0; i < len; i++) {
+    const p0 = points[(i - 1 + len) % len];
+    const p1 = points[i];
+    const p2 = points[(i + 1) % len];
+
+    const dx1 = p1.x - p0.x;
+    const dy1 = p1.y - p0.y;
+    const dx2 = p2.x - p1.x;
+    const dy2 = p2.y - p1.y;
+
+    const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+    const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+
+    const u1x = dx1 / len1;
+    const u1y = dy1 / len1;
+    const u2x = dx2 / len2;
+    const u2y = dy2 / len2;
+
+    // 内角の半分を求める
+    const dot = u1x * u2x + u1y * u2y;
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+    const halfAngle = angle / 2;
+    const tanHalf = Math.tan(halfAngle);
+    const actualRadius = Math.min(r, (len1 / 2), (len2 / 2));
+    const dist = actualRadius / tanHalf;
+
+    // 前の線の終端、次の線の開始端
+    const startX = p1.x - u1x * dist;
+    const startY = p1.y - u1y * dist;
+    const endX = p1.x + u2x * dist;
+    const endY = p1.y + u2y * dist;
+
+    if (i === 0) {
+      path.push(`M ${startX} ${startY}`);
+    } else {
+      path.push(`L ${startX} ${startY}`);
+    }
+
+    // 円弧の中心はp1からradiusだけ内側
+    const midX = (u1x + u2x) / 2;
+    const midY = (u1y + u2y) / 2;
+    const midLen = Math.sqrt(midX * midX + midY * midY) || 1;
+    const centerX = p1.x + (midX / midLen) * (actualRadius / Math.sin(halfAngle));
+    const centerY = p1.y + (midY / midLen) * (actualRadius / Math.sin(halfAngle));
+
+    const startAngle = Math.atan2(startY - centerY, startX - centerX);
+    const endAngle = Math.atan2(endY - centerY, endX - centerX);
+    const sweep = ((endAngle - startAngle + Math.PI * 2) % (Math.PI * 2)) > Math.PI ? 0 : 1;
+
+    path.push(`A ${actualRadius} ${actualRadius} 0 0 ${sweep} ${endX} ${endY}`);
+  }
+  path.push('Z');
+  return path.join(' ');
+}
+
 // --------------------- NodeShapeBackground コンポーネント ---------------------
 const NodeShapeBackground = ({
   shape,
@@ -412,6 +474,7 @@ const NodeShapeBackground = ({
   const filter = isSelected
     ? 'drop-shadow(0 8px 24px rgba(99,102,241,0.3))'
     : 'drop-shadow(0 1px 4px rgba(0,0,0,0.08))';
+  const cornerRadius = 12;
 
   switch (shape) {
     case 'circle': {
@@ -425,32 +488,38 @@ const NodeShapeBackground = ({
       );
     }
     case 'diamond': {
-      const cx = width / 2;
-      const cy = height / 2;
       const pad = strokeWidth;
-      const points = `${cx},${pad} ${width - pad},${cy} ${cx},${height - pad} ${pad},${cy}`;
+      const points = [
+        { x: width / 2, y: pad },
+        { x: width - pad, y: height / 2 },
+        { x: width / 2, y: height - pad },
+        { x: pad, y: height / 2 },
+      ];
+      const pathD = createRoundedPolygonPath(points, cornerRadius);
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
-          <polygon points={points} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <path d={pathD} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
         </svg>
       );
     }
     case 'hexagon': {
+      const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
-      const rx = width / 2 - strokeWidth;
-      const ry = height / 2 - strokeWidth;
-      const pts = [
-        [cx - rx, cy],
-        [cx - rx * 0.5, cy - ry],
-        [cx + rx * 0.5, cy - ry],
-        [cx + rx, cy],
-        [cx + rx * 0.5, cy + ry],
-        [cx - rx * 0.5, cy + ry],
-      ].map(([x, y]) => `${x},${y}`).join(' ');
+      const rx = width / 2 - pad;
+      const ry = height / 2 - pad;
+      const points = [
+        { x: cx - rx * 0.5, y: cy - ry },
+        { x: cx + rx * 0.5, y: cy - ry },
+        { x: cx + rx, y: cy },
+        { x: cx + rx * 0.5, y: cy + ry },
+        { x: cx - rx * 0.5, y: cy + ry },
+        { x: cx - rx, y: cy },
+      ];
+      const pathD = createRoundedPolygonPath(points, cornerRadius);
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
-          <polygon points={pts} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <path d={pathD} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
         </svg>
       );
     }
@@ -654,6 +723,12 @@ const RefreshIcon = () => (
 const TaskIcon = () => (
   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+  </svg>
+);
+const BackgroundIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="2" y="2" width="20" height="20" rx="3" strokeWidth={2} />
+    <path d="M2 12h20M12 2v20" strokeWidth={1} strokeDasharray="2 2" />
   </svg>
 );
 
@@ -958,6 +1033,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [currentTool, setCurrentTool] = useState<ToolType>('select');
 
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('bezier');
+  const [canvasBgColor, setCanvasBgColor] = useState<string>('#f8fafc');
 
   const ydocRef = useRef<Y.Doc | null>(null);
   const yNodesRef = useRef<Y.Map<YjsNodeData> | null>(null);
@@ -1002,6 +1078,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [drawingEdge, setDrawingEdge] = useState<{ sourceNodeId: string; sourcePoint: ConnectionPoint; currentX: number; currentY: number; targetNodeId?: string; targetPoint?: ConnectionPoint } | null>(null);
 
   const [showColorPalette, setShowColorPalette] = useState<{ nodeId?: string; stickyId?: string; outlineId?: string; stampId?: string; x: number; y: number } | null>(null);
+  const [showCanvasBgPalette, setShowCanvasBgPalette] = useState(false);
   
   const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
   const [draggingStickyId, setDraggingStickyId] = useState<string | null>(null);
@@ -1332,6 +1409,15 @@ const MindMapApp = ({ user }: { user: User }) => {
         yOutlines.set(outlineId, { ...data, ...style });
       });
     }
+  }, []);
+
+  const updateCanvasBgColor = useCallback((color: string) => {
+    const settings = ySettingsRef.current;
+    if (!settings || !ydocRef.current) return;
+    ydocRef.current.transact(() => {
+      settings.set('backgroundColor', color);
+    });
+    setCanvasBgColor(color);
   }, []);
 
   useEffect(() => {
@@ -2002,6 +2088,11 @@ const MindMapApp = ({ user }: { user: User }) => {
         yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' }); 
         yRootRef.current = rootId; 
       }
+      if (!ySettings.get('backgroundColor')) {
+        ySettings.set('backgroundColor', '#f8fafc');
+      }
+      const bg = ySettings.get('backgroundColor') as string | undefined;
+      if (bg) setCanvasBgColor(bg);
     });
 
     if (typeof window !== 'undefined') {
@@ -2088,6 +2179,8 @@ const MindMapApp = ({ user }: { user: User }) => {
 
       const currentStyle = ySettings.get('edgeStyle') as EdgeStyle | undefined;
       if (currentStyle) setEdgeStyle(currentStyle);
+      const bg = ySettings.get('backgroundColor') as string | undefined;
+      if (bg) setCanvasBgColor(bg);
     };
     
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2991,6 +3084,32 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <div className="w-px h-5 bg-slate-200 mx-0.5" />
                 <button onClick={toggleGrid} className={`p-2 rounded-lg transition-colors ${showGrid ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="背景グリッドの表示/非表示"><GridIcon /></button>
                 <div className="w-px h-5 bg-slate-200 mx-0.5" />
+                {/* 背景色変更ボタン */}
+                <button
+                  onClick={() => setShowCanvasBgPalette(prev => !prev)}
+                  className={`p-2 rounded-lg transition-colors ${showCanvasBgPalette ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`}
+                  title="キャンバス背景色の変更"
+                >
+                  <BackgroundIcon />
+                </button>
+                {showCanvasBgPalette && (
+                  <div className="absolute bottom-full right-0 mb-2 bg-white border border-slate-200 rounded-xl shadow-2xl p-3 z-50">
+                    <div className="text-xs font-bold text-slate-500 mb-2 text-center uppercase tracking-wide">背景色</div>
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                      {COLOR_PALETTE.map((cp, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => { updateCanvasBgColor(cp.bg); setShowCanvasBgPalette(false); }}
+                          className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm"
+                          style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05)` }}
+                          title={cp.label}
+                        />
+                      ))}
+                    </div>
+                    <button onClick={() => setShowCanvasBgPalette(false)} className="w-full py-1.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">キャンセル</button>
+                  </div>
+                )}
+                <div className="w-px h-5 bg-slate-200 mx-0.5" />
                 <button onClick={() => setShowTaskInfo(prev => !prev)} className={`p-2 rounded-lg transition-colors ${showTaskInfo ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="タスク情報の表示/非表示">
                   <TaskIcon />
                 </button>
@@ -3047,8 +3166,8 @@ const MindMapApp = ({ user }: { user: User }) => {
           </div>
         )}
         {mindMap ? (
-          <div ref={scrollContainerRef} className={canvasScrollClass + ' hide-scrollbar bg-slate-50'} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop} style={hideScrollbarStyle as React.CSSProperties}>
-            <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: '#f8fafc' }}>
+          <div ref={scrollContainerRef} className={canvasScrollClass + ' hide-scrollbar'} style={{ backgroundColor: canvasBgColor }} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop} {...{style: { ...hideScrollbarStyle, backgroundColor: canvasBgColor }}}>
+            <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: canvasBgColor }}>
               {remoteCursors.map((p: Participant) => (
                 <div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}>
                   {p.avatarUrl ? (
