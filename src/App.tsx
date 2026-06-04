@@ -3125,7 +3125,71 @@ const MindMapApp = ({ user }: { user: User }) => {
                   )}
                 </>
               )}
-              {outlines.map((outline: OutlineData) => { /* ... unchanged */ return null; })}
+              {outlines.map((outline: OutlineData) => { 
+                const isEditing = editingOutlineId === outline.id; 
+                const isSelected = selectedOutlineIds.includes(outline.id); 
+                const fontSize = outline.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+                const sw = outline.strokeWidth ?? 3;
+                const dash = outline.strokeDasharray ?? '';
+                const ta = outline.textAlign ?? 'left';
+                return (
+                  <div key={outline.id} 
+                    className={`absolute cursor-move transition-shadow group ${isSelected ? 'ring-2 ring-indigo-500/50 shadow-md' : 'hover:ring-2 hover:ring-slate-300/50'} ${outline.type === 'text' ? '' : 'bg-transparent'}`} 
+                    style={{ left: outline.x, top: outline.y, width: outline.width, height: outline.height, zIndex: outline.zIndex ?? 4, borderRadius: outline.type === 'circle' ? '50%' : '0' }} 
+                    onMouseDown={(e) => handleMouseDownOnOutline(e, outline.id)} 
+                    onContextMenu={(e) => handleOutlineContextMenu(e, outline.id)} 
+                    onDoubleClick={(e) => { e.stopPropagation(); if (outline.type === 'text') setEditingOutlineId(outline.id); }} 
+                    onClick={(e) => handleOutlineClick(e, outline.id)}
+                  >
+                    {outline.type === 'rectangle' && (
+                      <div className="w-full h-full rounded" style={{ border: `${sw}px solid ${outline.color}`, borderStyle: dash ? 'dashed' : 'solid', strokeDasharray: dash }}></div>
+                    )}
+                    {outline.type === 'circle' && (
+                      <div className="w-full h-full rounded-full" style={{ border: `${sw}px solid ${outline.color}`, borderStyle: dash ? 'dashed' : 'solid', strokeDasharray: dash }}></div>
+                    )}
+                    {outline.type === 'triangle' && (
+                      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none">
+                        <polygon points="50,0 100,100 0,100" fill="none" stroke={outline.color} strokeWidth={sw} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+                      </svg>
+                    )}
+                    {outline.type === 'text' && (
+                      <div className="w-full h-full flex items-start" style={{ justifyContent: ta === 'center' ? 'center' : ta === 'right' ? 'flex-end' : 'flex-start' }}>
+                        {isEditing ? (
+                          <textarea autoFocus className="w-full h-full resize-none bg-transparent border-none outline-none text-lg pointer-events-auto" style={{ color: outline.color, fontSize, fontWeight: 'extrabold', fontFamily: "'Noto Sans JP', sans-serif" }} defaultValue={outline.text} onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateOutlineText(outline.id, trimmed || 'テキスト'); setEditingOutlineId(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEditingOutlineId(null); }} onMouseDown={(e) => e.stopPropagation()} />
+                        ) : (
+                          <div className="w-full h-full whitespace-pre-wrap overflow-auto text-lg cursor-text select-none pointer-events-none" style={{ color: outline.color, fontSize, fontWeight: 'extrabold', textAlign: ta, fontFamily: "'Noto Sans JP', sans-serif" }}>{outline.text}</div>
+                        )}
+                      </div>
+                    )}
+                    {isSelected && outline.type !== 'text' && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (
+                      <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-1 z-30 gap-1">
+                        <select value={sw} onChange={(e) => updateOutlineStyle(outline.id, { strokeWidth: Number(e.target.value) })} className="text-xs bg-slate-50 border border-slate-300 rounded px-1 py-0.5 outline-none">
+                          {STROKE_WIDTHS.map(s => <option key={s} value={s}>{s}px</option>)}
+                        </select>
+                        <button onClick={() => updateOutlineStyle(outline.id, { strokeDasharray: dash === '' ? '8 4' : dash === '8 4' ? '2 4' : '' })} className={`p-1 rounded text-xs ${dash === '' ? 'bg-indigo-100 text-indigo-700' : dash === '8 4' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>線種</button>
+                      </div>
+                    )}
+                    {isSelected && outline.type === 'text' && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (
+                      <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-lg flex items-center p-1 z-30 gap-1">
+                        <select value={fontSize} onChange={(e) => updateOutlineFontSize(outline.id, Number(e.target.value))} className="text-xs bg-slate-50 border border-slate-300 rounded px-1 py-0.5 outline-none">
+                          {FONT_SIZES.map(size => <option key={size} value={size}>{size}px</option>)}
+                        </select>
+                        <button onClick={() => updateOutlineStyle(outline.id, { textAlign: ta === 'left' ? 'center' : ta === 'center' ? 'right' : 'left' })} className={`p-1 rounded text-xs ${ta === 'left' ? 'bg-indigo-100 text-indigo-700' : ta === 'center' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                          {ta === 'left' ? '≡左' : ta === 'center' ? '≡中' : '≡右'}
+                        </button>
+                      </div>
+                    )}
+                    {isSelected && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (
+                      <>
+                        <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'nw')} />
+                        <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'ne')} />
+                        <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'sw')} />
+                        <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'se')} />
+                      </>
+                    )}
+                  </div>
+                ); 
+              })}
               {images.map((image: ImageData) => { const isSelected = selectedImageIds.includes(image.id); return (<div key={image.id} className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${isSelected ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-slate-300 shadow-md hover:shadow-lg'}`} style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: image.zIndex ?? 6 }} onMouseDown={(e) => handleMouseDownOnImage(e, image.id)} onContextMenu={(e) => handleImageContextMenu(e, image.id)} onClick={(e) => handleImageClick(e, image.id)}><img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />{isSelected && selectedImageIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'se')} /></>)}</div>); })}
               {stickies.map((sticky: StickyData) => { const isEditing = editingStickyId === sticky.id; const isSelected = selectedStickyIds.includes(sticky.id); return (<div key={sticky.id} className={`absolute cursor-move rounded-sm overflow-visible transition-shadow group ${isSelected ? 'ring-4 ring-indigo-500/20 shadow-2xl' : 'shadow-lg hover:shadow-xl'}`} style={{ left: sticky.x, top: sticky.y, width: sticky.width, height: sticky.height, zIndex: sticky.zIndex ?? 5 }} onMouseDown={(e) => handleMouseDownOnSticky(e, sticky.id)} onContextMenu={(e) => handleStickyContextMenu(e, sticky.id)} onDoubleClick={(e) => { e.stopPropagation(); setEditingStickyId(sticky.id); }} onClick={(e) => handleStickyClick(e, sticky.id)}><div className="absolute -bottom-1.5 right-2 w-[70%] h-[50%] -z-10 opacity-40" style={{ backgroundColor: 'rgba(0,0,0,0.3)', transform: 'rotate(3deg)', filter: 'blur(6px)' }} /><div className="relative w-full h-full rounded-sm flex flex-col p-3" style={{ backgroundColor: sticky.bgColor, color: sticky.textColor, boxShadow: '1px 2px 4px rgba(0,0,0,0.05)' }}><div className="absolute top-0 left-0 w-0 h-0 border-r-[16px] border-r-transparent border-b-[16px] rounded-br-sm" style={{ borderBottomColor: 'rgba(0,0,0,0.08)' }} /><div className="flex-1 flex items-start overflow-hidden">{isEditing ? (<textarea autoFocus className="w-full h-full resize-none bg-transparent border-none outline-none text-sm font-medium pointer-events-auto" defaultValue={sticky.text} onBlur={(e) => { const trimmed = e.currentTarget.value.trim(); updateStickyText(sticky.id, trimmed); setEditingStickyId(null); }} onKeyDown={(e) => { if (e.key === 'Escape') setEditingStickyId(null); }} onMouseDown={(e) => e.stopPropagation()} />) : (<div className="w-full h-full whitespace-pre-wrap overflow-auto text-sm font-medium cursor-text select-none pointer-events-none">{sticky.text}</div>)}</div>{isSelected && selectedStickyIds.length === 1 && totalSelectedCount === 1 && !isEditing && (<div className="flex justify-end gap-1 mt-1 pointer-events-auto"><button onClick={(e) => { e.stopPropagation(); setShowColorPalette({ stickyId: sticky.id, x: window.innerWidth / 2, y: window.innerHeight / 2 }); }} className="p-1 hover:bg-black/10 rounded"><PaletteIcon /></button><button onClick={(e) => { e.stopPropagation(); deleteSticky(sticky.id); }} className="p-1 hover:bg-black/10 rounded text-rose-500"><TrashIcon /></button></div>)}</div>{isSelected && selectedStickyIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'se')} /></>)}</div>); })}
               {stamps.map((stamp) => (<div key={stamp.id} className={`absolute cursor-move flex items-center justify-center transition-all duration-300 ${selectedStampIds.includes(stamp.id) ? 'ring-4 ring-indigo-500/30 scale-105 shadow-2xl' : 'hover:shadow-xl hover:scale-105 hover:-translate-y-1'}`} style={{ left: stamp.x, top: stamp.y, width: stamp.width, height: stamp.height, backgroundColor: 'transparent', color: stamp.color, zIndex: stamp.zIndex ?? 3, fontFamily: "'MS Mincho', 'Yu Mincho', serif" }} onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)} onContextMenu={(e) => handleStampContextMenu(e, stamp.id)} onClick={(e) => handleStampClick(e, stamp.id)} title={`${stamp.email} の印鑑`}><div className="flex flex-col items-center justify-center w-full h-full rounded-full border-[2.5px] bg-white/90 backdrop-blur-sm relative overflow-hidden" style={{ borderColor: stamp.color, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}><div className="w-full text-center border-b-[1.5px] pb-1 pt-2" style={{ borderColor: stamp.color }}><span className="text-[8px] font-bold tracking-tighter leading-none block font-sans">{new Date().toLocaleDateString('ja-JP', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}</span></div><div className="w-full text-center pt-1 flex-1 flex items-center justify-center"><span className="text-[13px] font-extrabold tracking-widest leading-none block pb-1">{stamp.text}</span></div><div className="absolute inset-0 pointer-events-none rounded-full opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9IjAuMSIvPgo8cGF0aCBkPSJNMCAwdjRoNFYweiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4=')]"></div></div></div>))}
