@@ -1210,7 +1210,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, []);
 
   const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
-  const [connectionStatus, setConnectionStatus] = useState('接続中...');
+  const [, setConnectionStatus] = useState('接続中...');
   const [awarenessStates, setAwarenessStates] = useState<Record<string, AwarenessState>>({});
   const [showParticipants, setShowParticipants] = useState(false);
   const myUserId = user.id;
