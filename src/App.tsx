@@ -2759,7 +2759,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const allParticipants = Array.from(participantsMap.values());
   const getImageUrl = (storagePath: string) => { const { data } = supabase.storage.from('images').getPublicUrl(storagePath); return data.publicUrl; };
   const canvasScrollClass = `w-full h-full overflow-auto relative ${isSpacePressed ? (isCanvasPanning ? 'cursor-grabbing' : 'cursor-grab') : (currentTool !== 'select' ? 'cursor-crosshair' : '')}`;
-  const hideScrollbarStyle = { scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const, WebkitOverflowScrolling: 'touch', outline: 'none' };
+  const hideScrollbarStyle: React.CSSProperties = { scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', outline: 'none' };
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
   const flatNodes = mindMap ? flattenTree(mindMap) : [];
@@ -3166,7 +3166,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           </div>
         )}
         {mindMap ? (
-          <div ref={scrollContainerRef} className={canvasScrollClass + ' hide-scrollbar'} style={{ backgroundColor: canvasBgColor }} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop} {...{style: { ...hideScrollbarStyle, backgroundColor: canvasBgColor }}}>
+          <div ref={scrollContainerRef} className={canvasScrollClass + ' hide-scrollbar'} style={{ ...hideScrollbarStyle, backgroundColor: canvasBgColor }} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop}>
             <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: canvasBgColor }}>
               {remoteCursors.map((p: Participant) => (
                 <div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}>
