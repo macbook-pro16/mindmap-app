@@ -66,6 +66,7 @@ export interface YjsEdgeData {
   targetPoint: ConnectionPoint;
   arrow: 'none' | 'start' | 'end' | 'both';
   color?: string;
+  strokeWidth?: number;
 }
 
 export interface YjsImageData {
@@ -227,6 +228,8 @@ export interface ContextMenuInfo {
 
 export type ConnectionPoint = 'top' | 'right' | 'bottom' | 'left';
 export type EdgeStyle = 'bezier' | 'step' | 'straight';
+export type AlignAxis = 'vertical' | 'horizontal';
+export type AlignAnchor = 'left' | 'center-v' | 'right' | 'top' | 'center-h' | 'bottom';
 
 export interface EdgeData {
   id: string;
@@ -236,6 +239,7 @@ export interface EdgeData {
   targetPoint: ConnectionPoint;
   arrow: 'none' | 'start' | 'end' | 'both';
   color?: string;
+  strokeWidth?: number;
 }
 
 export interface ImageData {
@@ -587,30 +591,50 @@ const findClosestConnectionPoint = (nodeX: number, nodeY: number, targetX: numbe
   return closest;
 };
 
-const getBezierPath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint, p2Dir: ConnectionPoint): string => {
-  const offset1 = 50;
+const getBezierPath = (
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p1Dir: ConnectionPoint,
+  p2Dir: ConnectionPoint
+): string => {
   const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-  const offset2 = Math.min(80, Math.max(30, dist * 0.4));
-  const getCP = (pt: { x: number; y: number }, dir: ConnectionPoint, offset: number) => {
+  const offset = Math.min(Math.max(dist * 0.35, 40), 120);
+
+  const getCP = (pt: { x: number; y: number }, dir: ConnectionPoint, o: number) => {
     switch (dir) {
-      case 'top': return { x: pt.x, y: pt.y - offset };
-      case 'bottom': return { x: pt.x, y: pt.y + offset };
-      case 'left': return { x: pt.x - offset, y: pt.y };
-      case 'right': return { x: pt.x + offset, y: pt.y };
+      case 'top':    return { x: pt.x,     y: pt.y - o };
+      case 'bottom': return { x: pt.x,     y: pt.y + o };
+      case 'left':   return { x: pt.x - o, y: pt.y };
+      case 'right':  return { x: pt.x + o, y: pt.y };
     }
   };
-  const cp1 = getCP(p1, p1Dir, offset1);
-  const cp2 = getCP(p2, p2Dir, offset2);
+
+  const cp1 = getCP(p1, p1Dir, offset);
+  const cp2 = getCP(p2, p2Dir, offset);
   return `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
 };
 
-const getStepPath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint): string => {
-  if (p1Dir === 'right' || p1Dir === 'left') {
+const getStepPath = (
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p1Dir: ConnectionPoint,
+  p2Dir: ConnectionPoint
+): string => {
+  const isHorizontalStart = p1Dir === 'right' || p1Dir === 'left';
+  const isHorizontalEnd   = p2Dir === 'right' || p2Dir === 'left';
+
+  if (isHorizontalStart && isHorizontalEnd) {
     const midX = (p1.x + p2.x) / 2;
     return `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
-  } else {
+  }
+  if (!isHorizontalStart && !isHorizontalEnd) {
     const midY = (p1.y + p2.y) / 2;
     return `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+  }
+  if (isHorizontalStart) {
+    return `M ${p1.x} ${p1.y} L ${p2.x} ${p1.y} L ${p2.x} ${p2.y}`;
+  } else {
+    return `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y} L ${p2.x} ${p2.y}`;
   }
 };
 
@@ -621,7 +645,7 @@ const getStraightPath = (p1: { x: number; y: number }, p2: { x: number; y: numbe
 const getEdgePath = (p1: { x: number; y: number }, p2: { x: number; y: number }, p1Dir: ConnectionPoint, p2Dir: ConnectionPoint, style: EdgeStyle): string => {
   switch (style) {
     case 'straight': return getStraightPath(p1, p2);
-    case 'step': return getStepPath(p1, p2, p1Dir);
+    case 'step': return getStepPath(p1, p2, p1Dir, p2Dir);
     case 'bezier':
     default: return getBezierPath(p1, p2, p1Dir, p2Dir);
   }
@@ -960,7 +984,12 @@ const findNodeById = (root: MindNode, id: string): MindNode | null => {
   return null;
 };
 
-const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositions: Record<string, { x: number; y: number }>, draggingNodeId: string | null): { x: number; y: number; width: number; height: number } | null => {
+const getNodeDisplayPos = (
+  nodeId: string,
+  mindMap: MindNode | null,
+  dragPositions: Record<string, { x: number; y: number }>,
+  draggingNodeId: string | null
+): { x: number; y: number; width: number; height: number } | null => {
   if (!mindMap) return null;
   const node = findNodeById(mindMap, nodeId);
   if (!node) return null;
@@ -970,7 +999,9 @@ const getNodeDisplayPos = (nodeId: string, mindMap: MindNode | null, dragPositio
     w = node.imageWidth * node.imageScale;
     h = node.imageHeight * node.imageScale;
   }
-  if (nodeId === draggingNodeId && dragPositions[nodeId]) return { x: dragPositions[nodeId].x, y: dragPositions[nodeId].y, width: w, height: h };
+  if (dragPositions[nodeId]) {
+    return { x: dragPositions[nodeId].x, y: dragPositions[nodeId].y, width: w, height: h };
+  }
   return { x: node.x, y: node.y, width: w, height: h };
 };
 
@@ -1168,7 +1199,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const [drawingShape, setDrawingShape] = useState<{ type: 'rectangle' | 'circle' | 'triangle' | 'text'; startX: number; startY: number; currentX: number; currentY: number } | null>(null);
 
-  // グリッドスタイル (none | dot | line)
   const [gridStyle, setGridStyle] = useState<'none' | 'dot' | 'line'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('mindmap-grid-style');
@@ -1479,7 +1509,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   useEffect(() => {
     const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.code === 'Space') {
-        // ノード選択中はSpaceを折りたたみに使うため、パンに使わない
         if (selectedNodeIds.length > 0) return;
         if (!editingNodeId && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
           e.preventDefault();
@@ -1558,6 +1587,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     const yEdges = yEdgesRef.current; if (!yEdges) return;
     const edge = yEdges.get(edgeId); if (!edge) return;
     ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, color }); });
+  }, []);
+
+  const updateEdgeStrokeWidth = useCallback((edgeId: string, strokeWidth: number) => {
+    const yEdges = yEdgesRef.current; if (!yEdges) return;
+    const edge = yEdges.get(edgeId); if (!edge) return;
+    ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, strokeWidth }); });
   }, []);
 
   const updateNodeMemo = useCallback((nodeId: string, memo: string) => {
@@ -1820,15 +1855,25 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const deleteNode = useCallback((nodeId: string) => {
     const nodes = yNodesRef.current;
+    const yEdges = yEdgesRef.current;
     if (!nodes || !yRootRef.current) return;
     if (nodeId === yRootRef.current) return;
     ydocRef.current?.transact(() => {
-      nodes.forEach((value: YjsNodeData, key: string) => {
+      nodes.forEach((value, key) => {
         if (value.children?.includes(nodeId)) {
-          nodes.set(key, { ...value, children: value.children.filter((id: string) => id !== nodeId) });
+          nodes.set(key, { ...value, children: value.children.filter(id => id !== nodeId) });
         }
       });
       nodes.delete(nodeId);
+      if (yEdges) {
+        const toDelete: string[] = [];
+        yEdges.forEach((edge, key) => {
+          if (edge.sourceNodeId === nodeId || edge.targetNodeId === nodeId) {
+            toDelete.push(key);
+          }
+        });
+        toDelete.forEach(key => yEdges.delete(key));
+      }
     });
     setSelectedNodeIds(prev => prev.filter(id => id !== nodeId));
   }, []);
@@ -1932,25 +1977,77 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  const alignNodes = useCallback((axis: 'vertical' | 'horizontal') => { 
-    const nodes = yNodesRef.current; 
-    if (!nodes || selectedNodeIds.length < 2) return; 
-    const refNodeId = selectedNodeIds[0]; 
-    const refNode = nodes.get(refNodeId); 
-    if (!refNode) return; 
-    const targetX = axis === 'vertical' ? refNode.x : undefined; 
-    const targetY = axis === 'horizontal' ? refNode.y : undefined; 
-    const idsToAlign = selectedNodeIds.slice(1); 
-    ydocRef.current?.transact(() => { 
-      idsToAlign.forEach((id: string) => { 
-        const data = nodes.get(id); 
-        if (!data) return; 
-        const updated = { ...data }; 
-        if (targetX !== undefined) updated.x = targetX; 
-        if (targetY !== undefined) updated.y = targetY; 
-        nodes.set(id, updated); 
-      }); 
-    }); 
+  const alignNodes = useCallback((
+    axis: AlignAxis,
+    anchor: AlignAnchor = axis === 'vertical' ? 'center-v' : 'center-h'
+  ) => {
+    const nodes = yNodesRef.current;
+    if (!nodes || selectedNodeIds.length < 2) return;
+
+    const refNodeId = selectedNodeIds[0];
+    const refData   = nodes.get(refNodeId);
+    if (!refData) return;
+
+    const refW = refData.width  ?? NODE_WIDTH;
+    const refH = refData.height ?? NODE_HEIGHT;
+
+    ydocRef.current?.transact(() => {
+      selectedNodeIds.slice(1).forEach(id => {
+        const data = nodes.get(id);
+        if (!data) return;
+        const w = data.width  ?? NODE_WIDTH;
+        const h = data.height ?? NODE_HEIGHT;
+        let newX = data.x;
+        let newY = data.y;
+
+        if (axis === 'vertical') {
+          switch (anchor) {
+            case 'left':     newX = (refData.x - refW / 2) + w / 2; break;
+            case 'center-v': newX = refData.x;                        break;
+            case 'right':    newX = (refData.x + refW / 2) - w / 2; break;
+          }
+        } else {
+          switch (anchor) {
+            case 'top':      newY = (refData.y - refH / 2) + h / 2; break;
+            case 'center-h': newY = refData.y;                        break;
+            case 'bottom':   newY = (refData.y + refH / 2) - h / 2; break;
+          }
+        }
+
+        nodes.set(id, { ...data, x: newX, y: newY });
+      });
+    });
+  }, [selectedNodeIds]);
+
+  const distributeNodes = useCallback((axis: 'horizontal' | 'vertical') => {
+    const nodes = yNodesRef.current;
+    if (!nodes || selectedNodeIds.length < 3) return;
+
+    const nodeDatas = selectedNodeIds
+      .map(id => ({ id, data: nodes.get(id) }))
+      .filter((n): n is { id: string; data: YjsNodeData } => !!n.data);
+
+    if (nodeDatas.length < 3) return;
+
+    nodeDatas.sort((a, b) =>
+      axis === 'horizontal' ? a.data.x - b.data.x : a.data.y - b.data.y
+    );
+
+    const first = nodeDatas[0].data;
+    const last  = nodeDatas[nodeDatas.length - 1].data;
+    const total = axis === 'horizontal' ? last.x - first.x : last.y - first.y;
+    const step  = total / (nodeDatas.length - 1);
+
+    ydocRef.current?.transact(() => {
+      nodeDatas.forEach((n, i) => {
+        if (i === 0 || i === nodeDatas.length - 1) return;
+        nodes.set(n.id, {
+          ...n.data,
+          x: axis === 'horizontal' ? first.x + step * i : n.data.x,
+          y: axis === 'vertical'   ? first.y + step * i : n.data.y,
+        });
+      });
+    });
   }, [selectedNodeIds]);
 
   const handleImageUpload = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
@@ -2274,7 +2371,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
       const edgeList: EdgeData[] = [];
       yEdges.forEach((value: YjsEdgeData, key: string) => {
-        edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none', color: value.color });
+        edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none', color: value.color, strokeWidth: value.strokeWidth });
       });
       setEdges(_prev => edgeList);
 
@@ -2911,7 +3008,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         case 'addChild': addChildNode(nodeId); break; case 'addSiblingAfter': if (node?.independent) addIndependentSibling(nodeId, 'after'); else addSiblingNode(nodeId, 'after'); break;
         case 'addSiblingBefore': if (node?.independent) addIndependentSibling(nodeId, 'before'); else addSiblingNode(nodeId, 'before'); break;
         case 'addParent': addParentNode(nodeId); break; case 'delete': deleteNode(nodeId); break;
-        case 'alignVertical': alignNodes('vertical'); break; case 'alignHorizontal': alignNodes('horizontal'); break;
+        case 'alignVertical': alignNodes('vertical', 'center-v'); break; case 'alignHorizontal': alignNodes('horizontal', 'center-h'); break;
         case 'bringToFront': bringToFront(); break; case 'sendToBack': sendToBack(); break;
         case 'toggleCollapse': if (nodeId !== yRootRef.current) toggleNodeCollapse(nodeId); break;
       }
@@ -3002,7 +3099,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
   const flatNodes = mindMap ? flattenTree(mindMap) : [];
-  const edgeLines: { id: string; pathD: string; selected: boolean; arrow: string; color?: string; sourceX: number; sourceY: number; targetX: number; targetY: number }[] = [];
+  const edgeLines: { id: string; pathD: string; selected: boolean; arrow: string; color?: string; strokeWidth?: number; sourceX: number; sourceY: number; targetX: number; targetY: number }[] = [];
   if (mindMap) {
     for (const edge of edges) {
       const sourcePos = getNodeDisplayPos(edge.sourceNodeId, mindMap, dragPositions, draggingNodeId);
@@ -3017,6 +3114,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         selected: selectedEdgeId === edge.id,
         arrow: edge.arrow || 'none',
         color: edge.color,
+        strokeWidth: edge.strokeWidth,
         sourceX: startPt.x,
         sourceY: startPt.y,
         targetX: endPt.x,
@@ -3027,7 +3125,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const focusedNodeIds = focusNodeId ? getFocusedNodeIds(mindMap, focusNodeId) : undefined;
 
-  // ミニマップコンポーネント
   const MinimapPanel = () => {
     const SCALE = 50;
     const W = 200, H = 150;
@@ -3455,6 +3552,113 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
               <div className="w-px h-5 bg-slate-200 mx-1" />
               <button onClick={handleHeaderAddSticky} className="p-2 rounded-lg text-amber-500 hover:bg-amber-50 transition-all" title="付箋"><StickyIcon /></button>
+              <div className="w-px h-5 bg-slate-200 mx-1" />
+              {/* エッジスタイルトグル */}
+              <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+                {([
+                  {
+                    style: 'bezier' as EdgeStyle,
+                    title: '曲線',
+                    icon: (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M4 20 C 6 4, 18 4, 20 20" strokeWidth={2} strokeLinecap="round" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    style: 'step' as EdgeStyle,
+                    title: '直角',
+                    icon: (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <polyline points="4,20 4,4 20,4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    style: 'straight' as EdgeStyle,
+                    title: '直線',
+                    icon: (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <line x1="4" y1="20" x2="20" y2="4" strokeWidth={2} strokeLinecap="round" />
+                      </svg>
+                    ),
+                  },
+                ]).map(({ style, title, icon }) => (
+                  <button
+                    key={style}
+                    onClick={() => handleEdgeStyleChange(style)}
+                    title={title}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      edgeStyle === style
+                        ? 'bg-white text-indigo-700 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+              <div className="w-px h-5 bg-slate-200 mx-1" />
+              {/* 整列グループ（ドロップダウン） */}
+              <div className="relative group">
+                <button
+                  onClick={() => alignNodes('vertical', 'center-v')}
+                  disabled={selectedNodeIds.length < 2}
+                  title="縦に整列（クリック：中央、▼で詳細）"
+                  className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition-colors"
+                >
+                  <AlignVerticalIcon />
+                </button>
+                <div className="absolute top-full left-0 mt-1 hidden group-hover:flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl p-1 z-50 whitespace-nowrap">
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-0.5">縦整列</div>
+                  {([
+                    { anchor: 'left'     as AlignAnchor, label: '← 左端揃え' },
+                    { anchor: 'center-v' as AlignAnchor, label: '⊕ 中央揃え' },
+                    { anchor: 'right'    as AlignAnchor, label: '→ 右端揃え' },
+                  ]).map(({ anchor, label }) => (
+                    <button
+                      key={anchor}
+                      onClick={() => alignNodes('vertical', anchor)}
+                      disabled={selectedNodeIds.length < 2}
+                      className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <div className="border-t border-slate-100 my-0.5" />
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-0.5">横整列</div>
+                  {([
+                    { anchor: 'top'      as AlignAnchor, label: '↑ 上端揃え' },
+                    { anchor: 'center-h' as AlignAnchor, label: '⊕ 中央揃え' },
+                    { anchor: 'bottom'   as AlignAnchor, label: '↓ 下端揃え' },
+                  ]).map(({ anchor, label }) => (
+                    <button
+                      key={anchor}
+                      onClick={() => alignNodes('horizontal', anchor)}
+                      disabled={selectedNodeIds.length < 2}
+                      className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <div className="border-t border-slate-100 my-0.5" />
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-0.5">等間隔</div>
+                  <button
+                    onClick={() => distributeNodes('horizontal')}
+                    disabled={selectedNodeIds.length < 3}
+                    className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left"
+                  >
+                    ⇔ 水平等間隔
+                  </button>
+                  <button
+                    onClick={() => distributeNodes('vertical')}
+                    disabled={selectedNodeIds.length < 3}
+                    className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left"
+                  >
+                    ⇕ 垂直等間隔
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
               <div className="relative" ref={quickMenuRef}>
@@ -3894,6 +4098,19 @@ const MindMapApp = ({ user }: { user: User }) => {
                 ))}
               </div>
               <div className="mx-2 my-1 border-b border-slate-100" />
+              <div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">線の太さ</div>
+              <div className="px-3 py-1.5 flex flex-wrap gap-1.5 mb-1">
+                {[1, 2, 3, 4, 6].map(sw => (
+                  <button
+                    key={sw}
+                    onClick={() => { if (contextMenu.edgeId) updateEdgeStrokeWidth(contextMenu.edgeId, sw); closeContextMenu(); }}
+                    className="px-2 py-0.5 text-xs rounded border border-slate-200 hover:bg-slate-50"
+                  >
+                    {sw}px
+                  </button>
+                ))}
+              </div>
+              <div className="mx-2 my-1 border-b border-slate-100" />
               <button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-3 py-2 hover:bg-rose-50 text-rose-600 font-medium text-sm flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
                 <span className="text-rose-400 flex-shrink-0"><TrashIcon /></span>
                 <span>線を削除</span>
@@ -4323,8 +4540,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
                   <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
                 </defs>
-                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; if (Math.abs(dx) > Math.abs(dy)) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; const isVisible = !focusedNodeIds || (focusedNodeIds.has(fn.parentId as string) && focusedNodeIds.has(fn.id)); return (<g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#e2e8f0'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
-                {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : (el.color ?? '#94a3b8')} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-indigo-500' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
+                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x; const dy = childPos.y - parentPos.y; const gapX = Math.abs(dx) - (parentPos.width + childPos.width) / 2; const gapY = Math.abs(dy) - (parentPos.height + childPos.height) / 2; let parentPoint: ConnectionPoint; let childPoint: ConnectionPoint; if (gapX >= gapY) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint  = dx > 0 ? 'left'  : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint  = dy > 0 ? 'top'    : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; const isVisible = !focusedNodeIds || (focusedNodeIds.has(fn.parentId as string) && focusedNodeIds.has(fn.id)); return (<g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#e2e8f0'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
+                {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : (el.color ?? '#94a3b8')} strokeWidth={el.strokeWidth ?? (el.selected ? 4 : 3)} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-indigo-500' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
                 {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
                 {drawingShape && (
                   <g opacity={0.5}>
