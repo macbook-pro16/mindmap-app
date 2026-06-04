@@ -370,14 +370,25 @@ const getNodeShapeSize = (
 ): { width: number; height: number } => {
   switch (shape) {
     case 'circle': {
-      const d = Math.max(baseWidth, baseHeight, 70);
+      // 正円の内接する正方形の辺 = r√2 ≈ diameter * 0.707
+      // テキスト幅 = nodeWidth * 0.64 (= (1 - 0.18*2) の有効率)
+      // 必要なnodeWidth = textWidth / 0.64
+      const d = Math.max(Math.ceil(baseWidth / 0.64), Math.ceil(baseHeight / 0.64), 70);
       return { width: d, height: d };
     }
     case 'diamond': {
-      return { width: Math.max(baseWidth * 1.4, 120), height: Math.max(baseHeight * 1.8, 80) };
+      // 水平パディング率 0.2*2=0.4, 垂直0.28*2=0.56
+      // 有効幅率 = 1 - 0.4 = 0.6
+      const w = Math.max(Math.ceil(baseWidth / 0.6), 120);
+      const h = Math.max(Math.ceil(baseHeight / 0.44), 80);
+      return { width: w, height: h };
     }
     case 'hexagon': {
-      return { width: Math.max(baseWidth * 1.25, 120), height: Math.max(baseHeight * 1.25, 70) };
+      // 水平パディング率 0.25*2=0.5
+      // 有効幅率 = 1 - 0.5 = 0.5
+      const w = Math.max(Math.ceil(baseWidth / 0.5), 120);
+      const h = Math.max(Math.ceil(baseHeight / 0.56), 70);
+      return { width: w, height: h };
     }
     case 'rounded':
     default:
@@ -3686,7 +3697,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     if (e.key === 'Enter') {
       if (e.nativeEvent.isComposing) return;
       if (e.shiftKey) {
-        return; // デフォルトの改行動作をさせる
+        return; // Allow newline
       }
       e.preventDefault();
       if (textareaRef.current) {
@@ -3765,7 +3776,15 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             <textarea
               ref={textareaRef}
               className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0 resize-none"
-              style={{ fontSize, color: node.textColor || '#1e293b', fontFamily: 'inherit', lineHeight: LINE_HEIGHT_RATIO }}
+              style={{
+                fontSize,
+                color: node.textColor || '#1e293b',
+                fontFamily: 'inherit',
+                lineHeight: LINE_HEIGHT_RATIO,
+                whiteSpace: 'pre',
+                overflowWrap: 'normal',
+                wordBreak: 'keep-all',
+              }}
               defaultValue={node.text}
               onBlur={handleBlur}
               onKeyDown={handleTextareaKeyDown}
@@ -3780,7 +3799,8 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
                 textDecoration: node.taskDone ? 'line-through' : 'none',
                 opacity: node.taskDone ? 0.6 : 1,
                 whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
+                overflowWrap: 'normal',
+                wordBreak: 'keep-all',
                 overflow: 'hidden',
                 lineHeight: LINE_HEIGHT_RATIO,
               }}
