@@ -388,68 +388,6 @@ const getShapePadding = (
   }
 };
 
-// --------------------- 角丸多角形パス生成 ---------------------
-function createRoundedPolygonPath(points: {x: number; y: number}[], radius: number): string {
-  const len = points.length;
-  if (len < 3) return '';
-  const r = Math.min(radius, 100);
-  const path: string[] = [];
-
-  for (let i = 0; i < len; i++) {
-    const p0 = points[(i - 1 + len) % len];
-    const p1 = points[i];
-    const p2 = points[(i + 1) % len];
-
-    const dx1 = p1.x - p0.x;
-    const dy1 = p1.y - p0.y;
-    const dx2 = p2.x - p1.x;
-    const dy2 = p2.y - p1.y;
-
-    const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
-    const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
-
-    const u1x = dx1 / len1;
-    const u1y = dy1 / len1;
-    const u2x = dx2 / len2;
-    const u2y = dy2 / len2;
-
-    // 内角の半分を求める
-    const dot = u1x * u2x + u1y * u2y;
-    const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
-    const halfAngle = angle / 2;
-    const tanHalf = Math.tan(halfAngle);
-    const actualRadius = Math.min(r, (len1 / 2), (len2 / 2));
-    const dist = actualRadius / tanHalf;
-
-    // 前の線の終端、次の線の開始端
-    const startX = p1.x - u1x * dist;
-    const startY = p1.y - u1y * dist;
-    const endX = p1.x + u2x * dist;
-    const endY = p1.y + u2y * dist;
-
-    if (i === 0) {
-      path.push(`M ${startX} ${startY}`);
-    } else {
-      path.push(`L ${startX} ${startY}`);
-    }
-
-    // 円弧の中心はp1からradiusだけ内側
-    const midX = (u1x + u2x) / 2;
-    const midY = (u1y + u2y) / 2;
-    const midLen = Math.sqrt(midX * midX + midY * midY) || 1;
-    const centerX = p1.x + (midX / midLen) * (actualRadius / Math.sin(halfAngle));
-    const centerY = p1.y + (midY / midLen) * (actualRadius / Math.sin(halfAngle));
-
-    const startAngle = Math.atan2(startY - centerY, startX - centerX);
-    const endAngle = Math.atan2(endY - centerY, endX - centerX);
-    const sweep = ((endAngle - startAngle + Math.PI * 2) % (Math.PI * 2)) > Math.PI ? 0 : 1;
-
-    path.push(`A ${actualRadius} ${actualRadius} 0 0 ${sweep} ${endX} ${endY}`);
-  }
-  path.push('Z');
-  return path.join(' ');
-}
-
 // --------------------- NodeShapeBackground コンポーネント ---------------------
 const NodeShapeBackground = ({
   shape,
@@ -474,7 +412,6 @@ const NodeShapeBackground = ({
   const filter = isSelected
     ? 'drop-shadow(0 8px 24px rgba(99,102,241,0.3))'
     : 'drop-shadow(0 1px 4px rgba(0,0,0,0.08))';
-  const cornerRadius = 12;
 
   switch (shape) {
     case 'circle': {
@@ -488,38 +425,104 @@ const NodeShapeBackground = ({
       );
     }
     case 'diamond': {
+      // 角Rつき菱形
       const pad = strokeWidth;
-      const points = [
-        { x: width / 2, y: pad },
-        { x: width - pad, y: height / 2 },
-        { x: width / 2, y: height - pad },
-        { x: pad, y: height / 2 },
-      ];
-      const pathD = createRoundedPolygonPath(points, cornerRadius);
+      const cx = width / 2;
+      const cy = height / 2;
+      const r = Math.min(width, height) * 0.12;
+
+      const top    = { x: cx,           y: pad };
+      const right  = { x: width - pad,  y: cy };
+      const bottom = { x: cx,           y: height - pad };
+      const left   = { x: pad,          y: cy };
+
+      const norm = (ax: number, ay: number, bx: number, by: number, len: number) => {
+        const dx = bx - ax, dy = by - ay;
+        const d = Math.hypot(dx, dy);
+        return { x: dx / d * len, y: dy / d * len };
+      };
+
+      const topToRight    = norm(top.x,    top.y,    right.x,  right.y,  r);
+      const rightToTop    = norm(right.x,  right.y,  top.x,    top.y,    r);
+      const rightToBottom = norm(right.x,  right.y,  bottom.x, bottom.y, r);
+      const bottomToRight = norm(bottom.x, bottom.y, right.x,  right.y,  r);
+      const bottomToLeft  = norm(bottom.x, bottom.y, left.x,   left.y,   r);
+      const leftToBottom  = norm(left.x,   left.y,   bottom.x, bottom.y, r);
+      const leftToTop     = norm(left.x,   left.y,   top.x,    top.y,    r);
+      const topToLeft     = norm(top.x,    top.y,    left.x,   left.y,   r);
+
+      const d = [
+        `M ${top.x + topToLeft.x} ${top.y + topToLeft.y}`,
+        `Q ${top.x} ${top.y} ${top.x + topToRight.x} ${top.y + topToRight.y}`,
+        `L ${right.x + rightToTop.x} ${right.y + rightToTop.y}`,
+        `Q ${right.x} ${right.y} ${right.x + rightToBottom.x} ${right.y + rightToBottom.y}`,
+        `L ${bottom.x + bottomToRight.x} ${bottom.y + bottomToRight.y}`,
+        `Q ${bottom.x} ${bottom.y} ${bottom.x + bottomToLeft.x} ${bottom.y + bottomToLeft.y}`,
+        `L ${left.x + leftToBottom.x} ${left.y + leftToBottom.y}`,
+        `Q ${left.x} ${left.y} ${left.x + leftToTop.x} ${left.y + leftToTop.y}`,
+        `L ${top.x + topToLeft.x} ${top.y + topToLeft.y}`,
+        `Z`,
+      ].join(' ');
+
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
-          <path d={pathD} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <path d={d} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
         </svg>
       );
     }
     case 'hexagon': {
+      // 角Rつき六角形（横長フラットトップ）
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
       const rx = width / 2 - pad;
       const ry = height / 2 - pad;
-      const points = [
-        { x: cx - rx * 0.5, y: cy - ry },
-        { x: cx + rx * 0.5, y: cy - ry },
-        { x: cx + rx, y: cy },
-        { x: cx + rx * 0.5, y: cy + ry },
-        { x: cx - rx * 0.5, y: cy + ry },
-        { x: cx - rx, y: cy },
+      const r = Math.min(rx, ry) * 0.15;
+
+      const pts = [
+        { x: cx - rx,       y: cy           },
+        { x: cx - rx * 0.5, y: cy - ry      },
+        { x: cx + rx * 0.5, y: cy - ry      },
+        { x: cx + rx,       y: cy           },
+        { x: cx + rx * 0.5, y: cy + ry      },
+        { x: cx - rx * 0.5, y: cy + ry      },
       ];
-      const pathD = createRoundedPolygonPath(points, cornerRadius);
+
+      const n = pts.length;
+      const norm = (ax: number, ay: number, bx: number, by: number, len: number) => {
+        const dx = bx - ax, dy = by - ay;
+        const d = Math.hypot(dx, dy);
+        return { x: dx / d * len, y: dy / d * len };
+      };
+
+      const segments: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const prev = pts[(i - 1 + n) % n];
+        const cur  = pts[i];
+        const next = pts[(i + 1) % n];
+
+        const fromPrev = norm(prev.x, prev.y, cur.x, cur.y, r);
+        const toNext   = norm(cur.x, cur.y, next.x, next.y, r);
+
+        const inX  = cur.x - fromPrev.x;
+        const inY  = cur.y - fromPrev.y;
+        const outX = cur.x + toNext.x;
+        const outY = cur.y + toNext.y;
+
+        if (i === 0) {
+          segments.push(`M ${inX} ${inY}`);
+        } else {
+          segments.push(`L ${inX} ${inY}`);
+        }
+        segments.push(`Q ${cur.x} ${cur.y} ${outX} ${outY}`);
+      }
+      segments.push('Z');
+
+      const d = segments.join(' ');
+
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
-          <path d={pathD} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <path d={d} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
         </svg>
       );
     }
