@@ -312,6 +312,8 @@ const NODE_HEIGHT = 50;
 const NODE_DEFAULT_FONT_SIZE = 14;
 const NODE_MIN_WIDTH = 80;
 const NODE_PADDING_HORIZONTAL = 40;
+const NODE_PADDING_VERTICAL = 24;
+const LINE_HEIGHT_RATIO = 1.4;
 const IMAGE_NODE_MAX_INITIAL_SIZE = 300;
 const STAMP_DEFAULT_WIDTH = 60;
 const STAMP_DEFAULT_HEIGHT = 60;
@@ -338,18 +340,26 @@ const getMeasureCanvas = (): CanvasRenderingContext2D => {
 const computeNodeWidth = (text: string, fontSize: number = NODE_DEFAULT_FONT_SIZE): number => {
   if (typeof window === 'undefined') return NODE_MIN_WIDTH;
   const ctx = getMeasureCanvas();
-  if (ctx.measureText) {
-    ctx.font = `bold ${fontSize}px 'Inter', 'Noto Sans JP', sans-serif`;
-    const metrics = ctx.measureText(text);
-    return Math.max(NODE_MIN_WIDTH, Math.ceil(metrics.width) + NODE_PADDING_HORIZONTAL);
+  if (!ctx.measureText) return NODE_MIN_WIDTH;
+  ctx.font = `bold ${fontSize}px 'Inter', 'Noto Sans JP', sans-serif`;
+  const lines = text.split('\n');
+  let maxWidth = 0;
+  for (const line of lines) {
+    const metrics = ctx.measureText(line);
+    maxWidth = Math.max(maxWidth, Math.ceil(metrics.width));
   }
-  return NODE_MIN_WIDTH;
+  return Math.max(NODE_MIN_WIDTH, maxWidth + NODE_PADDING_HORIZONTAL);
 };
 
-const NODE_PADDING_VERTICAL = 24;
+const computeNodeHeightFromText = (text: string, fontSize: number = NODE_DEFAULT_FONT_SIZE): number => {
+  const lines = text.split('\n');
+  const lineHeight = Math.ceil(fontSize * LINE_HEIGHT_RATIO);
+  const totalTextHeight = lines.length * lineHeight;
+  return Math.max(NODE_HEIGHT, totalTextHeight + NODE_PADDING_VERTICAL);
+};
 
 const computeNodeHeight = (fontSize: number = NODE_DEFAULT_FONT_SIZE): number => {
-  return Math.max(NODE_HEIGHT, Math.ceil(fontSize * 1.4) + NODE_PADDING_VERTICAL);
+  return computeNodeHeightFromText('', fontSize);
 };
 
 // --------------------- 形状補助関数 ---------------------
@@ -367,7 +377,7 @@ const getNodeShapeSize = (
       return { width: Math.max(baseWidth * 1.4, 120), height: Math.max(baseHeight * 1.8, 80) };
     }
     case 'hexagon': {
-      return { width: Math.max(baseWidth * 1.2, 120), height: Math.max(baseHeight * 1.2, 64) };
+      return { width: Math.max(baseWidth * 1.25, 120), height: Math.max(baseHeight * 1.25, 70) };
     }
     case 'rounded':
     default:
@@ -381,9 +391,9 @@ const getShapePadding = (
   height: number
 ): string => {
   switch (shape) {
-    case 'circle': return `${height * 0.15}px ${width * 0.15}px`;
-    case 'diamond': return `${height * 0.28}px ${width * 0.2}px`;
-    case 'hexagon': return `${height * 0.2}px ${width * 0.22}px`;
+    case 'circle': return `${Math.ceil(height * 0.18)}px ${Math.ceil(width * 0.18)}px`;
+    case 'diamond': return `${Math.ceil(height * 0.28)}px ${Math.ceil(width * 0.2)}px`;
+    case 'hexagon': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.25)}px`;
     default: return '12px 20px';
   }
 };
@@ -425,7 +435,6 @@ const NodeShapeBackground = ({
       );
     }
     case 'diamond': {
-      // 角Rつき菱形
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
@@ -471,7 +480,6 @@ const NodeShapeBackground = ({
       );
     }
     case 'hexagon': {
-      // 角Rつき六角形（横長フラットトップ）
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
@@ -803,13 +811,13 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       height = IMAGE_NODE_MAX_INITIAL_SIZE;
     } else if (!width) {
       width = computeNodeWidth(data.text, fontSize);
-      height = computeNodeHeight(fontSize);
+      height = computeNodeHeightFromText(data.text, fontSize);
     }
     if (!height && !data.imageUrl) {
-      height = computeNodeHeight(fontSize);
+      height = computeNodeHeightFromText(data.text, fontSize);
     }
     if (!data.imageUrl) {
-      const sized = getNodeShapeSize(width ?? computeNodeWidth(data.text, fontSize), height ?? computeNodeHeight(fontSize), shape);
+      const sized = getNodeShapeSize(width ?? computeNodeWidth(data.text, fontSize), height ?? computeNodeHeightFromText(data.text, fontSize), shape);
       width = sized.width;
       height = sized.height;
     }
@@ -1505,7 +1513,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '新しいトピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    const initialHeight = computeNodeHeight(defaultFontSize);
+    const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
       nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
       nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
@@ -1522,7 +1530,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '新しいトピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    const initialHeight = computeNodeHeight(defaultFontSize);
+    const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
       nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
       nodes.set(parentId, { ...parent, children: newChildren });
@@ -1538,7 +1546,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '新しいトピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    const initialHeight = computeNodeHeight(defaultFontSize);
+    const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
       nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
       const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
@@ -1565,7 +1573,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       const defaultText = '独立トピック';
       const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
       const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-      const initialHeight = computeNodeHeight(defaultFontSize);
+      const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
       const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
       ydocRef.current?.transact(() => {
         nodes.set(childId, {
@@ -1620,7 +1628,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const defaultText = '独立トピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    const initialHeight = computeNodeHeight(defaultFontSize);
+    const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
     ydocRef.current?.transact(() => {
       nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
@@ -1698,7 +1706,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data && !data.imageUrl) {
       const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
       const baseWidth = computeNodeWidth(text, fontSize);
-      const baseHeight = computeNodeHeight(fontSize);
+      const baseHeight = computeNodeHeightFromText(text, fontSize);
       const shape = data.nodeShape ?? 'rounded';
       const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
       nodes.set(nodeId, { ...data, text, width: sized.width, height: sized.height });
@@ -1746,7 +1754,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const data = nodes.get(nodeId);
     if (data && !data.imageUrl) {
       const baseWidth = computeNodeWidth(data.text, fontSize);
-      const baseHeight = computeNodeHeight(fontSize);
+      const baseHeight = computeNodeHeightFromText(data.text, fontSize);
       const shape = data.nodeShape ?? 'rounded';
       const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
       nodes.set(nodeId, { ...data, fontSize, width: sized.width, height: sized.height });
@@ -1760,7 +1768,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       ydocRef.current?.transact(() => {
         const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
         const baseWidth = computeNodeWidth(data.text, fontSize);
-        const baseHeight = computeNodeHeight(fontSize);
+        const baseHeight = computeNodeHeightFromText(data.text, fontSize);
         const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
         nodes.set(nodeId, { ...data, nodeShape: shape, width: sized.width, height: sized.height });
       });
@@ -1775,7 +1783,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         if (data && !data.imageUrl) {
           const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
           const baseWidth = computeNodeWidth(data.text, fontSize);
-          const baseHeight = computeNodeHeight(fontSize);
+          const baseHeight = computeNodeHeightFromText(data.text, fontSize);
           const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
           nodes.set(nodeId, { ...data, nodeShape: shape, width: sized.width, height: sized.height });
         }
@@ -2043,14 +2051,14 @@ const MindMapApp = ({ user }: { user: User }) => {
         if (taskData.taskEnabled === true && !data.imageUrl) {
           const baseWidth = data.width ?? computeNodeWidth(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE);
           const shape = data.nodeShape ?? 'rounded';
-          const sized = getNodeShapeSize(baseWidth, computeNodeHeight(data.fontSize ?? NODE_DEFAULT_FONT_SIZE), shape);
+          const sized = getNodeShapeSize(baseWidth, computeNodeHeightFromText(data.text, data.fontSize ?? NODE_DEFAULT_FONT_SIZE), shape);
           updatedData.width = Math.max(sized.width, 160);
           updatedData.height = sized.height;
         }
         if (taskData.taskEnabled === false && !data.imageUrl) {
           const fontSize = data.fontSize ?? NODE_DEFAULT_FONT_SIZE;
           const baseWidth = computeNodeWidth(data.text, fontSize);
-          const baseHeight = computeNodeHeight(fontSize);
+          const baseHeight = computeNodeHeightFromText(data.text, fontSize);
           const shape = data.nodeShape ?? 'rounded';
           const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
           updatedData.width = sized.width;
@@ -2086,7 +2094,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         const defaultText = '中心テーマ';
         const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
         const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-        const initialHeight = computeNodeHeight(defaultFontSize);
+        const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
         const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
         yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' }); 
         yRootRef.current = rootId; 
@@ -2331,7 +2339,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if(typeof window !== 'undefined') window.history.replaceState(null, '', `#${newRoom}`);
     const newTitle = 'NEW'; const rootId = crypto.randomUUID(); const defaultText = '中心テーマ'; const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
-    const initialHeight = computeNodeHeight(defaultFontSize);
+    const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
     const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' };
     initYjs(newRoom, initialTree);
@@ -3628,7 +3636,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   const isEditing = editingNodeId === node.id;
   const isSingleDragging = draggingNodeId === node.id;
   const isTarget = dragTargetNodeId === node.id;
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const shape = node.nodeShape ?? 'rounded';
   let nodeWidth = node.width ?? (node.imageUrl ? IMAGE_NODE_MAX_INITIAL_SIZE : NODE_WIDTH);
@@ -3641,7 +3649,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
   } else if (!node.imageUrl) {
     const fontSize = node.fontSize ?? NODE_DEFAULT_FONT_SIZE;
     const baseWidth = computeNodeWidth(node.text, fontSize);
-    const baseHeight = computeNodeHeight(fontSize);
+    const baseHeight = computeNodeHeightFromText(node.text, fontSize);
     const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
     nodeWidth = sized.width;
     nodeHeight = sized.height;
@@ -3661,13 +3669,29 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     return { x: node.x, y: node.y };
   })();
 
-  useEffect(() => { if (isEditing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [isEditing]);
-  const handleBlur = () => { if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value); };
-  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleBlur = () => {
+    if (textareaRef.current) {
+      onTextEditComplete(node.id, textareaRef.current.value);
+    }
+  };
+
+  const handleTextareaKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') {
       if (e.nativeEvent.isComposing) return;
+      if (e.shiftKey) {
+        return; // デフォルトの改行動作をさせる
+      }
       e.preventDefault();
-      if (inputRef.current) onTextEditComplete(node.id, inputRef.current.value);
+      if (textareaRef.current) {
+        onTextEditComplete(node.id, textareaRef.current.value);
+      }
     } else if (e.key === 'Escape') {
       onTextEditComplete(node.id, node.text);
     }
@@ -3738,7 +3762,15 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
               {node.text && <span className="text-xs mt-1 truncate absolute bottom-0 left-0 right-0 text-center bg-black/50 text-white rounded-b-md">{node.text}</span>}
             </div>
           ) : isEditing ? (
-            <input ref={inputRef} className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0" style={{ fontSize }} defaultValue={node.text} onBlur={handleBlur} onKeyDown={handleInputKeyDown} onClick={e => e.stopPropagation()} />
+            <textarea
+              ref={textareaRef}
+              className="w-full h-full bg-transparent text-center outline-none border-none focus:ring-0 resize-none"
+              style={{ fontSize, color: node.textColor || '#1e293b', fontFamily: 'inherit', lineHeight: LINE_HEIGHT_RATIO }}
+              defaultValue={node.text}
+              onBlur={handleBlur}
+              onKeyDown={handleTextareaKeyDown}
+              onClick={e => e.stopPropagation()}
+            />
           ) : (
             <span
               className="block w-full text-center"
@@ -3747,8 +3779,10 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
                 fontSize,
                 textDecoration: node.taskDone ? 'line-through' : 'none',
                 opacity: node.taskDone ? 0.6 : 1,
-                whiteSpace: 'nowrap',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
                 overflow: 'hidden',
+                lineHeight: LINE_HEIGHT_RATIO,
               }}
             >
               {node.text}
