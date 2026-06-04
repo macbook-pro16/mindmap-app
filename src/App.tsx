@@ -988,7 +988,6 @@ const getNodeDisplayPos = (
   nodeId: string,
   mindMap: MindNode | null,
   dragPositions: Record<string, { x: number; y: number }>,
-  draggingNodeId: string | null
 ): { x: number; y: number; width: number; height: number } | null => {
   if (!mindMap) return null;
   const node = findNodeById(mindMap, nodeId);
