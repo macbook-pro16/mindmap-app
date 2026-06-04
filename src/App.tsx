@@ -55,6 +55,8 @@ export interface YjsNodeData {
   taskAssigneeEmail?: string;
   taskAssigneeAvatarUrl?: string;
   nodeShape?: 'rounded' | 'circle' | 'diamond' | 'hexagon';
+  memo?: string;
+  locked?: boolean;
 }
 
 export interface YjsEdgeData {
@@ -63,6 +65,7 @@ export interface YjsEdgeData {
   targetNodeId: string;
   targetPoint: ConnectionPoint;
   arrow: 'none' | 'start' | 'end' | 'both';
+  color?: string;
 }
 
 export interface YjsImageData {
@@ -144,6 +147,8 @@ export interface MindNode {
   taskAssigneeEmail?: string;
   taskAssigneeAvatarUrl?: string;
   nodeShape?: 'rounded' | 'circle' | 'diamond' | 'hexagon';
+  memo?: string;
+  locked?: boolean;
 }
 
 export interface FlatNode {
@@ -230,6 +235,7 @@ export interface EdgeData {
   targetNodeId: string;
   targetPoint: ConnectionPoint;
   arrow: 'none' | 'start' | 'end' | 'both';
+  color?: string;
 }
 
 export interface ImageData {
@@ -701,6 +707,42 @@ const StampIcon = () => (
   </svg>
 );
 const GridIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} /><line x1="3" y1="9" x2="21" y2="9" strokeWidth={2} /><line x1="3" y1="15" x2="21" y2="15" strokeWidth={2} /><line x1="9" y1="3" x2="9" y2="21" strokeWidth={2} /><line x1="15" y1="3" x2="15" y2="21" strokeWidth={2} /></svg> );
+const GridLineIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <line x1="3" y1="9" x2="21" y2="9" strokeWidth={1.5}/>
+    <line x1="3" y1="15" x2="21" y2="15" strokeWidth={1.5}/>
+    <line x1="9" y1="3" x2="9" y2="21" strokeWidth={1.5}/>
+    <line x1="15" y1="3" x2="15" y2="21" strokeWidth={1.5}/>
+  </svg>
+);
+const MapIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+  </svg>
+);
+const MemoIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+  </svg>
+);
+const LockIcon = () => (
+  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+    <path d="M17 11V7A5 5 0 007 7v4H5v10h14V11h-2zm-8-4a3 3 0 016 0v4H9V7z"/>
+  </svg>
+);
+const SnapIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="5" cy="5" r="1.5" fill="currentColor" strokeWidth={0}/>
+    <circle cx="12" cy="5" r="1.5" fill="currentColor" strokeWidth={0}/>
+    <circle cx="19" cy="5" r="1.5" fill="currentColor" strokeWidth={0}/>
+    <circle cx="5" cy="12" r="1.5" fill="currentColor" strokeWidth={0}/>
+    <circle cx="12" cy="12" r="2.5" strokeWidth={2}/>
+    <circle cx="19" cy="12" r="1.5" fill="currentColor" strokeWidth={0}/>
+    <circle cx="5" cy="19" r="1.5" fill="currentColor" strokeWidth={0}/>
+    <circle cx="12" cy="19" r="1.5" fill="currentColor" strokeWidth={0}/>
+    <circle cx="19" cy="19" r="1.5" fill="currentColor" strokeWidth={0}/>
+  </svg>
+);
 
 const AlignVerticalIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -838,6 +880,8 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       taskAssigneeEmail: data.taskAssigneeEmail,
       taskAssigneeAvatarUrl: data.taskAssigneeAvatarUrl,
       nodeShape: shape,
+      memo: data.memo,
+      locked: data.locked ?? false,
       children,
     };
   };
@@ -868,6 +912,8 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     taskAssigneeEmail: root.taskAssigneeEmail,
     taskAssigneeAvatarUrl: root.taskAssigneeAvatarUrl,
     nodeShape: root.nodeShape ?? 'rounded',
+    memo: root.memo,
+    locked: root.locked ?? false,
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -1022,6 +1068,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const shapeMenuRef = useRef<HTMLDivElement>(null);
   const quickMenuRef = useRef<HTMLDivElement>(null);
   const stampTextInputRef = useRef<HTMLInputElement>(null);
+  const memoInputRef = useRef<HTMLTextAreaElement>(null);
   const [mapId, setMapId] = useState<number | null>(null);
   const [mapTitle, setMapTitle] = useState('NEW');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -1121,12 +1168,13 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const [drawingShape, setDrawingShape] = useState<{ type: 'rectangle' | 'circle' | 'triangle' | 'text'; startX: number; startY: number; currentX: number; currentY: number } | null>(null);
 
-  const [showGrid, setShowGrid] = useState<boolean>(() => {
+  // グリッドスタイル (none | dot | line)
+  const [gridStyle, setGridStyle] = useState<'none' | 'dot' | 'line'>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('mindmap-show-grid');
-      return saved !== null ? saved === 'true' : true;
+      const saved = localStorage.getItem('mindmap-grid-style');
+      if (saved === 'none' || saved === 'dot' || saved === 'line') return saved;
     }
-    return true;
+    return 'dot';
   });
 
   const [hasRemoteUpdate, setHasRemoteUpdate] = useState(false);
@@ -1152,8 +1200,14 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [inviteHistory, setInviteHistory] = useState<{ invited_email: string; invite_count: number }[]>([]);
 
   const [showShapeMenu, setShowShapeMenu] = useState(false);
-
+  const [showMemoEdit, setShowMemoEdit] = useState(false);
   const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const SNAP_SIZE = 32;
+  const snapValue = (v: number) => snapToGrid ? Math.round(v / SNAP_SIZE) * SNAP_SIZE : v;
+
+  const copiedNodeRef = useRef<YjsNodeData | null>(null);
 
   useEffect(() => {
     if (!showShapeMenu) return;
@@ -1176,6 +1230,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showQuickMenu]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mindmap-grid-style', gridStyle);
+    }
+  }, [gridStyle]);
 
   const fetchInviteHistory = useCallback(async () => {
     if (!user) return;
@@ -1225,15 +1285,26 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const [showTaskInfo, setShowTaskInfo] = useState(true);
 
-  const toggleGrid = useCallback(() => {
-    setShowGrid(prev => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('mindmap-show-grid', String(next));
-      }
-      return next;
-    });
+  const gridCycleMap = { none: 'dot', dot: 'line', line: 'none' } as const;
+
+  const cycleGridStyle = useCallback(() => {
+    setGridStyle(prev => gridCycleMap[prev]);
   }, []);
+
+  const gridStyle_css = useMemo(() => {
+    if (gridStyle === 'dot') return {
+      backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.35) 1.5px, transparent 1.5px)',
+      backgroundSize: '32px 32px',
+    };
+    if (gridStyle === 'line') return {
+      backgroundImage: `
+        linear-gradient(to right, rgba(148,163,184,0.2) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(148,163,184,0.2) 1px, transparent 1px)
+      `,
+      backgroundSize: '32px 32px',
+    };
+    return {};
+  }, [gridStyle]);
 
   const addLog = (msg: string) => { if (import.meta.env.DEV) console.log(`[MindMap] ${msg}`); };
   const [, setConnectionStatus] = useState('接続中...');
@@ -1279,6 +1350,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       stampTextInputRef.current.select();
     }
   }, [editingStampText]);
+
+  useEffect(() => {
+    if (showMemoEdit && memoInputRef.current) {
+      memoInputRef.current.focus();
+    }
+  }, [showMemoEdit]);
 
   const [announcements, setAnnouncements] = useState<{ id: string; email: string; nodeText: string }[]>([]);
   const prevEditingStates = useRef<Record<string, string | null>>({});
@@ -1400,11 +1477,20 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [zoomLevel, isSpacePressed, setZoomWithAnchor]);
 
   useEffect(() => {
-    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space' && !editingNodeId && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') { e.preventDefault(); setIsSpacePressed(true); } };
+    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.code === 'Space') {
+        // ノード選択中はSpaceを折りたたみに使うため、パンに使わない
+        if (selectedNodeIds.length > 0) return;
+        if (!editingNodeId && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          setIsSpacePressed(true);
+        }
+      }
+    };
     const handleGlobalKeyUp = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space') { setIsSpacePressed(false); setIsCanvasPanning(false); } };
     window.addEventListener('keydown', handleGlobalKeyDown); window.addEventListener('keyup', handleGlobalKeyUp);
     return () => { window.removeEventListener('keydown', handleGlobalKeyDown); window.removeEventListener('keyup', handleGlobalKeyUp); };
-  }, [editingNodeId]);
+  }, [editingNodeId, selectedNodeIds.length]);
 
   const addStamp = useCallback((x: number, y: number) => {
     const yStamps = yStampsRef.current; if (!yStamps || !ydocRef.current) return;
@@ -1466,6 +1552,24 @@ const MindMapApp = ({ user }: { user: User }) => {
       settings.set('backgroundColor', color);
     });
     setCanvasBgColor(color);
+  }, []);
+
+  const updateEdgeColor = useCallback((edgeId: string, color: string) => {
+    const yEdges = yEdgesRef.current; if (!yEdges) return;
+    const edge = yEdges.get(edgeId); if (!edge) return;
+    ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, color }); });
+  }, []);
+
+  const updateNodeMemo = useCallback((nodeId: string, memo: string) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data) nodes.set(nodeId, { ...data, memo: memo || undefined });
+  }, []);
+
+  const toggleNodeLock = useCallback((nodeId: string) => {
+    const nodes = yNodesRef.current; if (!nodes) return;
+    const data = nodes.get(nodeId);
+    if (data) nodes.set(nodeId, { ...data, locked: !data.locked });
   }, []);
 
   useEffect(() => {
@@ -1552,7 +1656,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
+      nodes.set(childId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded', locked: false });
       nodes.set(parentId, { ...parent, children: [...(parent.children ?? []), childId] });
     });
     setSelectedNodeIds([childId]);
@@ -1569,7 +1673,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
+      nodes.set(siblingId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded', locked: false });
       nodes.set(parentId, { ...parent, children: newChildren });
     });
     setSelectedNodeIds([siblingId]);
@@ -1585,7 +1689,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
+      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded', locked: false });
       const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
     });
     setSelectedNodeIds([newParentId]);
@@ -1602,7 +1706,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           width: imageWidth, height: imageHeight,
           collapsed: false,
           imageUrl, imageWidth, imageHeight, imageScale: 1.0,
-          nodeShape: 'rounded'
+          nodeShape: 'rounded', locked: false
         });
         const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
       });
@@ -1618,7 +1722,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           bgColor: '#f8fafc', textColor: '#334155',
           width: sized.width, height: sized.height, fontSize: defaultFontSize,
           collapsed: false,
-          nodeShape: 'rounded'
+          nodeShape: 'rounded', locked: false
         });
         const root = nodes.get(rootId); if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), childId] });
       });
@@ -1668,7 +1772,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
     ydocRef.current?.transact(() => {
-      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' });
+      nodes.set(newId, { text: defaultText, x: safePos.x, y: safePos.y, children: [], independent: true, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded', locked: false });
       const root = nodes.get(rootId); if (root) {
         const curChildren: string[] = root.children ?? [];
         const targetIndex = curChildren.indexOf(targetId);
@@ -2121,7 +2225,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
         const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
         const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
-        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' }); 
+        yNodes.set(rootId, { text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded', locked: false }); 
         yRootRef.current = rootId; 
       }
       if (!ySettings.get('backgroundColor')) {
@@ -2170,7 +2274,7 @@ const MindMapApp = ({ user }: { user: User }) => {
 
       const edgeList: EdgeData[] = [];
       yEdges.forEach((value: YjsEdgeData, key: string) => {
-        edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none' });
+        edgeList.push({ id: key, sourceNodeId: value.sourceNodeId, sourcePoint: value.sourcePoint, targetNodeId: value.targetNodeId, targetPoint: value.targetPoint, arrow: value.arrow ?? 'none', color: value.color });
       });
       setEdges(_prev => edgeList);
 
@@ -2366,7 +2470,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
     const sized = getNodeShapeSize(initialWidth, initialHeight, 'rounded');
-    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded' };
+    const initialTree: MindNode = { id: rootId, text: defaultText, x: 5000, y: 5000, children: [], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: sized.width, height: sized.height, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded', locked: false };
     initYjs(newRoom, initialTree);
     setMapId(null); setMapTitle(newTitle); setMapMembers([]); setMapOwnerId(user.id); setSaveMessage('保存中...');
     const { data, error } = await supabase.from('maps').insert([{ title: newTitle, data: initialTree, room_id: newRoom, user_id: user.id, owner_email: user.email, updated_at: new Date().toISOString() }]).select();
@@ -2468,6 +2572,11 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
     if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
     const container = scrollContainerRef.current; if (!container) return;
+    const nodeData = yNodesRef.current?.get(nodeId);
+    if (nodeData?.locked) {
+      setSelectedNodeIds([nodeId]);
+      return;
+    }
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
     const targetGroupId = node.groupId;
@@ -2654,7 +2763,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       if (hasDraggedRef.current) {
         const pos = dragPositionsRef.current[draggingNodeId];
         if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && !isNaN(pos.x) && !isNaN(pos.y)) {
-          updatePosition(draggingNodeId, pos.x, pos.y);
+          const snappedX = snapValue(pos.x);
+          const snappedY = snapValue(pos.y);
+          updatePosition(draggingNodeId, snappedX, snappedY);
         }
         if (dragTargetNodeId && dragTargetNodeId !== draggingNodeId) {
           reparentNode(draggingNodeId, dragTargetNodeId);
@@ -2670,8 +2781,8 @@ const MindMapApp = ({ user }: { user: User }) => {
       setDragPositions(prev => { const { [nodeIdToClean]: _, ...rest } = prev; return rest; });
       return;
     }
-    if (isMultiDragging && multiDragOffsets) { ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { const p = initialGroupDragPositions.current[id]; if (p) { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); }); setDragPositions({}); initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {}; setMultiDragOffsets(null); return; }
-  }, [drawingShape, addOutline, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, dragPositions, dragTargetNodeId, mindMap, addEdge, updatePosition, reparentNode, isCanvasPanning, images, stickies, outlines, stamps]);
+    if (isMultiDragging && multiDragOffsets) { ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { const p = initialGroupDragPositions.current[id]; if (p) { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, x: snapValue(p.x + multiDragOffsets.dx), y: snapValue(p.y + multiDragOffsets.dy)}); } }); selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); }); setDragPositions({}); initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {}; setMultiDragOffsets(null); return; }
+  }, [drawingShape, addOutline, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, dragPositions, dragTargetNodeId, mindMap, addEdge, updatePosition, reparentNode, isCanvasPanning, images, stickies, outlines, stamps, snapValue]);
 
   useEffect(() => { if (isAnyDragging) { if(typeof window !== 'undefined') { window.addEventListener('mousemove', handleMouseMove as EventListener); window.addEventListener('mouseup', handleMouseUp); } return () => { if(typeof window !== 'undefined') { window.removeEventListener('mousemove', handleMouseMove as EventListener); window.removeEventListener('mouseup', handleMouseUp); } }; } }, [isAnyDragging, handleMouseMove, handleMouseUp]);
 
@@ -2697,6 +2808,8 @@ const MindMapApp = ({ user }: { user: User }) => {
       return;
     }
     if (e.key === 'F2' && selectedNodeId && !editingNodeId) {
+      const nodeData = yNodesRef.current?.get(selectedNodeId);
+      if (nodeData?.locked) return;
       e.preventDefault();
       setEditingNodeId(selectedNodeId);
       return;
@@ -2705,6 +2818,56 @@ const MindMapApp = ({ user }: { user: User }) => {
       e.preventDefault();
       const c = scrollContainerRef.current;
       if (c) addNodeAtPosition((c.scrollLeft + c.clientWidth/2)/zoomLevel, (c.scrollTop + c.clientHeight/2)/zoomLevel);
+      return;
+    }
+    if (e.key === ' ' && selectedNodeId && !editingNodeId && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      toggleNodeCollapse(selectedNodeId);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedNodeId) {
+      e.preventDefault();
+      const node = yNodesRef.current?.get(selectedNodeId);
+      if (node) copiedNodeRef.current = { ...node };
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'v' && copiedNodeRef.current) {
+      e.preventDefault();
+      const src = copiedNodeRef.current;
+      const newId = crypto.randomUUID();
+      const rootId = yRootRef.current;
+      const nodes = yNodesRef.current;
+      if (!nodes || !rootId) return;
+      const fontSize = src.fontSize ?? NODE_DEFAULT_FONT_SIZE;
+      const baseWidth = computeNodeWidth(src.text, fontSize);
+      const baseHeight = computeNodeHeightFromText(src.text, fontSize);
+      const shape = src.nodeShape ?? 'rounded';
+      const sized = getNodeShapeSize(baseWidth, baseHeight, shape);
+      ydocRef.current?.transact(() => {
+        nodes.set(newId, {
+          ...src,
+          x: src.x + 30,
+          y: src.y + 30,
+          children: [],
+          independent: true,
+          width: sized.width,
+          height: sized.height,
+          locked: false,
+        });
+        const root = nodes.get(rootId);
+        if (root) nodes.set(rootId, { ...root, children: [...(root.children ?? []), newId] });
+      });
+      setSelectedNodeIds([newId]);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+      e.preventDefault();
+      setZoomLevel(1.0);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'H') {
+      e.preventDefault();
+      scrollToHome();
       return;
     }
     if (showQuickMenu) {
@@ -2717,8 +2880,10 @@ const MindMapApp = ({ user }: { user: User }) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; }
     if (e.altKey && (e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); setZenMode(prev => !prev); return; }
     if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) { e.preventDefault(); changeZoom(e.key === '-' ? -0.1 : 0.1); return; }
-    if ((e.key === 'Delete' || e.key === 'Backspace')) { if (selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId && !selectedOutlineId && !selectedStampId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; } if (selectedNodeIds.includes(yRootRef.current!)) { e.preventDefault(); return; } if (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) { e.preventDefault(); ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { if (id !== yRootRef.current) { yNodesRef.current?.forEach((v, k) => { if (v.children?.includes(id)) yNodesRef.current?.set(k, { ...v, children: v.children.filter(cid => cid !== id) }); }); yNodesRef.current?.delete(id); } }); selectedImageIds.forEach(id => yImagesRef.current?.delete(id)); selectedStickyIds.forEach(id => yStickiesRef.current?.delete(id)); selectedOutlineIds.forEach(id => yOutlinesRef.current?.delete(id)); selectedStampIds.forEach(id => yStampsRef.current?.delete(id)); }); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); return; } }
+    if ((e.key === 'Delete' || e.key === 'Backspace')) { if (selectedEdgeId && !selectedNodeId && !selectedImageId && !selectedStickyId && !selectedOutlineId && !selectedStampId) { e.preventDefault(); deleteEdge(selectedEdgeId); return; } if (selectedNodeIds.includes(yRootRef.current!)) { e.preventDefault(); return; } if (selectedNodeIds.length > 0 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) { e.preventDefault(); ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { if (id !== yRootRef.current) { const nd = yNodesRef.current?.get(id); if (nd?.locked) return; yNodesRef.current?.forEach((v, k) => { if (v.children?.includes(id)) yNodesRef.current?.set(k, { ...v, children: v.children.filter(cid => cid !== id) }); }); yNodesRef.current?.delete(id); } }); selectedImageIds.forEach(id => yImagesRef.current?.delete(id)); selectedStickyIds.forEach(id => yStickiesRef.current?.delete(id)); selectedOutlineIds.forEach(id => yOutlinesRef.current?.delete(id)); selectedStampIds.forEach(id => yStampsRef.current?.delete(id)); }); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); return; } }
     if (selectedNodeId && !editingNodeId && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const nodeData = yNodesRef.current?.get(selectedNodeId);
+      if (nodeData?.locked) return;
       e.preventDefault();
       setEditingNodeId(selectedNodeId);
       return;
@@ -2729,7 +2894,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); const node = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if (node?.independent) { addIndependentSibling(selectedNodeId, 'before'); } else { addSiblingNode(selectedNodeId, 'before'); } return; }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addParentNode(selectedNodeId); return; }
     if (e.key === 'Tab') { e.preventDefault(); addChildNode(selectedNodeId); return; }
-  }, [editingNodeId, editingStickyId, editingOutlineId, editingMapId, showHelpModal, showQuickMenu, selectedNodeId, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, selectedEdgeId, selectedImageId, selectedStickyId, selectedOutlineId, selectedStampId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteEdge, changeZoom, addNodeAtPosition]);
+  }, [editingNodeId, editingStickyId, editingOutlineId, editingMapId, showHelpModal, showQuickMenu, selectedNodeId, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, selectedEdgeId, selectedImageId, selectedStickyId, selectedOutlineId, selectedStampId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteEdge, changeZoom, addNodeAtPosition, toggleNodeCollapse, scrollToHome]);
 
   const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'node', nodeId }); setShowColorPalette(null); setShowQuickMenu(false); }, []);
   const handleCanvasContextMenu = useCallback((e: ReactMouseEvent) => { e.preventDefault(); const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'canvas', canvasX: coords.x, canvasY: coords.y }); setShowQuickMenu(false); }, [zoomLevel]);
@@ -2759,18 +2924,18 @@ const MindMapApp = ({ user }: { user: User }) => {
     else if (contextMenu.type === 'canvas') { if (action === 'addNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addNodeAtPosition(contextMenu.canvasX, contextMenu.canvasY, false); else if (action === 'addImageNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addImageNodeWithUpload(contextMenu.canvasX, contextMenu.canvasY); else if (action === 'addSticky' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addSticky(contextMenu.canvasX, contextMenu.canvasY); else if (action === 'addStamp' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addStamp(contextMenu.canvasX, contextMenu.canvasY); else if (action === 'addImage') fileInputRef.current?.click(); }
   }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
-  const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } const ctrlOrMeta = e.ctrlKey || e.metaKey; if (ctrlOrMeta) { setSelectedNodeIds(prev => { const newArr = prev.includes(nodeId) ? prev.filter((id: string) => id !== nodeId) : [...prev, nodeId]; return newArr; }); } else { setSelectedNodeIds([nodeId]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
+  const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } const ctrlOrMeta = e.ctrlKey || e.metaKey; if (ctrlOrMeta) { setSelectedNodeIds(prev => { const newArr = prev.includes(nodeId) ? prev.filter((id: string) => id !== nodeId) : [...prev, nodeId]; return newArr; }); } else { setSelectedNodeIds([nodeId]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); setShowMemoEdit(false); }, [closeContextMenu, showColorPalette]);
   const handleImageClick = useCallback((e: ReactMouseEvent, imageId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]); } else { setSelectedImageIds([imageId]); setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]); } else { setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleStampClick = useCallback((e: ReactMouseEvent, stampId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStampIds(prev => prev.includes(stampId) ? prev.filter(id => id !== stampId) : [...prev, stampId]); } else { setSelectedStampIds([stampId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
-  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); } }, [mindMap]);
+  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); } }, [mindMap]);
   const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); setShowQuickMenu(false); };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); setShowQuickMenu(false); }, []);
   const handleEdgeEndpointMouseDown = useCallback((e: ReactMouseEvent, edgeId: string, endpoint: 'source' | 'target') => { e.stopPropagation(); e.preventDefault(); setEditingEdgeEndpoint({ edgeId, endpoint }); }, []);
-  const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => { e.stopPropagation(); e.preventDefault(); const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return; const w = node.width ?? (node.imageUrl ? (node.imageWidth && node.imageScale ? node.imageWidth * node.imageScale : NODE_WIDTH) : NODE_WIDTH); const h = node.height ?? (node.imageUrl ? (node.imageHeight && node.imageScale ? node.imageHeight * node.imageScale : NODE_HEIGHT) : NODE_HEIGHT); const pt = getConnectionPoint(node.x, node.y, point, w, h); setDrawingEdge({ sourceNodeId: nodeId, sourcePoint: point, currentX: pt.x, currentY: pt.y }); }, [mindMap]);
+  const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => { e.stopPropagation(); e.preventDefault(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return; const w = node.width ?? (node.imageUrl ? (node.imageWidth && node.imageScale ? node.imageWidth * node.imageScale : NODE_WIDTH) : NODE_WIDTH); const h = node.height ?? (node.imageUrl ? (node.imageHeight && node.imageScale ? node.imageHeight * node.imageScale : NODE_HEIGHT) : NODE_HEIGHT); const pt = getConnectionPoint(node.x, node.y, point, w, h); setDrawingEdge({ sourceNodeId: nodeId, sourcePoint: point, currentX: pt.x, currentY: pt.y }); }, [mindMap]);
   const handleCanvasDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); const file = e.dataTransfer.files?.[0]; if (!file || !file.type.startsWith('image/')) return; const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`; const { data, error } = await supabase.storage.from('images').upload(fileName, file); if (error) { alert('画像のアップロードに失敗しました'); return; } const path = data.path; const img = new Image(); img.src = URL.createObjectURL(file); img.onload = () => { const MAX_DIM = 200; let w = img.width, h = img.height; if (w > MAX_DIM || h > MAX_DIM) { const ratio = Math.min(MAX_DIM / w, MAX_DIM / h); w = Math.round(w * ratio); h = Math.round(h * ratio); } const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return; const imageId = crypto.randomUUID(); ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: coords.x - w / 2, y: coords.y - h / 2, width: w, height: h }); }); }; }, [zoomLevel]);
 
   const showFloatingToolbar = selectedNodeIds.length === 1 && selectedNodeId && !draggingNodeId && !isCanvasPanning && !isSpacePressed && !drawingEdge && !selectionRect;
@@ -2837,7 +3002,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const remoteCursors = allParticipants.filter(p => !p.isSelf && p.mouseInCanvas && p.cursorX !== undefined && p.cursorY !== undefined);
 
   const flatNodes = mindMap ? flattenTree(mindMap) : [];
-  const edgeLines: { id: string; pathD: string; selected: boolean; arrow: string; sourceX: number; sourceY: number; targetX: number; targetY: number }[] = [];
+  const edgeLines: { id: string; pathD: string; selected: boolean; arrow: string; color?: string; sourceX: number; sourceY: number; targetX: number; targetY: number }[] = [];
   if (mindMap) {
     for (const edge of edges) {
       const sourcePos = getNodeDisplayPos(edge.sourceNodeId, mindMap, dragPositions, draggingNodeId);
@@ -2851,6 +3016,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         pathD,
         selected: selectedEdgeId === edge.id,
         arrow: edge.arrow || 'none',
+        color: edge.color,
         sourceX: startPt.x,
         sourceY: startPt.y,
         targetX: endPt.x,
@@ -2860,6 +3026,67 @@ const MindMapApp = ({ user }: { user: User }) => {
   }
 
   const focusedNodeIds = focusNodeId ? getFocusedNodeIds(mindMap, focusNodeId) : undefined;
+
+  // ミニマップコンポーネント
+  const MinimapPanel = () => {
+    const SCALE = 50;
+    const W = 200, H = 150;
+    const container = scrollContainerRef.current;
+
+    const viewX = container ? container.scrollLeft / zoomLevel / SCALE : 0;
+    const viewY = container ? container.scrollTop / zoomLevel / SCALE : 0;
+    const viewW = container ? container.clientWidth / zoomLevel / SCALE : 0;
+    const viewH = container ? container.clientHeight / zoomLevel / SCALE : 0;
+
+    const handleMinimapClick = (e: ReactMouseEvent<SVGSVGElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * SCALE;
+      const my = (e.clientY - rect.top) * SCALE;
+      if (container) {
+        container.scrollTo({
+          left: mx * zoomLevel - container.clientWidth / 2,
+          top: my * zoomLevel - container.clientHeight / 2,
+          behavior: 'smooth',
+        });
+      }
+    };
+
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">ミニマップ</span>
+          <button onClick={() => setShowMinimap(false)} className="text-slate-300 hover:text-slate-500 text-xs">✕</button>
+        </div>
+        <svg width={W} height={H} className="block cursor-crosshair" onClick={handleMinimapClick}>
+          <rect width={W} height={H} fill="#f8fafc" />
+          {mindMap && flattenTree(mindMap).map(fn => (
+            <rect
+              key={fn.id}
+              x={(fn.x - (fn.width ?? 60) / 2) / SCALE}
+              y={(fn.y - (fn.height ?? 30) / 2) / SCALE}
+              width={Math.max(2, (fn.width ?? 60) / SCALE)}
+              height={Math.max(1.5, (fn.height ?? 30) / SCALE)}
+              rx={1}
+              fill={fn.bgColor ?? '#e0e7ff'}
+              opacity={0.8}
+            />
+          ))}
+          {stickies.map(s => (
+            <rect key={s.id} x={s.x/SCALE} y={s.y/SCALE} width={Math.max(2, s.width/SCALE)} height={Math.max(1.5, s.height/SCALE)} rx={0.5} fill="#fef9c3" opacity={0.7} />
+          ))}
+          <rect
+            x={viewX} y={viewY}
+            width={Math.min(viewW, W - viewX)}
+            height={Math.min(viewH, H - viewY)}
+            fill="rgba(99,102,241,0.08)"
+            stroke="#6366f1"
+            strokeWidth={1}
+            rx={1}
+          />
+        </svg>
+      </div>
+    );
+  };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
@@ -3017,7 +3244,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           </div>
         </div>
       )}
-      {showHelpModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><HelpIcon /> 操作コマンド一覧</h3><button onClick={() => setShowHelpModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">ノード操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">子を追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Tab</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">下に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">上に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Shift + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li></ul></div><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">キャンバス操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">画面移動 (パン)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Space + ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズームイン/アウト</span><div className="flex gap-1"><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Wheel</kbd></div></li><li className="flex justify-between items-center"><span className="text-slate-600">全体表示に戻る</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Homeボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">範囲選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">背景をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">線を引く</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">〇をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">図形/テキスト配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ツール選択後クリック</kbd></li></ul></div><div className="md:col-span-2 pt-4 border-t border-slate-100"><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム・グループ・その他</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">レイヤー変更</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右クリックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像ドロップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像を直接ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">印鑑を配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + Shift + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト図形の文字サイズ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">選択中にサイズメニュー</kbd></li></ul><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">元に戻す</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Z</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全画面表示 (Zen)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Alt + Cmd + F</kbd></li></ul></div></div></div></div></div>)}
+      {showHelpModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><HelpIcon /> 操作コマンド一覧</h3><button onClick={() => setShowHelpModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">ノード操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">子を追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Tab</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">下に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">上に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Shift + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック / F2</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン / Space</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li></ul></div><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">キャンバス操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">画面移動 (パン)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Space + ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズームイン/アウト</span><div className="flex gap-1"><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Wheel</kbd></div></li><li className="flex justify-between items-center"><span className="text-slate-600">全体表示に戻る</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Homeボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">範囲選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">背景をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">線を引く</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">〇をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">図形/テキスト配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ツール選択後クリック</kbd></li></ul></div><div className="md:col-span-2 pt-4 border-t border-slate-100"><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム・グループ・その他</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">レイヤー変更</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右クリックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像ドロップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像を直接ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">印鑑を配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + Shift + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">コピー / ペースト</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + C / V</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト図形の文字サイズ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">選択中にサイズメニュー</kbd></li></ul><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">元に戻す</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Z</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全画面表示 (Zen)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Alt + Cmd + F</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズーム100%</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + 0</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ホームへ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Shift + H</kbd></li></ul></div></div></div></div></div>)}
 
       {announcements.length > 0 && (
         <div className="fixed top-20 right-4 z-[300] flex flex-col gap-2 pointer-events-none">
@@ -3125,6 +3352,19 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
               <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
               <div className="w-px h-5 bg-slate-200 mx-1" />
+              {selectedNodeIds.length >= 2 && (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const size = Number(e.target.value);
+                    if (size) selectedNodeIds.forEach(id => updateNodeFontSize(id, size));
+                  }}
+                  className="text-[11px] border border-slate-200 bg-slate-50 rounded-md px-2 py-1.5 outline-none text-slate-700 cursor-pointer"
+                >
+                  <option value="" disabled>フォント</option>
+                  {FONT_SIZES.map(s => <option key={s} value={s}>{s}px</option>)}
+                </select>
+              )}
               <div className="flex items-center pr-2 gap-1.5">
                 {isDirty && showDirtyBanner && (
                   <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1 animate-pulse">
@@ -3161,7 +3401,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </button>
               ))}
               <div className="w-px h-5 bg-slate-200 mx-1" />
-              {/* 印鑑エリア with inline editing */}
               <div className="flex items-center gap-1 bg-rose-50/50 p-1 rounded-lg border border-rose-100">
                 {editingStampText ? (
                   <input
@@ -3218,7 +3457,6 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={handleHeaderAddSticky} className="p-2 rounded-lg text-amber-500 hover:bg-amber-50 transition-all" title="付箋"><StickyIcon /></button>
             </div>
             <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
-              {/* クイックアクションメニュー */}
               <div className="relative" ref={quickMenuRef}>
                 <button
                   onClick={() => {
@@ -3305,6 +3543,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                             ydocRef.current?.transact(() => {
                               selectedNodeIds.forEach(id => {
                                 if (id !== yRootRef.current) {
+                                  const nd = yNodesRef.current?.get(id);
+                                  if (nd?.locked) return;
                                   yNodesRef.current?.forEach((v, k) => {
                                     if (v.children?.includes(id)) yNodesRef.current?.set(k, { ...v, children: v.children.filter(cid => cid !== id) });
                                   });
@@ -3367,12 +3607,12 @@ const MindMapApp = ({ user }: { user: User }) => {
                       表示設定
                     </div>
                     <button
-                      onClick={() => { toggleGrid(); setShowQuickMenu(false); }}
+                      onClick={() => { cycleGridStyle(); setShowQuickMenu(false); }}
                       className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center justify-between"
                     >
-                      <span className="flex items-center gap-2.5"><GridIcon /> グリッド</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${showGrid ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
-                        {showGrid ? 'ON' : 'OFF'}
+                      <span className="flex items-center gap-2.5">{gridStyle === 'line' ? <GridLineIcon /> : <GridIcon />} グリッド</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${gridStyle !== 'none' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {gridStyle === 'none' ? 'OFF' : gridStyle === 'dot' ? 'ドット' : 'ライン'}
                       </span>
                     </button>
                     <button
@@ -3465,7 +3705,10 @@ const MindMapApp = ({ user }: { user: User }) => {
               </div>
             </div>
             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-2">
+              {showMinimap && <MinimapPanel />}
               <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
+                <button onClick={() => setShowMinimap(prev => !prev)} className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all ${showMinimap ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : ''}`} title="ミニマップ"><MapIcon /></button>
+                <div className="w-px h-5 bg-slate-200" />
                 <button onClick={scrollToHome} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all" title="ホームに戻る"><HomeIcon /></button>
                 <div className="w-px h-5 bg-slate-200" />
                 <button onClick={() => changeZoom(-0.1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all">−</button>
@@ -3478,6 +3721,12 @@ const MindMapApp = ({ user }: { user: User }) => {
                   {Math.round(zoomLevel * 100)}%
                 </span>
                 <button onClick={() => changeZoom(0.1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all">＋</button>
+                <div className="w-px h-5 bg-slate-200" />
+                <button onClick={cycleGridStyle} title={`グリッド: ${gridStyle}`} className={`p-2 rounded-lg transition-colors ${gridStyle !== 'none' ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`}>
+                  {gridStyle === 'line' ? <GridLineIcon /> : <GridIcon />}
+                </button>
+                <div className="w-px h-5 bg-slate-200" />
+                <button onClick={() => setSnapToGrid(prev => !prev)} className={`p-2 rounded-lg transition-colors ${snapToGrid ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="グリッドスナップ"><SnapIcon /></button>
                 <div className="w-px h-5 bg-slate-200" />
                 <button
                   onClick={() => setShowSettingsPopover(prev => !prev)}
@@ -3495,8 +3744,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 mb-2 z-50 w-56">
                   <div className="text-xs font-bold text-slate-500 mb-2">表示設定</div>
                   <div className="flex flex-col gap-2">
-                    <button onClick={toggleGrid} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${showGrid ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
-                      <GridIcon /> グリッド {showGrid ? 'ON' : 'OFF'}
+                    <button onClick={cycleGridStyle} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${gridStyle !== 'none' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                      {gridStyle === 'line' ? <GridLineIcon /> : <GridIcon />} グリッド ({gridStyle === 'none' ? 'OFF' : gridStyle})
                     </button>
                     <button onClick={() => setShowCanvasBgPalette(!showCanvasBgPalette)} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${showCanvasBgPalette ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
                       <BackgroundIcon /> 背景色
@@ -3632,6 +3881,19 @@ const MindMapApp = ({ user }: { user: User }) => {
               <button onClick={() => executeContextAction('arrowEnd')} className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}><span className="text-slate-400 flex-shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12" strokeWidth={2} /><polyline points="16,8 20,12 16,16" strokeWidth={2} /></svg></span><span>終点 →</span></button>
               <button onClick={() => executeContextAction('arrowBoth')} className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}><span className="text-slate-400 flex-shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12" strokeWidth={2} /><polyline points="8,8 4,12 8,16" strokeWidth={2} /><polyline points="16,8 20,12 16,16" strokeWidth={2} /></svg></span><span>両方 ⇄</span></button>
               <div className="mx-2 my-1 border-b border-slate-100" />
+              <div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">線の色</div>
+              <div className="px-3 py-1.5 flex flex-wrap gap-1.5 mb-1">
+                {COLOR_PALETTE.map(cp => (
+                  <button
+                    key={cp.label}
+                    onClick={() => { if (contextMenu.edgeId) updateEdgeColor(contextMenu.edgeId, cp.text); closeContextMenu(); }}
+                    className="w-5 h-5 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm"
+                    style={{ backgroundColor: cp.text }}
+                    title={cp.label}
+                  />
+                ))}
+              </div>
+              <div className="mx-2 my-1 border-b border-slate-100" />
               <button onClick={() => executeContextAction('deleteEdge')} className="w-full text-left px-3 py-2 hover:bg-rose-50 text-rose-600 font-medium text-sm flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
                 <span className="text-rose-400 flex-shrink-0"><TrashIcon /></span>
                 <span>線を削除</span>
@@ -3683,7 +3945,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         )}
         {mindMap ? (
           <div ref={scrollContainerRef} className={canvasScrollClass + ' hide-scrollbar'} style={{ ...hideScrollbarStyle, backgroundColor: canvasBgColor }} tabIndex={0} onKeyDown={handleKeyDown} onClick={handleCanvasClick} onContextMenu={handleCanvasContextMenu} onMouseDown={handleCanvasMouseDown} onDoubleClick={handleCanvasDoubleClick} onDragOver={(e) => e.preventDefault()} onDrop={handleCanvasDrop}>
-            <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', backgroundImage: showGrid ? 'radial-gradient(circle, rgba(148,163,184,0.3) 1.5px, transparent 1.5px)' : 'none', backgroundSize: '32px 32px', backgroundColor: canvasBgColor }}>
+            <div className="relative" style={{ width: '10000px', height: '10000px', transform: `scale(${zoomLevel})`, transformOrigin: '0 0', ...gridStyle_css, backgroundColor: canvasBgColor }}>
               {remoteCursors.map((p: Participant) => (
                 <div key={p.user_id} className="absolute pointer-events-none" style={{ left: p.cursorX!, top: p.cursorY!, zIndex: 9999 }}>
                   {p.avatarUrl ? (
@@ -3716,6 +3978,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                     <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
                     <div className="w-px h-5 bg-slate-200 mx-0.5" />
                     {selectedNodeId !== yRootRef.current && (<button onClick={() => toggleNodeCollapse(selectedNodeId!)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors" title="折りたたみ/展開">{mindMap && findNodeById(mindMap, selectedNodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}</button>)}
+                    <div className="w-px h-5 bg-slate-200 mx-0.5" />
+                    <button onClick={() => setShowMemoEdit(prev => !prev)} className={`p-1.5 rounded-lg transition-colors ${showMemoEdit ? 'bg-amber-50 text-amber-600' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-700'}`} title="メモ"><MemoIcon /></button>
+                    <button onClick={() => toggleNodeLock(selectedNodeId!)} className={`p-1.5 rounded-lg transition-colors ${mindMap && findNodeById(mindMap, selectedNodeId!)?.locked ? 'bg-slate-100 text-slate-700' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-700'}`} title="ロック">
+                      <LockIcon />
+                    </button>
                     {selectedOutlineId && outlines.find(o => o.id === selectedOutlineId)?.type === 'text' && (
                       <div className="relative group"><button className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors" title="文字サイズ"><span className="text-xs">Aa</span></button><div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:flex flex-col bg-white border border-slate-200 rounded-lg p-1 z-50 shadow">{FONT_SIZES.map(size => (<button key={size} onClick={() => updateOutlineFontSize(selectedOutlineId, size)} className="px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 rounded">{size}px</button>))}</div></div>
                     )}
@@ -3779,7 +4046,32 @@ const MindMapApp = ({ user }: { user: User }) => {
                       </button>
                     </div>
                   </div>
-                  {mindMap && findNodeById(mindMap, selectedNodeId!)?.taskEnabled && (
+                  {showMemoEdit && selectedNodeId && (
+                    <div
+                      className="absolute z-[59] bg-white border border-slate-200 rounded-xl shadow-xl p-3 flex flex-col gap-2"
+                      style={{
+                        left: floatingToolbarPos!.x + floatingToolbarPos!.width / 2 + 15,
+                        top: floatingToolbarPos!.y - floatingToolbarPos!.height / 2,
+                        minWidth: '220px',
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                    >
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">メモ</div>
+                      <textarea
+                        ref={memoInputRef}
+                        defaultValue={mindMap && findNodeById(mindMap, selectedNodeId)?.memo || ''}
+                        className="w-full h-20 resize-none border border-slate-200 rounded px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-400"
+                        onBlur={(e) => {
+                          const value = e.currentTarget.value.trim();
+                          updateNodeMemo(selectedNodeId, value || '');
+                          setShowMemoEdit(false);
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Escape') { setShowMemoEdit(false); } }}
+                      />
+                    </div>
+                  )}
+                  {mindMap && findNodeById(mindMap, selectedNodeId!)?.taskEnabled && !showMemoEdit && (
                     <div
                       className="absolute z-[59] bg-white border border-slate-200 rounded-xl shadow-xl p-3 flex flex-col gap-2"
                       style={{
@@ -4032,7 +4324,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
                 </defs>
                 {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions, draggingNodeId); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions, draggingNodeId); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x, dy = childPos.y - parentPos.y; let parentPoint: ConnectionPoint, childPoint: ConnectionPoint; if (Math.abs(dx) > Math.abs(dy)) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; const isVisible = !focusedNodeIds || (focusedNodeIds.has(fn.parentId as string) && focusedNodeIds.has(fn.id)); return (<g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#e2e8f0'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
-                {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : '#94a3b8'} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-indigo-500' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
+                {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : (el.color ?? '#94a3b8')} strokeWidth={el.selected ? 4 : 3} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-indigo-500' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
                 {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
                 {drawingShape && (
                   <g opacity={0.5}>
@@ -4361,6 +4653,11 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             isTarget={isTarget}
           />
         )}
+        {node.locked && (
+          <div className="absolute top-1 right-1 w-4 h-4 bg-slate-600 rounded-full flex items-center justify-center text-white z-10 pointer-events-none">
+            <LockIcon />
+          </div>
+        )}
         {node.children.length > 0 && (
           <div 
             className="absolute -top-3 -left-3 w-6 h-6 bg-white border border-slate-300 rounded-full flex items-center justify-center cursor-pointer hover:bg-slate-100 shadow-md z-10 pointer-events-auto"
@@ -4412,6 +4709,16 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             </span>
           )}
         </div>
+        {node.memo && !isEditing && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 pointer-events-none"
+            style={{ top: nodeHeight / 2 + 4, zIndex: 5 + depth }}
+          >
+            <div className="bg-amber-50 border border-amber-200 rounded-md px-2 py-1 text-[10px] text-amber-700 max-w-[180px] truncate shadow-sm">
+              {node.memo}
+            </div>
+          </div>
+        )}
         {remoteEditors.length > 0 && (
           <div className="absolute -top-2.5 -right-2.5 flex -space-x-1.5">
             {remoteEditors.map((editor, i) => (
