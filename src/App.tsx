@@ -721,7 +721,6 @@ const CloudIcon = () => (
     <path d="M6.5 17.5H17c2.5 0 4.5-2 4.5-4.5s-2-4.5-4.5-4.5c-.5 0-1 .1-1.5.3-.2-2-1.8-3.5-3.8-3.5-1.5 0-2.8.8-3.4 2-.3-.1-.6-.2-1-.2C5.5 7 4 8.5 4 10.3c0 1.7 1.3 3 3 3.2v.3c0 1.7 1.3 3 3 3h-.5c-.3 0-.5-.2-.5-.5s.2-.5.5-.5z" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
-const TriangleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,4 20,20 4,20" strokeWidth={2} strokeLinejoin="round" /></svg> );
 const TextOutlineIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V4h16v3M9 20h6M12 4v16" /></svg> );
 const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
 const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
