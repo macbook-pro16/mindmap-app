@@ -92,7 +92,7 @@ export interface YjsStickyData {
 }
 
 export interface YjsOutlineData {
-  type: 'rectangle' | 'circle' | 'triangle' | 'text';
+  type: 'rectangle' | 'circle' | 'triangle' | 'text' | 'cloud';
   x: number;
   y: number;
   width: number;
@@ -268,7 +268,7 @@ export interface StickyData {
 
 export interface OutlineData {
   id: string;
-  type: 'rectangle' | 'circle' | 'triangle' | 'text';
+  type: 'rectangle' | 'circle' | 'triangle' | 'text' | 'cloud';
   x: number;
   y: number;
   width: number;
@@ -298,7 +298,7 @@ export interface StampData {
   zIndex?: number;
 }
 
-type ToolType = 'select' | 'rectangle' | 'circle' | 'triangle' | 'text';
+type ToolType = 'select' | 'rectangle' | 'circle' | 'cloud' | 'text';
 
 const COLOR_PALETTE = [
   { bg: '#f8fafc', text: '#334155', label: 'スレート' },
@@ -716,6 +716,11 @@ const HelpIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentCol
 const CursorIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /></svg> );
 const SquareIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" strokeWidth={2} /></svg> );
 const CircleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" strokeWidth={2} /></svg> );
+const CloudIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path d="M6.5 17.5H17c2.5 0 4.5-2 4.5-4.5s-2-4.5-4.5-4.5c-.5 0-1 .1-1.5.3-.2-2-1.8-3.5-3.8-3.5-1.5 0-2.8.8-3.4 2-.3-.1-.6-.2-1-.2C5.5 7 4 8.5 4 10.3c0 1.7 1.3 3 3 3.2v.3c0 1.7 1.3 3 3 3h-.5c-.3 0-.5-.2-.5-.5s.2-.5.5-.5z" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 const TriangleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,4 20,20 4,20" strokeWidth={2} strokeLinejoin="round" /></svg> );
 const TextOutlineIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V4h16v3M9 20h6M12 4v16" /></svg> );
 const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
@@ -1197,7 +1202,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const panStartCoords = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  const [drawingShape, setDrawingShape] = useState<{ type: 'rectangle' | 'circle' | 'triangle' | 'text'; startX: number; startY: number; currentX: number; currentY: number } | null>(null);
+  const [drawingShape, setDrawingShape] = useState<{ type: 'rectangle' | 'circle' | 'cloud' | 'text'; startX: number; startY: number; currentX: number; currentY: number } | null>(null);
 
   const [gridStyle, setGridStyle] = useState<'none' | 'dot' | 'line'>(() => {
     if (typeof window !== 'undefined') {
@@ -1844,7 +1849,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     setSelectedStickyIds([id]);
   }, []);
 
-  const addOutline = useCallback((type: 'rectangle' | 'circle' | 'triangle' | 'text', x: number, y: number, width?: number, height?: number) => {
+  const addOutline = useCallback((type: 'rectangle' | 'circle' | 'triangle' | 'cloud' | 'text', x: number, y: number, width?: number, height?: number) => {
     const yOutlines = yOutlinesRef.current; if (!yOutlines || !ydocRef.current) return;
     const id = crypto.randomUUID();
     const w = width ?? (type === 'text' ? 150 : 100);
@@ -2796,7 +2801,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     if (currentTool !== 'select') {
       e.stopPropagation();
-      const toolType = currentTool as 'rectangle' | 'circle' | 'triangle' | 'text';
+      const toolType = currentTool as 'rectangle' | 'circle' | 'cloud' | 'text';
       setDrawingShape({ type: toolType, startX: coords.x, startY: coords.y, currentX: coords.x, currentY: coords.y });
       return;
     }
@@ -3494,7 +3499,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 { tool: 'select', icon: <CursorIcon />, title: '選択' },
                 { tool: 'rectangle', icon: <SquareIcon />, title: '四角形' },
                 { tool: 'circle', icon: <CircleIcon />, title: '円' },
-                { tool: 'triangle', icon: <TriangleIcon />, title: '三角形' },
+                { tool: 'cloud', icon: <CloudIcon />, title: '雲' },
                 { tool: 'text', icon: <TextOutlineIcon />, title: 'テキスト' },
               ].map(({ tool, icon, title }) => (
                 <button
@@ -3611,7 +3616,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 ))}
               </div>
               <div className="w-px h-5 bg-slate-200 mx-1" />
-              {/* 整列ボタン（クリックでメニュー表示） */}
               <div className="relative" ref={alignMenuRef}>
                 <button
                   onClick={() => setShowAlignMenu(prev => !prev)}
@@ -4427,6 +4431,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                     {outline.type === 'circle' && (
                       <div className="w-full h-full rounded-full" style={{ border: `${sw}px solid ${outline.color}`, borderStyle: dash ? 'dashed' : 'solid' }}></div>
                     )}
+                    {outline.type === 'cloud' && (
+                      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none">
+                        <path d="M25 65 L25 40 Q25 25 35 25 Q40 15 50 15 Q60 15 65 25 Q75 25 75 35 L75 65 Z" fill="none" stroke={outline.color} strokeWidth={sw} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+                      </svg>
+                    )}
                     {outline.type === 'triangle' && (
                       <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none">
                         <polygon points="50,0 100,100 0,100" fill="none" stroke={outline.color} strokeWidth={sw} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
@@ -4565,7 +4574,17 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <g opacity={0.5}>
                     {drawingShape.type === 'rectangle' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
                     {drawingShape.type === 'circle' && <ellipse cx={(drawingShape.startX + drawingShape.currentX) / 2} cy={(drawingShape.startY + drawingShape.currentY) / 2} rx={Math.abs(drawingShape.currentX - drawingShape.startX) / 2} ry={Math.abs(drawingShape.currentY - drawingShape.startY) / 2} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
-                    {drawingShape.type === 'triangle' && <polygon points={`${(drawingShape.startX + drawingShape.currentX) / 2},${drawingShape.startY} ${drawingShape.currentX},${drawingShape.currentY} ${drawingShape.startX},${drawingShape.currentY}`} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
+                    {drawingShape.type === 'cloud' && (
+                      <path d={`M${Math.min(drawingShape.startX, drawingShape.currentX)} ${Math.min(drawingShape.startY, drawingShape.currentY)} 
+                        Q${Math.min(drawingShape.startX, drawingShape.currentX)} ${Math.min(drawingShape.startY, drawingShape.currentY) - 20} 
+                        ${Math.min(drawingShape.startX, drawingShape.currentX) + 20} ${Math.min(drawingShape.startY, drawingShape.currentY) - 20}
+                        Q${Math.min(drawingShape.startX, drawingShape.currentX) + 40} ${Math.min(drawingShape.startY, drawingShape.currentY) - 20}
+                        ${Math.max(drawingShape.startX, drawingShape.currentX)} ${Math.min(drawingShape.startY, drawingShape.currentY)}
+                        L${Math.max(drawingShape.startX, drawingShape.currentX)} ${Math.max(drawingShape.startY, drawingShape.currentY)}
+                        L${Math.min(drawingShape.startX, drawingShape.currentX)} ${Math.max(drawingShape.startY, drawingShape.currentY)}
+                        Z`}
+                        fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />
+                    )}
                     {drawingShape.type === 'text' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
                   </g>
                 )}
