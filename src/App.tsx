@@ -372,7 +372,7 @@ const computeNodeHeight = (fontSize: number = NODE_DEFAULT_FONT_SIZE): number =>
   return computeNodeHeightFromText('', fontSize);
 };
 
-// --------------------- 形状補助関数 ---------------------
+// --------------------- 形状補助関数（テキストフィット改善版） ---------------------
 const getNodeShapeSize = (
   baseWidth: number,
   baseHeight: number,
@@ -380,17 +380,20 @@ const getNodeShapeSize = (
 ): { width: number; height: number } => {
   switch (shape) {
     case 'circle': {
-      const d = Math.max(Math.ceil(baseWidth / 0.64), Math.ceil(baseHeight / 0.64), 70);
+      // 少しタイトに（最小も60に）
+      const d = Math.max(Math.ceil(baseWidth / 0.75), Math.ceil(baseHeight / 0.75), 60);
       return { width: d, height: d };
     }
     case 'diamond': {
-      const w = Math.max(Math.ceil(baseWidth / 0.6), 120);
-      const h = Math.max(Math.ceil(baseHeight / 0.44), 80);
+      // 横幅・縦幅の比率を調整し、最小値も下げる
+      const w = Math.max(Math.ceil(baseWidth / 0.75), 100);
+      const h = Math.max(Math.ceil(baseHeight / 0.6), 60);
       return { width: w, height: h };
     }
     case 'hexagon': {
-      const w = Math.max(Math.ceil(baseWidth / 0.5), 120);
-      const h = Math.max(Math.ceil(baseHeight / 0.56), 70);
+      // 横幅・縦幅の比率を調整し、最小値も下げる
+      const w = Math.max(Math.ceil(baseWidth / 0.6), 100);
+      const h = Math.max(Math.ceil(baseHeight / 0.7), 60);
       return { width: w, height: h };
     }
     case 'rounded':
@@ -405,9 +408,9 @@ const getShapePadding = (
   height: number
 ): string => {
   switch (shape) {
-    case 'circle': return `${Math.ceil(height * 0.18)}px ${Math.ceil(width * 0.18)}px`;
-    case 'diamond': return `${Math.ceil(height * 0.28)}px ${Math.ceil(width * 0.2)}px`;
-    case 'hexagon': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.25)}px`;
+    case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
+    case 'diamond': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.18)}px`;
+    case 'hexagon': return `${Math.ceil(height * 0.18)}px ${Math.ceil(width * 0.20)}px`;
     default: return '12px 20px';
   }
 };
@@ -766,6 +769,12 @@ const MemoIcon = () => (
 const LockIcon = () => (
   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
     <path d="M17 11V7A5 5 0 007 7v4H5v10h14V11h-2zm-8-4a3 3 0 016 0v4H9V7z"/>
+  </svg>
+);
+// ノード用の淡いアウトラインロックアイコン
+const LockIconOutline = () => (
+  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
   </svg>
 );
 const SnapIcon = () => (
@@ -5228,8 +5237,8 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           />
         )}
         {node.locked && (
-          <div className="absolute top-1 right-1 w-4 h-4 bg-slate-600 rounded-full flex items-center justify-center text-white z-10 pointer-events-none">
-            <LockIcon />
+          <div className="absolute top-1 right-1 w-5 h-5 border border-slate-300 rounded-full flex items-center justify-center text-slate-300 z-10 pointer-events-none bg-white/50">
+            <LockIconOutline />
           </div>
         )}
         {node.children.length > 0 && (
