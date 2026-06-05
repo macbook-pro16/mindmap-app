@@ -389,13 +389,18 @@ const getNodeShapeSize = (
       return { width: w, height: h };
     }
     case 'hexagon': {
-      // 正六角形（点が上下）で、テキストを収める
-      // 外接矩形の幅 W = R * √3, 高さ H = 2R
-      // R = max( baseWidth / √3, baseHeight / 2 ) に最小値を加味
+      // 頂点が左右の横長六角形（90度回転）
+      // 外接矩形の幅 W = 2R, 高さ H = R * √3 をベースに、
+      // 縦方向の比率を小さくする（縦を横の 0.6 倍程度に）
       const minR = 30;
-      const r = Math.max(baseWidth / Math.sqrt(3), baseHeight / 2, minR);
-      const W = r * Math.sqrt(3);
-      const H = 2 * r;
+      const aspectVertical = 0.6; // 縦方向の圧縮率
+      // テキストフィット：内部の利用可能な幅は頂点を除いた部分で約 R、高さは H 全体
+      // baseWidth に対して R >= baseWidth * 1.1 (パディング込み)、baseHeight に対して H >= baseHeight * 1.2 となるように
+      const rFromWidth = baseWidth * 1.15;
+      const rFromHeight = (baseHeight * 1.3) / (Math.sqrt(3) * aspectVertical);
+      const R = Math.max(rFromWidth, rFromHeight, minR);
+      const W = 2 * R;
+      const H = R * Math.sqrt(3) * aspectVertical;
       return { width: Math.ceil(W), height: Math.ceil(H) };
     }
     case 'rounded':
@@ -413,9 +418,9 @@ const getShapePadding = (
     case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
     case 'diamond': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.18)}px`;
     case 'hexagon': {
-      // 正六角形の内側にテキストを収めるためのパディング
-      const padY = Math.ceil(height * 0.2);
-      const padX = Math.ceil(width * 0.25);
+      // 横長六角形に合わせたパディング（左右に余裕、上下は小さめ）
+      const padY = Math.ceil(height * 0.12);
+      const padX = Math.ceil(width * 0.20);
       return `${padY}px ${padX}px`;
     }
     default: return '12px 20px';
@@ -504,17 +509,19 @@ const NodeShapeBackground = ({
       );
     }
     case 'hexagon': {
-      // 正六角形（点が上下）の頂点計算
+      // 頂点が左右の横長六角形（90度回転）
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
-      const R = Math.min(width / Math.sqrt(3), height / 2) - pad; // 正六角形の外接円半径
+      const aspect = height / width; // 縦横比
+      // 正六角形（頂点左右）の頂点を計算し、縦方向に aspect を掛けて変形
       const vertices: { x: number; y: number }[] = [];
+      const R = Math.min(width / 2, height / (Math.sqrt(3) * 0.6)) - pad;
       for (let i = 0; i < 6; i++) {
-        const angle = Math.PI / 2 + (Math.PI / 3) * i; // 90° スタートで上から時計回り
+        const angle = (Math.PI / 3) * i; // 0° からスタート（右の頂点）
         vertices.push({
           x: cx + R * Math.cos(angle),
-          y: cy - R * Math.sin(angle),
+          y: cy - R * Math.sin(angle) * 0.6, // 縦方向のみ圧縮
         });
       }
       const d = vertices.map((v, i) => (i === 0 ? 'M' : 'L') + ` ${v.x} ${v.y}`).join(' ') + ' Z';
@@ -879,7 +886,6 @@ const MapThumbnail = ({ map, onOpen }: { map: MapRecord; onOpen: (map: MapRecord
       className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col w-full aspect-[4/3] group"
     >
       <svg ref={svgRef} viewBox={vb} className="w-full h-full flex-1 p-1" preserveAspectRatio="xMidYMid meet">
-        {/* エッジ（親子関係） */}
         {flatNodes.filter(f => f.parentId).map(f => {
           const parent = flatNodes.find(p => p.id === f.parentId);
           if (!parent) return null;
@@ -895,7 +901,6 @@ const MapThumbnail = ({ map, onOpen }: { map: MapRecord; onOpen: (map: MapRecord
             />
           );
         })}
-        {/* ノード矩形 */}
         {flatNodes.map(f => (
           <rect
             key={f.id}
