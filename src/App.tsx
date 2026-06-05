@@ -2824,9 +2824,99 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (draggingStickyId) { updateStickyPosition(draggingStickyId, coords.x - stickyDragOffset.current.x, coords.y - stickyDragOffset.current.y); return; }
     if (draggingOutlineId) { updateOutlinePosition(draggingOutlineId, coords.x - outlineDragOffset.current.x, coords.y - outlineDragOffset.current.y); return; }
     if (draggingStampId) { updateStampPosition(draggingStampId, coords.x - stampDragOffset.current.x, coords.y - stampDragOffset.current.y); return; }
-    if (resizingImageHandle) { const image = images.find((img: ImageData) => img.id === resizingImageHandle.imageId); if (!image) return; let newWidth = image.width, newHeight = image.height, newX = image.x, newY = image.y; const h = resizingImageHandle.handle; if (h.includes('e')) newWidth = Math.max(20, coords.x - image.x); if (h.includes('s')) newHeight = Math.max(20, coords.y - image.y); if (h.includes('w')) { const diff = image.x - coords.x; newWidth = Math.max(20, diff); newX = coords.x; } if (h.includes('n')) { const diff = image.y - coords.y; newHeight = Math.max(20, diff); newY = coords.y; } const yImages = yImagesRef.current; if (yImages) { ydocRef.current?.transact(() => { yImages.set(image.id, { ...image, width: newWidth, height: newHeight, x: newX, y: newY }); }); } return; }
-    if (resizingStickyHandle) { const sticky = stickies.find((s: StickyData) => s.id === resizingStickyHandle.stickyId); if (!sticky) return; let newWidth = sticky.width, newHeight = sticky.height, newX = sticky.x, newY = sticky.y; const h = resizingStickyHandle.handle; if (h.includes('e')) newWidth = Math.max(100, coords.x - sticky.x); if (h.includes('s')) newHeight = Math.max(80, coords.y - sticky.y); if (h.includes('w')) { const diff = sticky.x - coords.x; newWidth = Math.max(100, diff); newX = coords.x; } if (h.includes('n')) { const diff = sticky.y - coords.y; newHeight = Math.max(80, diff); newY = coords.y; } updateStickySize(sticky.id, newWidth, newHeight); if (h.includes('w') || h.includes('n')) updateStickyPosition(sticky.id, newX, newY); return; }
-    if (resizingOutlineHandle) { const outline = outlines.find((o: OutlineData) => o.id === resizingOutlineHandle.outlineId); if (!outline) return; let newWidth = outline.width, newHeight = outline.height, newX = outline.x, newY = outline.y; const h = resizingOutlineHandle.handle; if (h.includes('e')) newWidth = Math.max(30, coords.x - outline.x); if (h.includes('s')) newHeight = Math.max(30, coords.y - outline.y); if (h.includes('w')) { const diff = outline.x - coords.x; newWidth = Math.max(30, diff); newX = coords.x; } if (h.includes('n')) { const diff = outline.y - coords.y; newHeight = Math.max(30, diff); newY = coords.y; } updateOutlineSize(outline.id, newWidth, newHeight); if (h.includes('w') || h.includes('n')) updateOutlinePosition(outline.id, newX, newY); return; }
+    if (resizingImageHandle) {
+      const image = images.find((img: ImageData) => img.id === resizingImageHandle.imageId);
+      if (!image) return;
+      const aspectRatio = image.width / image.height;
+      const h = resizingImageHandle.handle;
+      let anchorX: number, anchorY: number;
+      if (h.includes('e')) anchorX = image.x;
+      else anchorX = image.x + image.width;
+      if (h.includes('s')) anchorY = image.y;
+      else anchorY = image.y + image.height;
+      let newWidth = h.includes('e') ? coords.x - anchorX : anchorX - coords.x;
+      let newHeight = h.includes('s') ? coords.y - anchorY : anchorY - coords.y;
+      if (newWidth / newHeight > aspectRatio) {
+        newWidth = newHeight * aspectRatio;
+      } else {
+        newHeight = newWidth / aspectRatio;
+      }
+      newWidth = Math.max(20, newWidth);
+      newHeight = Math.max(20, newHeight);
+      let newX = image.x, newY = image.y;
+      if (h.includes('w')) newX = anchorX - newWidth;
+      if (h.includes('n')) newY = anchorY - newHeight;
+      const yImages = yImagesRef.current;
+      if (yImages) {
+        ydocRef.current?.transact(() => {
+          yImages.set(image.id, { ...image, width: newWidth, height: newHeight, x: newX, y: newY });
+        });
+      }
+      return;
+    }
+    if (resizingStickyHandle) {
+      const sticky = stickies.find((s: StickyData) => s.id === resizingStickyHandle.stickyId);
+      if (!sticky) return;
+      const aspectRatio = sticky.width / sticky.height;
+      const h = resizingStickyHandle.handle;
+      let anchorX: number, anchorY: number;
+      if (h.includes('e')) anchorX = sticky.x;
+      else anchorX = sticky.x + sticky.width;
+      if (h.includes('s')) anchorY = sticky.y;
+      else anchorY = sticky.y + sticky.height;
+      let newWidth = h.includes('e') ? coords.x - anchorX : anchorX - coords.x;
+      let newHeight = h.includes('s') ? coords.y - anchorY : anchorY - coords.y;
+      if (newWidth / newHeight > aspectRatio) {
+        newWidth = newHeight * aspectRatio;
+      } else {
+        newHeight = newWidth / aspectRatio;
+      }
+      newWidth = Math.max(100, newWidth);
+      newHeight = Math.max(80, newHeight);
+      let newX = sticky.x, newY = sticky.y;
+      if (h.includes('w')) newX = anchorX - newWidth;
+      if (h.includes('n')) newY = anchorY - newHeight;
+      updateStickySize(sticky.id, newWidth, newHeight);
+      if (h.includes('w') || h.includes('n')) updateStickyPosition(sticky.id, newX, newY);
+      return;
+    }
+    if (resizingOutlineHandle) {
+      const outline = outlines.find((o: OutlineData) => o.id === resizingOutlineHandle.outlineId);
+      if (!outline) return;
+      if (outline.type === 'text') {
+        let newWidth = outline.width, newHeight = outline.height, newX = outline.x, newY = outline.y;
+        const h = resizingOutlineHandle.handle;
+        if (h.includes('e')) newWidth = Math.max(30, coords.x - outline.x);
+        if (h.includes('s')) newHeight = Math.max(30, coords.y - outline.y);
+        if (h.includes('w')) { const diff = outline.x - coords.x; newWidth = Math.max(30, diff); newX = coords.x; }
+        if (h.includes('n')) { const diff = outline.y - coords.y; newHeight = Math.max(30, diff); newY = coords.y; }
+        updateOutlineSize(outline.id, newWidth, newHeight);
+        if (h.includes('w') || h.includes('n')) updateOutlinePosition(outline.id, newX, newY);
+      } else {
+        const aspectRatio = outline.width / outline.height;
+        const h = resizingOutlineHandle.handle;
+        let anchorX: number, anchorY: number;
+        if (h.includes('e')) anchorX = outline.x;
+        else anchorX = outline.x + outline.width;
+        if (h.includes('s')) anchorY = outline.y;
+        else anchorY = outline.y + outline.height;
+        let newWidth = h.includes('e') ? coords.x - anchorX : anchorX - coords.x;
+        let newHeight = h.includes('s') ? coords.y - anchorY : anchorY - coords.y;
+        if (newWidth / newHeight > aspectRatio) {
+          newWidth = newHeight * aspectRatio;
+        } else {
+          newHeight = newWidth / aspectRatio;
+        }
+        newWidth = Math.max(30, newWidth);
+        newHeight = Math.max(30, newHeight);
+        let newX = outline.x, newY = outline.y;
+        if (h.includes('w')) newX = anchorX - newWidth;
+        if (h.includes('n')) newY = anchorY - newHeight;
+        updateOutlineSize(outline.id, newWidth, newHeight);
+        if (h.includes('w') || h.includes('n')) updateOutlinePosition(outline.id, newX, newY);
+      }
+      return;
+    }
     if (selectionRect) { setSelectionRect(prev => prev ? { ...prev, x2: coords.x, y2: coords.y } : null); return; }
     if (draggingNodeId) {
       const newX = coords.x - dragOffset.current.x, newY = coords.y - dragOffset.current.y;
@@ -3456,7 +3546,6 @@ const MindMapApp = ({ user }: { user: User }) => {
           <button onClick={handleLogout} className="text-[10px] font-medium text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 px-2.5 py-1.5 rounded-md transition-colors border border-slate-100 hover:border-rose-100 whitespace-nowrap">Logout</button>
         </div>
       </div>
-
       <div className="flex-1 relative flex flex-col min-w-0 bg-slate-50 overflow-hidden">
         {!zenMode && (
           <>
@@ -4434,14 +4523,16 @@ const MindMapApp = ({ user }: { user: User }) => {
                       <svg width="100%" height="100%" viewBox="0 0 200 120" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none">
                         <path
                           d="
-                            M 30 90
-                            C 10 90, 5 70, 18 62
-                            C 12 48, 22 36, 36 36
-                            C 38 22, 52 14, 66 20
-                            C 74 10, 92 10, 98 24
-                            C 110 18, 126 24, 128 38
-                            C 142 36, 154 48, 148 62
-                            C 160 68, 158 88, 142 90
+                            M 50 85
+                            C 32 88, 18 74, 22 60
+                            C 10 50, 16 34, 30 30
+                            C 34 16, 52 10, 68 16
+                            C 80 6, 102 6, 115 18
+                            C 132 10, 152 16, 160 32
+                            C 174 38, 178 56, 168 68
+                            C 176 82, 160 96, 142 90
+                            C 128 100, 108 100, 92 90
+                            C 78 98, 60 96, 50 85
                             Z
                           "
                           fill="none"
@@ -4610,14 +4701,16 @@ const MindMapApp = ({ user }: { user: User }) => {
                           >
                             <path
                               d="
-                                M 30 90
-                                C 10 90, 5 70, 18 62
-                                C 12 48, 22 36, 36 36
-                                C 38 22, 52 14, 66 20
-                                C 74 10, 92 10, 98 24
-                                C 110 18, 126 24, 128 38
-                                C 142 36, 154 48, 148 62
-                                C 160 68, 158 88, 142 90
+                                M 50 85
+                                C 32 88, 18 74, 22 60
+                                C 10 50, 16 34, 30 30
+                                C 34 16, 52 10, 68 16
+                                C 80 6, 102 6, 115 18
+                                C 132 10, 152 16, 160 32
+                                C 174 38, 178 56, 168 68
+                                C 176 82, 160 96, 142 90
+                                C 128 100, 108 100, 92 90
+                                C 78 98, 60 96, 50 85
                                 Z
                               "
                               fill="none"
