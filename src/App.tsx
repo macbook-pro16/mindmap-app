@@ -743,6 +743,21 @@ const GridLineIcon = () => (
     <line x1="15" y1="3" x2="15" y2="21" strokeWidth={1.5}/>
   </svg>
 );
+const MinimapIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
+    <rect x="7" y="7" width="4" height="4" rx="0.5" strokeWidth={1.5} fill="currentColor" stroke="none" />
+    <rect x="13" y="9" width="5" height="3" rx="0.5" strokeWidth={1.5} fill="currentColor" stroke="none" />
+    <rect x="8" y="13" width="3" height="4" rx="0.5" strokeWidth={1.5} fill="currentColor" stroke="none" />
+  </svg>
+);
+const SettingsIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
 const MapIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
@@ -1107,7 +1122,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   const shapeMenuRef = useRef<HTMLDivElement>(null);
   const quickMenuRef = useRef<HTMLDivElement>(null);
-  const alignMenuRef = useRef<HTMLDivElement>(null);
   const stampTextInputRef = useRef<HTMLInputElement>(null);
   const memoInputRef = useRef<HTMLTextAreaElement>(null);
   const [mapId, setMapId] = useState<number | null>(null);
@@ -1242,11 +1256,12 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [showShapeMenu, setShowShapeMenu] = useState(false);
   const [showMemoEdit, setShowMemoEdit] = useState(false);
   const [showQuickMenu, setShowQuickMenu] = useState(false);
-  const [showAlignMenu, setShowAlignMenu] = useState(false);
   const [showMinimap, setShowMinimap] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const SNAP_SIZE = 32;
   const snapValue = (v: number) => snapToGrid ? Math.round(v / SNAP_SIZE) * SNAP_SIZE : v;
+
+  const [distributeSpacing, setDistributeSpacing] = useState<number>(20);
 
   const copiedNodeRef = useRef<YjsNodeData | null>(null);
 
@@ -1271,17 +1286,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showQuickMenu]);
-
-  useEffect(() => {
-    if (!showAlignMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (alignMenuRef.current && !alignMenuRef.current.contains(e.target as Node)) {
-        setShowAlignMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showAlignMenu]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1737,22 +1741,62 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, []);
 
   const addParentNode = useCallback((targetId: string) => {
-    const nodes = yNodesRef.current; if (!nodes || !yRootRef.current) return; if (targetId === yRootRef.current) return;
-    const oldParentId = findParentId(nodes, targetId); if (!oldParentId) return; const oldParent = nodes.get(oldParentId); if (!oldParent) return;
-    const targetNode = nodes.get(targetId); if (!targetNode) return;
-    const newParentId = crypto.randomUUID(); const safePos = getUnoccupiedPosition(targetNode.x - NODE_WIDTH - 40, targetNode.y, nodes);
+    const nodes = yNodesRef.current;
+    if (!nodes || !yRootRef.current) return;
+    if (targetId === yRootRef.current) return;
+
+    const oldParentId = findParentId(nodes, targetId);
+    if (!oldParentId) return;
+
+    const oldParent = nodes.get(oldParentId);
+    if (!oldParent) return;
+
+    const targetNode = nodes.get(targetId);
+    if (!targetNode) return;
+
+    const newParentId = crypto.randomUUID();
+    const safePos = getUnoccupiedPosition(targetNode.x - NODE_WIDTH - 40, targetNode.y, nodes);
+
     const defaultText = '新しいトピック';
     const defaultFontSize = NODE_DEFAULT_FONT_SIZE;
     const initialWidth = computeNodeWidth(defaultText, defaultFontSize);
     const initialHeight = computeNodeHeightFromText(defaultText, defaultFontSize);
+
+    const rootId = yRootRef.current;
+
     ydocRef.current?.transact(() => {
-      nodes.set(newParentId, { text: defaultText, x: safePos.x, y: safePos.y, children: [targetId], independent: false, bgColor: '#f8fafc', textColor: '#334155', width: initialWidth, height: initialHeight, fontSize: defaultFontSize, collapsed: false, nodeShape: 'rounded', locked: false });
-      // 選択ノードの independent フラグを解除し、正しく親子関係が表示されるようにする
-      if (targetNode.independent) {
-        nodes.set(targetId, { ...targetNode, independent: false });
+      nodes.set(newParentId, {
+        text: defaultText,
+        x: safePos.x,
+        y: safePos.y,
+        children: [targetId],
+        independent: true,
+        bgColor: '#f8fafc',
+        textColor: '#334155',
+        width: initialWidth,
+        height: initialHeight,
+        fontSize: defaultFontSize,
+        collapsed: false,
+        nodeShape: 'rounded',
+        locked: false,
+      });
+
+      const updatedOldChildren = (oldParent.children ?? []).filter(
+        (id: string) => id !== targetId
+      );
+      nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
+
+      nodes.set(targetId, { ...targetNode, independent: false });
+
+      const root = nodes.get(rootId);
+      if (root) {
+        nodes.set(rootId, {
+          ...root,
+          children: [...(root.children ?? []), newParentId],
+        });
       }
-      const updatedOldChildren = (oldParent.children ?? []).filter((id: string) => id !== targetId); updatedOldChildren.push(newParentId); nodes.set(oldParentId, { ...oldParent, children: updatedOldChildren });
     });
+
     setSelectedNodeIds([newParentId]);
   }, []);
 
@@ -2045,33 +2089,45 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [selectedNodeIds]);
 
-  const distributeNodes = useCallback((axis: 'horizontal' | 'vertical') => {
+  const distributeNodesWithSpacing = useCallback((axis: 'horizontal' | 'vertical', spacingPx: number) => {
     const nodes = yNodesRef.current;
-    if (!nodes || selectedNodeIds.length < 3) return;
+    if (!nodes || selectedNodeIds.length < 2) return;
 
     const nodeDatas = selectedNodeIds
       .map(id => ({ id, data: nodes.get(id) }))
       .filter((n): n is { id: string; data: YjsNodeData } => !!n.data);
 
-    if (nodeDatas.length < 3) return;
+    if (nodeDatas.length < 2) return;
 
     nodeDatas.sort((a, b) =>
       axis === 'horizontal' ? a.data.x - b.data.x : a.data.y - b.data.y
     );
 
-    const first = nodeDatas[0].data;
-    const last  = nodeDatas[nodeDatas.length - 1].data;
-    const total = axis === 'horizontal' ? last.x - first.x : last.y - first.y;
-    const step  = total / (nodeDatas.length - 1);
+    const first = nodeDatas[0];
 
     ydocRef.current?.transact(() => {
       nodeDatas.forEach((n, i) => {
-        if (i === 0 || i === nodeDatas.length - 1) return;
-        nodes.set(n.id, {
-          ...n.data,
-          x: axis === 'horizontal' ? first.x + step * i : n.data.x,
-          y: axis === 'vertical'   ? first.y + step * i : n.data.y,
-        });
+        if (axis === 'horizontal') {
+          const prevWidthsSum = nodeDatas.slice(0, i).reduce((sum, nd) => {
+            return sum + (nd.data.width ?? NODE_WIDTH);
+          }, 0);
+          const newX =
+            (first.data.x - (first.data.width ?? NODE_WIDTH) / 2) +
+            prevWidthsSum +
+            spacingPx * i +
+            (n.data.width ?? NODE_WIDTH) / 2;
+          nodes.set(n.id, { ...n.data, x: newX });
+        } else {
+          const prevHeightsSum = nodeDatas.slice(0, i).reduce((sum, nd) => {
+            return sum + (nd.data.height ?? NODE_HEIGHT);
+          }, 0);
+          const newY =
+            (first.data.y - (first.data.height ?? NODE_HEIGHT) / 2) +
+            prevHeightsSum +
+            spacingPx * i +
+            (n.data.height ?? NODE_HEIGHT) / 2;
+          nodes.set(n.id, { ...n.data, y: newY });
+        }
       });
     });
   }, [selectedNodeIds]);
@@ -3000,9 +3056,13 @@ const MindMapApp = ({ user }: { user: User }) => {
   useEffect(() => { if (isAnyDragging) { if(typeof window !== 'undefined') { window.addEventListener('mousemove', handleMouseMove as EventListener); window.addEventListener('mouseup', handleMouseUp); } return () => { if(typeof window !== 'undefined') { window.removeEventListener('mousemove', handleMouseMove as EventListener); window.removeEventListener('mouseup', handleMouseUp); } }; } }, [isAnyDragging, handleMouseMove, handleMouseUp]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (editingNodeId || editingStickyId || editingMapId !== null || editingOutlineId !== null || showHelpModal) {
+    if (editingNodeId || editingStickyId || editingMapId !== null || editingOutlineId !== null || showHelpModal || showMemoEdit) {
       if (e.key === 'Escape' && showQuickMenu) {
         setShowQuickMenu(false);
+        return;
+      }
+      if (e.key === 'Escape' && showMemoEdit) {
+        setShowMemoEdit(false);
         return;
       }
       return;
@@ -3018,7 +3078,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       setFocusNodeId(null);
       setEditingNodeId(null);
       setShowQuickMenu(false);
-      setShowAlignMenu(false);
       return;
     }
     if (e.key === 'F2' && selectedNodeId && !editingNodeId) {
@@ -3084,7 +3143,6 @@ const MindMapApp = ({ user }: { user: User }) => {
       scrollToHome();
       return;
     }
-    // フォーカスモード ショートカット
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F' && selectedNodeId) {
       e.preventDefault();
       setFocusNodeId(selectedNodeId);
@@ -3114,7 +3172,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); const node = mindMap ? findNodeById(mindMap, selectedNodeId) : null; if (node?.independent) { addIndependentSibling(selectedNodeId, 'before'); } else { addSiblingNode(selectedNodeId, 'before'); } return; }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addParentNode(selectedNodeId); return; }
     if (e.key === 'Tab') { e.preventDefault(); addChildNode(selectedNodeId); return; }
-  }, [editingNodeId, editingStickyId, editingOutlineId, editingMapId, showHelpModal, showQuickMenu, selectedNodeId, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, selectedEdgeId, selectedImageId, selectedStickyId, selectedOutlineId, selectedStampId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteEdge, changeZoom, addNodeAtPosition, toggleNodeCollapse, scrollToHome]);
+  }, [editingNodeId, editingStickyId, editingOutlineId, editingMapId, showHelpModal, showMemoEdit, showQuickMenu, selectedNodeId, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, selectedEdgeId, selectedImageId, selectedStickyId, selectedOutlineId, selectedStampId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteEdge, changeZoom, addNodeAtPosition, toggleNodeCollapse, scrollToHome]);
 
   const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'node', nodeId }); setShowColorPalette(null); setShowQuickMenu(false); }, []);
   const handleCanvasContextMenu = useCallback((e: ReactMouseEvent) => { e.preventDefault(); const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'canvas', canvasX: coords.x, canvasY: coords.y }); setShowQuickMenu(false); }, [zoomLevel]);
@@ -3150,7 +3208,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleStampClick = useCallback((e: ReactMouseEvent, stampId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStampIds(prev => prev.includes(stampId) ? prev.filter(id => id !== stampId) : [...prev, stampId]); } else { setSelectedStampIds([stampId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); } }, [mindMap]);
-  const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); setShowQuickMenu(false); setShowAlignMenu(false); };
+  const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); setShowQuickMenu(false); };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); setShowQuickMenu(false); }, []);
@@ -3720,71 +3778,122 @@ const MindMapApp = ({ user }: { user: User }) => {
                 ))}
               </div>
               <div className="w-px h-5 bg-slate-200 mx-1" />
-              <div className="relative" ref={alignMenuRef}>
-                <button
-                  onClick={() => setShowAlignMenu(prev => !prev)}
-                  disabled={selectedNodeIds.length < 2}
-                  title="整列・配置"
-                  className={`p-2 rounded-lg transition-colors ${
-                    showAlignMenu
-                      ? 'bg-indigo-50 text-indigo-700'
-                      : 'hover:bg-slate-100 text-slate-600'
-                  } disabled:opacity-40 disabled:cursor-not-allowed`}
-                >
-                  <AlignVerticalIcon />
-                </button>
-                {showAlignMenu && (
-                  <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-50 w-48">
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-1">縦整列</div>
-                    {[
-                      { anchor: 'left'     as AlignAnchor, label: '← 左端揃え' },
-                      { anchor: 'center-v' as AlignAnchor, label: '⊕ 中央揃え' },
-                      { anchor: 'right'    as AlignAnchor, label: '→ 右端揃え' },
-                    ].map(({ anchor, label }) => (
+              {/* 整列ボタン群（選択ノード2つ以上で有効） */}
+              {selectedNodeIds.length >= 2 && (
+                <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => alignNodes('vertical', 'left')}
+                    title="左端揃え"
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="4" y1="3" x2="4" y2="21" strokeWidth={2} strokeLinecap="round"/>
+                      <rect x="4" y="6" width="8" height="4" rx="1" strokeWidth={1.5}/>
+                      <rect x="4" y="14" width="12" height="4" rx="1" strokeWidth={1.5}/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => alignNodes('vertical', 'center-v')}
+                    title="垂直中央揃え"
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="12" y1="3" x2="12" y2="21" strokeWidth={2} strokeLinecap="round" strokeDasharray="2 2"/>
+                      <rect x="6" y="6" width="12" height="4" rx="1" strokeWidth={1.5}/>
+                      <rect x="8" y="14" width="8" height="4" rx="1" strokeWidth={1.5}/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => alignNodes('vertical', 'right')}
+                    title="右端揃え"
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="20" y1="3" x2="20" y2="21" strokeWidth={2} strokeLinecap="round"/>
+                      <rect x="8" y="6" width="12" height="4" rx="1" strokeWidth={1.5}/>
+                      <rect x="4" y="14" width="16" height="4" rx="1" strokeWidth={1.5}/>
+                    </svg>
+                  </button>
+                  <div className="w-px h-4 bg-slate-300 mx-0.5" />
+                  <button
+                    onClick={() => alignNodes('horizontal', 'top')}
+                    title="上端揃え"
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="3" y1="4" x2="21" y2="4" strokeWidth={2} strokeLinecap="round"/>
+                      <rect x="6" y="4" width="4" height="8" rx="1" strokeWidth={1.5}/>
+                      <rect x="14" y="4" width="4" height="12" rx="1" strokeWidth={1.5}/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => alignNodes('horizontal', 'center-h')}
+                    title="水平中央揃え"
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="3" y1="12" x2="21" y2="12" strokeWidth={2} strokeLinecap="round" strokeDasharray="2 2"/>
+                      <rect x="6" y="6" width="4" height="12" rx="1" strokeWidth={1.5}/>
+                      <rect x="14" y="8" width="4" height="8" rx="1" strokeWidth={1.5}/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => alignNodes('horizontal', 'bottom')}
+                    title="下端揃え"
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="3" y1="20" x2="21" y2="20" strokeWidth={2} strokeLinecap="round"/>
+                      <rect x="6" y="8" width="4" height="12" rx="1" strokeWidth={1.5}/>
+                      <rect x="14" y="4" width="4" height="16" rx="1" strokeWidth={1.5}/>
+                    </svg>
+                  </button>
+                  {/* 等間隔UI */}
+                  <div className="flex items-center gap-1 ml-1">
+                    <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+                      <input
+                        type="number"
+                        min={0}
+                        max={500}
+                        value={distributeSpacing}
+                        onChange={e => setDistributeSpacing(Math.max(0, Number(e.target.value)))}
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => e.stopPropagation()}
+                        onKeyDown={e => e.stopPropagation()}
+                        className="w-12 text-xs text-center bg-white border border-slate-200 rounded px-1 py-1 outline-none focus:ring-1 focus:ring-indigo-400"
+                        title="間隔（px）"
+                      />
+                      <span className="text-[10px] text-slate-400 pr-1">px</span>
                       <button
-                        key={anchor}
-                        onClick={() => { alignNodes('vertical', anchor); setShowAlignMenu(false); }}
+                        onClick={() => distributeNodesWithSpacing('horizontal', distributeSpacing)}
                         disabled={selectedNodeIds.length < 2}
-                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left w-full"
+                        title={`水平方向に ${distributeSpacing}px 間隔で配置`}
+                        className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        {label}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <line x1="3"  y1="4" x2="3"  y2="20" strokeWidth={2} strokeLinecap="round"/>
+                          <line x1="21" y1="4" x2="21" y2="20" strokeWidth={2} strokeLinecap="round"/>
+                          <rect x="6" y="8" width="4" height="8" rx="1" strokeWidth={1.5}/>
+                          <rect x="14" y="8" width="4" height="8" rx="1" strokeWidth={1.5}/>
+                        </svg>
                       </button>
-                    ))}
-                    <div className="border-t border-slate-100 my-1" />
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-1">横整列</div>
-                    {[
-                      { anchor: 'top'      as AlignAnchor, label: '↑ 上端揃え' },
-                      { anchor: 'center-h' as AlignAnchor, label: '⊕ 中央揃え' },
-                      { anchor: 'bottom'   as AlignAnchor, label: '↓ 下端揃え' },
-                    ].map(({ anchor, label }) => (
                       <button
-                        key={anchor}
-                        onClick={() => { alignNodes('horizontal', anchor); setShowAlignMenu(false); }}
+                        onClick={() => distributeNodesWithSpacing('vertical', distributeSpacing)}
                         disabled={selectedNodeIds.length < 2}
-                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left w-full"
+                        title={`垂直方向に ${distributeSpacing}px 間隔で配置`}
+                        className="p-1.5 rounded hover:bg-white hover:shadow-sm text-slate-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        {label}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <line x1="4"  y1="3" x2="20" y2="3"  strokeWidth={2} strokeLinecap="round"/>
+                          <line x1="4"  y1="21" x2="20" y2="21" strokeWidth={2} strokeLinecap="round"/>
+                          <rect x="8" y="6" width="8" height="4" rx="1" strokeWidth={1.5}/>
+                          <rect x="8" y="14" width="8" height="4" rx="1" strokeWidth={1.5}/>
+                        </svg>
                       </button>
-                    ))}
-                    <div className="border-t border-slate-100 my-1" />
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-1">等間隔</div>
-                    <button
-                      onClick={() => { distributeNodes('horizontal'); setShowAlignMenu(false); }}
-                      disabled={selectedNodeIds.length < 3}
-                      className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left w-full"
-                    >
-                      ⇔ 水平等間隔
-                    </button>
-                    <button
-                      onClick={() => { distributeNodes('vertical'); setShowAlignMenu(false); }}
-                      disabled={selectedNodeIds.length < 3}
-                      className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 rounded-lg disabled:opacity-40 text-left w-full"
-                    >
-                      ⇕ 垂直等間隔
-                    </button>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
             <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
               <div className="relative" ref={quickMenuRef}>
@@ -4037,7 +4146,7 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-2">
               {showMinimap && <MinimapPanel />}
               <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
-                <button onClick={() => setShowMinimap(prev => !prev)} className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all ${showMinimap ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : ''}`} title="ミニマップ"><MapIcon /></button>
+                <button onClick={() => setShowMinimap(prev => !prev)} className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all ${showMinimap ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : ''}`} title="ミニマップ"><MinimapIcon /></button>
                 <div className="w-px h-5 bg-slate-200" />
                 <button onClick={scrollToHome} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all" title="ホームに戻る"><HomeIcon /></button>
                 <div className="w-px h-5 bg-slate-200" />
@@ -4063,10 +4172,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   className={`p-2 rounded-lg transition-colors ${showSettingsPopover ? 'bg-slate-100 text-slate-700' : 'hover:bg-slate-100 text-slate-500'}`}
                   title="表示設定"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="3" strokeWidth={2}/>
-                    <path strokeWidth={2} strokeLinecap="round" d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-                  </svg>
+                  <SettingsIcon />
                 </button>
                 <button onClick={() => setShowHelpModal(true)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all"><HelpIcon /></button>
               </div>
@@ -4415,12 +4521,20 @@ const MindMapApp = ({ user }: { user: User }) => {
                         ref={memoInputRef}
                         defaultValue={mindMap && findNodeById(mindMap, selectedNodeId)?.memo || ''}
                         className="w-full h-20 resize-none border border-slate-200 rounded px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-400"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onFocus={(e) => e.stopPropagation()}
                         onBlur={(e) => {
                           const value = e.currentTarget.value.trim();
                           updateNodeMemo(selectedNodeId, value || '');
                           setShowMemoEdit(false);
                         }}
-                        onKeyDown={(e) => { if (e.key === 'Escape') { setShowMemoEdit(false); } }}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === 'Escape') {
+                            setShowMemoEdit(false);
+                          }
+                        }}
                       />
                     </div>
                   )}
