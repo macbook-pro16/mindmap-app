@@ -380,21 +380,23 @@ const getNodeShapeSize = (
 ): { width: number; height: number } => {
   switch (shape) {
     case 'circle': {
-      // 少しタイトに（最小も60に）
       const d = Math.max(Math.ceil(baseWidth / 0.75), Math.ceil(baseHeight / 0.75), 60);
       return { width: d, height: d };
     }
     case 'diamond': {
-      // 横幅・縦幅の比率を調整し、最小値も下げる
-      const w = Math.max(Math.ceil(baseWidth / 0.75), 100);
-      const h = Math.max(Math.ceil(baseHeight / 0.6), 60);
+      const w = Math.max(Math.ceil(baseWidth / 0.85), 100);
+      const h = Math.max(Math.ceil(baseHeight / 0.7), 60);
       return { width: w, height: h };
     }
     case 'hexagon': {
-      // 横幅・縦幅の比率を調整し、最小値も下げる
-      const w = Math.max(Math.ceil(baseWidth / 0.6), 100);
-      const h = Math.max(Math.ceil(baseHeight / 0.7), 60);
-      return { width: w, height: h };
+      // 正六角形（点が上下）で、テキストを収める
+      // 外接矩形の幅 W = R * √3, 高さ H = 2R
+      // R = max( baseWidth / √3, baseHeight / 2 ) に最小値を加味
+      const minR = 30;
+      const r = Math.max(baseWidth / Math.sqrt(3), baseHeight / 2, minR);
+      const W = r * Math.sqrt(3);
+      const H = 2 * r;
+      return { width: Math.ceil(W), height: Math.ceil(H) };
     }
     case 'rounded':
     default:
@@ -410,7 +412,12 @@ const getShapePadding = (
   switch (shape) {
     case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
     case 'diamond': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.18)}px`;
-    case 'hexagon': return `${Math.ceil(height * 0.18)}px ${Math.ceil(width * 0.20)}px`;
+    case 'hexagon': {
+      // 正六角形の内側にテキストを収めるためのパディング
+      const padY = Math.ceil(height * 0.2);
+      const padX = Math.ceil(width * 0.25);
+      return `${padY}px ${padX}px`;
+    }
     default: return '12px 20px';
   }
 };
@@ -437,7 +444,7 @@ const NodeShapeBackground = ({
 }) => {
   const strokeWidth = isSelected || isEditing || isTarget ? 2.5 : 1.5;
   const filter = isSelected
-    ? 'drop-shadow(0 0 12px rgba(99,102,241,0.25)) drop-shadow(0 4px 20px rgba(99,102,241,0.2))'
+    ? 'drop-shadow(0 0 12px rgba(225,107,140,0.25)) drop-shadow(0 4px 20px rgba(225,107,140,0.2))'
     : 'drop-shadow(0 2px 8px rgba(0,0,0,0.06))';
 
   switch (shape) {
@@ -497,53 +504,20 @@ const NodeShapeBackground = ({
       );
     }
     case 'hexagon': {
+      // 正六角形（点が上下）の頂点計算
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
-      const rx = width / 2 - pad;
-      const ry = height / 2 - pad;
-      const r = Math.min(rx, ry) * 0.15;
-
-      const pts = [
-        { x: cx - rx,       y: cy           },
-        { x: cx - rx * 0.5, y: cy - ry      },
-        { x: cx + rx * 0.5, y: cy - ry      },
-        { x: cx + rx,       y: cy           },
-        { x: cx + rx * 0.5, y: cy + ry      },
-        { x: cx - rx * 0.5, y: cy + ry      },
-      ];
-
-      const n = pts.length;
-      const norm = (ax: number, ay: number, bx: number, by: number, len: number) => {
-        const dx = bx - ax, dy = by - ay;
-        const d = Math.hypot(dx, dy);
-        return { x: dx / d * len, y: dy / d * len };
-      };
-
-      const segments: string[] = [];
-      for (let i = 0; i < n; i++) {
-        const prev = pts[(i - 1 + n) % n];
-        const cur  = pts[i];
-        const next = pts[(i + 1) % n];
-
-        const fromPrev = norm(prev.x, prev.y, cur.x, cur.y, r);
-        const toNext   = norm(cur.x, cur.y, next.x, next.y, r);
-
-        const inX  = cur.x - fromPrev.x;
-        const inY  = cur.y - fromPrev.y;
-        const outX = cur.x + toNext.x;
-        const outY = cur.y + toNext.y;
-
-        if (i === 0) {
-          segments.push(`M ${inX} ${inY}`);
-        } else {
-          segments.push(`L ${inX} ${inY}`);
-        }
-        segments.push(`Q ${cur.x} ${cur.y} ${outX} ${outY}`);
+      const R = Math.min(width / Math.sqrt(3), height / 2) - pad; // 正六角形の外接円半径
+      const vertices: { x: number; y: number }[] = [];
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI / 2 + (Math.PI / 3) * i; // 90° スタートで上から時計回り
+        vertices.push({
+          x: cx + R * Math.cos(angle),
+          y: cy - R * Math.sin(angle),
+        });
       }
-      segments.push('Z');
-
-      const d = segments.join(' ');
+      const d = vertices.map((v, i) => (i === 0 ? 'M' : 'L') + ` ${v.x} ${v.y}`).join(' ') + ' Z';
 
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
@@ -771,7 +745,6 @@ const LockIcon = () => (
     <path d="M17 11V7A5 5 0 007 7v4H5v10h14V11h-2zm-8-4a3 3 0 016 0v4H9V7z"/>
   </svg>
 );
-// ノード用の淡いアウトラインロックアイコン
 const LockIconOutline = () => (
   <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -835,7 +808,7 @@ const FocusTaskCard = ({ task, done = false, onClick }: { task: MindNode; done?:
   <button
     onClick={onClick}
     className={`w-full text-left p-2.5 rounded-lg border transition-colors hover:bg-slate-50 ${
-      done ? 'border-slate-100 opacity-60' : 'border-slate-200 hover:border-indigo-300'
+      done ? 'border-slate-100 opacity-60' : 'border-slate-200 hover:border-[#e16b8c]/50'
     }`}
   >
     <div className="flex items-start gap-2">
@@ -868,7 +841,7 @@ const FocusTaskCard = ({ task, done = false, onClick }: { task: MindNode; done?:
             </span>
           )}
           {task.taskAssigneeEmail && (
-            <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[80px]">
+            <span className="text-[9px] bg-[#e16b8c]/10 text-[#e16b8c] px-1.5 py-0.5 rounded-full font-medium truncate max-w-[80px]">
               {task.taskAssigneeEmail.split('@')[0]}
             </span>
           )}
@@ -877,6 +850,72 @@ const FocusTaskCard = ({ task, done = false, onClick }: { task: MindNode; done?:
     </div>
   </button>
 );
+
+// --------------------- マップサムネイル ---------------------
+const MapThumbnail = ({ map, onOpen }: { map: MapRecord; onOpen: (map: MapRecord) => void }) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const tree = map.data;
+  const flatNodes = useMemo(() => flattenTree(tree), [tree]);
+
+  const bbox = useMemo(() => {
+    if (flatNodes.length === 0) return { x: 0, y: 0, w: 100, h: 60 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    flatNodes.forEach(n => {
+      const w = (n.width ?? 60) / 2;
+      const h = (n.height ?? 30) / 2;
+      minX = Math.min(minX, n.x - w);
+      minY = Math.min(minY, n.y - h);
+      maxX = Math.max(maxX, n.x + w);
+      maxY = Math.max(maxY, n.y + h);
+    });
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }, [flatNodes]);
+
+  const vb = `${bbox.x - 20} ${bbox.y - 20} ${bbox.w + 40} ${bbox.h + 40}`;
+
+  return (
+    <button
+      onClick={() => onOpen(map)}
+      className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col w-full aspect-[4/3] group"
+    >
+      <svg ref={svgRef} viewBox={vb} className="w-full h-full flex-1 p-1" preserveAspectRatio="xMidYMid meet">
+        {/* エッジ（親子関係） */}
+        {flatNodes.filter(f => f.parentId).map(f => {
+          const parent = flatNodes.find(p => p.id === f.parentId);
+          if (!parent) return null;
+          return (
+            <line
+              key={`${f.id}-edge`}
+              x1={parent.x}
+              y1={parent.y}
+              x2={f.x}
+              y2={f.y}
+              stroke="#cbd5e1"
+              strokeWidth={1.5}
+            />
+          );
+        })}
+        {/* ノード矩形 */}
+        {flatNodes.map(f => (
+          <rect
+            key={f.id}
+            x={f.x - (f.width ?? 60) / 2}
+            y={f.y - (f.height ?? 30) / 2}
+            width={f.width ?? 60}
+            height={f.height ?? 30}
+            rx={8}
+            fill={f.bgColor ?? '#f8fafc'}
+            stroke="#94a3b8"
+            strokeWidth={1}
+          />
+        ))}
+      </svg>
+      <div className="px-3 py-2 border-t border-slate-100">
+        <div className="text-xs font-semibold text-slate-700 truncate">{map.title}</div>
+      </div>
+    </button>
+  );
+};
 
 // --------------------- データ変換ユーティリティ (純粋版) ---------------------
 const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null => {
@@ -1084,7 +1123,7 @@ const isStampInRect = (stamp: StampData, rect: { x1: number; y1: number; x2: num
 const AuthScreen = () => (
   <div className="flex items-center justify-center h-screen bg-slate-50">
     <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 text-center max-w-sm w-full">
-      <h2 className="text-2xl font-bold mb-2 text-slate-800">MindMap Login</h2>
+      <h2 className="text-2xl font-bold mb-2 text-slate-800">MindMap Pro Login</h2>
       <p className="text-sm text-slate-500 mb-6">チームで直感的にアイデアを共有</p>
       <button 
         onClick={() => {
@@ -1637,7 +1676,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data) nodes.set(nodeId, { ...data, locked: !data.locked });
   }, []);
 
-  // 複数ノードのロックをトグル（すべてロック中なら解除、そうでなければロック）
   const toggleMultipleNodesLock = useCallback((nodeIds: string[]) => {
     const nodes = yNodesRef.current;
     if (!nodes || nodeIds.length === 0) return;
@@ -1651,7 +1689,6 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, []);
 
-  // 全ノードのロックをトグル
   const toggleAllNodesLock = useCallback(() => {
     const nodes = yNodesRef.current;
     if (!nodes) return;
@@ -3383,8 +3420,8 @@ const MindMapApp = ({ user }: { user: User }) => {
             x={viewX} y={viewY}
             width={Math.min(viewW, W - viewX)}
             height={Math.min(viewH, H - viewY)}
-            fill="rgba(99,102,241,0.08)"
-            stroke="#6366f1"
+            fill="rgba(225,107,140,0.08)"
+            stroke="#e16b8c"
             strokeWidth={1}
             rx={1}
           />
@@ -3397,9 +3434,9 @@ const MindMapApp = ({ user }: { user: User }) => {
     <div className="relative h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-800" style={{ fontFamily: "'Inter', 'Noto Sans JP', sans-serif" }}>
       <style>{`
         :root {
-          --color-primary: #6366f1;
-          --color-primary-light: #e0e7ff;
-          --color-primary-dark: #4338ca;
+          --color-primary: #e16b8c;
+          --color-primary-light: #fce4ec;
+          --color-primary-dark: #d45a7a;
           --color-surface: #ffffff;
           --color-surface-2: #f8fafc;
           --color-surface-3: #f1f5f9;
@@ -3418,7 +3455,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
           --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
           --shadow-lg: 0 12px 32px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.06);
-          --shadow-focus: 0 0 0 3px rgba(99,102,241,0.2);
+          --shadow-focus: 0 0 0 3px rgba(225,107,140,0.2);
         }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         @keyframes blink-update {
@@ -3489,8 +3526,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                             alreadyMember
                               ? 'bg-emerald-50 border-emerald-200 text-emerald-600 cursor-default opacity-70'
                               : inviteEmail === h.invited_email
-                                ? 'bg-indigo-100 border-indigo-400 text-indigo-700 font-semibold'
-                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600'
+                                ? 'bg-[#e16b8c]/10 border-[#e16b8c] text-[#e16b8c] font-semibold'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-[#e16b8c]/5 hover:border-[#e16b8c]/30 hover:text-[#e16b8c]'
                           }`}
                         >
                           {alreadyMember && <span>✓</span>}
@@ -3512,13 +3549,13 @@ const MindMapApp = ({ user }: { user: User }) => {
                   value={inviteEmail} 
                   onChange={(e) => setInviteEmail(e.target.value)} 
                   placeholder="colleague@example.com" 
-                  className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all" 
+                  className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#e16b8c]/30 focus:border-[#e16b8c] transition-all" 
                   disabled={inviteLoading || !!inviteLink} 
                 />
                 <button 
                   onClick={handleInviteSubmit} 
                   disabled={inviteLoading || !inviteEmail.trim() || !mapId || !!inviteLink} 
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                  className="bg-[#e16b8c] hover:bg-[#d45a7a] disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
                 >
                   {inviteLoading ? '招待中...' : '招待する'}
                 </button>
@@ -3537,7 +3574,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                     <input readOnly value={inviteLink} className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none" />
                     <button 
                       onClick={() => { navigator.clipboard.writeText(inviteLink); setInviteMessage('コピーしました！'); }} 
-                      className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 transition-colors"
+                      className="text-xs bg-[#e16b8c]/10 text-[#e16b8c] px-3 py-1 rounded hover:bg-[#e16b8c]/20 transition-colors"
                     >
                       コピー
                     </button>
@@ -3549,12 +3586,12 @@ const MindMapApp = ({ user }: { user: User }) => {
           </div>
         </div>
       )}
-      {showHelpModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><HelpIcon /> 操作コマンド一覧</h3><button onClick={() => setShowHelpModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">ノード操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">子を追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Tab</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">下に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">上に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Shift + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック / F2</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン / Space</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">フォーカスモード</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Shift + F</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ノードをロック/解除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ロックアイコンクリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全体ロック/解除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">クイックメニュー</kbd></li></ul></div><div><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">キャンバス操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">画面移動 (パン)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Space + ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズームイン/アウト</span><div className="flex gap-1"><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Wheel</kbd></div></li><li className="flex justify-between items-center"><span className="text-slate-600">全体表示に戻る</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Homeボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">範囲選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">背景をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">線を引く</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">〇をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">図形/テキスト配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ツール選択後クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">グリッド表示切替</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">クイックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">グリッドスナップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右下ボタン</kbd></li></ul></div><div className="md:col-span-2 pt-4 border-t border-slate-100"><h4 className="text-sm font-bold text-indigo-600 mb-3 uppercase tracking-wider">システム・グループ・その他</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">レイヤー変更</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右クリックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像ドロップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像を直接ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">印鑑を配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + Shift + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">コピー / ペースト</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + C / V</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト図形の文字サイズ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">選択中にサイズメニュー</kbd></li></ul><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">元に戻す</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Z</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全画面表示 (Zen)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Alt + Cmd + F</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズーム100%</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + 0</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ホームへ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Shift + H</kbd></li></ul></div></div></div></div></div>)}
+      {showHelpModal && (<div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl border border-slate-100 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}><div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3"><h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><HelpIcon /> 操作コマンド一覧</h3><button onClick={() => setShowHelpModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">&times;</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h4 className="text-sm font-bold text-[#e16b8c] mb-3 uppercase tracking-wider">ノード操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">子を追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Tab</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">下に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">上に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Shift + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">左(親)に追加</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Enter</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">削除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Delete / Backspace</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト編集</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ダブルクリック / F2</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">折りたたみ/展開</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ノード左上のボタン / Space</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像拡大表示</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像ノードをダブルクリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">フォーカスモード</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Shift + F</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ノードをロック/解除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ロックアイコンクリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全体ロック/解除</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">クイックメニュー</kbd></li></ul></div><div><h4 className="text-sm font-bold text-[#e16b8c] mb-3 uppercase tracking-wider">キャンバス操作</h4><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">画面移動 (パン)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Space + ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズームイン/アウト</span><div className="flex gap-1"><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Wheel</kbd></div></li><li className="flex justify-between items-center"><span className="text-slate-600">全体表示に戻る</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Homeボタン</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">範囲選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">背景をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">線を引く</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">〇をドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">図形/テキスト配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">ツール選択後クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">グリッド表示切替</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">クイックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">グリッドスナップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右下ボタン</kbd></li></ul></div><div className="md:col-span-2 pt-4 border-t border-slate-100"><h4 className="text-sm font-bold text-[#e16b8c] mb-3 uppercase tracking-wider">システム・グループ・その他</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">複数選択</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + クリック</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">レイヤー変更</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">右クリックメニュー</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">画像ドロップ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">画像を直接ドラッグ</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">印鑑を配置</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + Shift + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">コピー / ペースト</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/Cmd + C / V</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">テキスト図形の文字サイズ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">選択中にサイズメニュー</kbd></li></ul><ul className="space-y-3 text-sm"><li className="flex justify-between items-center"><span className="text-slate-600">保存</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + S</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">元に戻す</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Z</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">全画面表示 (Zen)</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Alt + Cmd + F</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ズーム100%</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + 0</kbd></li><li className="flex justify-between items-center"><span className="text-slate-600">ホームへ</span><kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-mono text-slate-700 shadow-sm">Ctrl/⌘ + Shift + H</kbd></li></ul></div></div></div></div></div>)}
 
       {announcements.length > 0 && (
         <div className="fixed top-20 right-4 z-[300] flex flex-col gap-2 pointer-events-none">
           {announcements.map(a => (
-            <div key={a.id} className="bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium">
+            <div key={a.id} className="bg-[#e16b8c] text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium">
               {a.email} さんが「{a.nodeText}」を編集中です
             </div>
           ))}
@@ -3565,7 +3602,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         <div className="fixed top-4 right-4 z-[250] animate-blink-update">
           <button
             onClick={dismissRemoteUpdate}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-lg font-bold text-sm flex items-center gap-2 transition-all"
+            className="bg-[#e16b8c] hover:bg-[#d45a7a] text-white px-4 py-2 rounded-xl shadow-lg font-bold text-sm flex items-center gap-2 transition-all"
           >
             <RefreshIcon />
             更新あり（他ユーザーが編集しました）
@@ -3574,9 +3611,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       )}
 
       <div className="w-[260px] flex-shrink-0 h-full bg-white border-r border-slate-200 shadow-sm z-[100] flex flex-col relative">
-        <div className="p-4 border-b border-slate-100 flex flex-col gap-3 bg-white">
+        <button
+          onClick={handleResetMap}
+          className="p-4 border-b border-slate-100 flex flex-col gap-3 bg-white hover:bg-slate-50 transition-colors text-left"
+        >
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-[#e16b8c] flex items-center justify-center shadow-sm">
               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="2" fill="white" strokeWidth={0}/>
                 <circle cx="5" cy="7" r="1.5" fill="white" strokeWidth={0}/>
@@ -3589,11 +3629,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <line x1="12" y1="12" x2="19" y2="17" strokeWidth={1.5} stroke="white"/>
               </svg>
             </div>
-            <span className="text-sm font-bold text-slate-800 tracking-tight">MindMap</span>
+            <span className="text-sm font-bold text-slate-800 tracking-tight">MindMap Pro</span>
           </div>
-        </div>
+        </button>
         <div className="p-4 border-b border-slate-100 flex flex-col gap-3">
-          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg shadow-sm w-full font-medium transition-all hover:scale-105">
+          <button onClick={handleNewMap} className="flex items-center justify-center gap-2 bg-[#e16b8c] hover:bg-[#d45a7a] text-white py-2.5 rounded-lg shadow-sm w-full font-medium transition-all hover:scale-105">
             <PlusIcon /> 新規マップ作成
           </button>
           <div className="flex gap-2">
@@ -3608,12 +3648,12 @@ const MindMapApp = ({ user }: { user: User }) => {
               {savedMaps.map((map: MapRecord, index: number) => (
                 <div key={map.id} draggable onDragStart={(e) => handleMapDragStart(e, index)} onDragEnter={(e) => handleMapDragEnter(e, index)} onDragEnd={handleMapDragEnd} onDragOver={(e) => e.preventDefault()} className={`group relative flex items-center rounded-lg transition-colors ${
                   mapId === map.id
-                    ? 'bg-indigo-50 border-l-[3px] border-indigo-500 pl-2.5'
+                    ? 'bg-[#e16b8c]/10 border-l-[3px] border-[#e16b8c] pl-2.5'
                     : 'hover:bg-slate-50 pl-3'
                 }`}>
                   {editingMapId === map.id ? (
                     <div className="flex-1 py-2 pl-0">
-                      <input autoFocus value={editMapTitle} onChange={e => setEditMapTitle(e.target.value)} onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle); if (e.key === 'Escape') setEditingMapId(null); }} className="w-full text-sm font-semibold text-indigo-900 bg-transparent border-b-2 border-indigo-500 outline-none pb-0.5" />
+                      <input autoFocus value={editMapTitle} onChange={e => setEditMapTitle(e.target.value)} onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle); if (e.key === 'Escape') setEditingMapId(null); }} className="w-full text-sm font-semibold text-[#e16b8c] bg-transparent border-b-2 border-[#e16b8c] outline-none pb-0.5" />
                     </div>
                   ) : (
                     <button
@@ -3651,7 +3691,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         {!zenMode && (
           <>
             <div className="absolute top-4 left-4 z-40 flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/60 p-1.5 rounded-xl shadow-sm">
-              <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} onBlur={handleHeaderTitleBlur} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} className="border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-48 font-bold outline-none rounded-md transition-all text-slate-800" placeholder="NEW" />
+              <input value={mapTitle} onChange={e => setMapTitle(e.target.value)} onBlur={handleHeaderTitleBlur} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} className="border border-transparent hover:border-slate-300 focus:border-[#e16b8c] focus:ring-1 focus:ring-[#e16b8c] bg-transparent hover:bg-slate-50 focus:bg-white px-3 py-1.5 text-sm w-48 font-bold outline-none rounded-md transition-all text-slate-800" placeholder="NEW" />
               <div className="w-px h-5 bg-slate-200 mx-1" />
               <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
               <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
@@ -3696,7 +3736,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   onClick={() => setCurrentTool(tool as ToolType)}
                   className={`p-2 rounded-lg transition-all ${
                     currentTool === tool
-                      ? 'bg-indigo-600 text-white shadow-sm'
+                      ? 'bg-[#e16b8c] text-white shadow-sm'
                       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
                   }`}
                   title={title}
@@ -3796,7 +3836,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                     title={title}
                     className={`p-1.5 rounded-md transition-colors ${
                       edgeStyle === style
-                        ? 'bg-white text-indigo-700 shadow-sm'
+                        ? 'bg-white text-[#e16b8c] shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
                     }`}
                   >
@@ -3805,7 +3845,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 ))}
               </div>
               <div className="w-px h-5 bg-slate-200 mx-1" />
-              {/* 整列ボタン群（選択ノード2つ以上で有効） */}
               {selectedNodeIds.length >= 2 && (
                 <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
                   <button
@@ -3875,7 +3914,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                       <rect x="14" y="4" width="4" height="16" rx="1" strokeWidth={1.5}/>
                     </svg>
                   </button>
-                  {/* 等間隔UI */}
                   <div className="flex items-center gap-1 ml-1">
                     <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
                       <input
@@ -3887,7 +3925,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                         onMouseDown={e => e.stopPropagation()}
                         onClick={e => e.stopPropagation()}
                         onKeyDown={e => e.stopPropagation()}
-                        className="w-12 text-xs text-center bg-white border border-slate-200 rounded px-1 py-1 outline-none focus:ring-1 focus:ring-indigo-400"
+                        className="w-12 text-xs text-center bg-white border border-slate-200 rounded px-1 py-1 outline-none focus:ring-1 focus:ring-[#e16b8c]"
                         title="間隔（px）"
                       />
                       <span className="text-[10px] text-slate-400 pr-1">px</span>
@@ -4004,7 +4042,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                             フォーカスモード
                           </button>
                         )}
-                        {/* ロック/解除 (複数選択) */}
                         {selectedNodeIds.length > 0 && (
                           <button
                             onClick={() => { toggleMultipleNodesLock(selectedNodeIds); setShowQuickMenu(false); }}
@@ -4086,7 +4123,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                       className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center justify-between"
                     >
                       <span className="flex items-center gap-2.5">{gridStyle === 'line' ? <GridLineIcon /> : <GridIcon />} グリッド</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${gridStyle !== 'none' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${gridStyle !== 'none' ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : 'bg-slate-100 text-slate-500'}`}>
                         {gridStyle === 'none' ? 'OFF' : gridStyle === 'dot' ? 'ドット' : 'ライン'}
                       </span>
                     </button>
@@ -4095,7 +4132,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                       className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center justify-between"
                     >
                       <span className="flex items-center gap-2.5"><TaskIcon /> タスク情報</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${showTaskInfo ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${showTaskInfo ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : 'bg-slate-100 text-slate-500'}`}>
                         {showTaskInfo ? 'ON' : 'OFF'}
                       </span>
                     </button>
@@ -4106,7 +4143,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                           key={style}
                           onClick={() => { handleEdgeStyleChange(style); setShowQuickMenu(false); }}
                           className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
-                            edgeStyle === style ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                            edgeStyle === style ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
                           }`}
                         >
                           {style === 'bezier' ? '曲線' : style === 'step' ? '直角' : '直線'}
@@ -4116,7 +4153,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
                     <div className="mx-2 my-1 border-b border-slate-100" />
 
-                    {/* 全体ロック/解除 */}
                     <button
                       onClick={() => { toggleAllNodesLock(); setShowQuickMenu(false); }}
                       className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2.5"
@@ -4153,7 +4189,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                       {p.avatarUrl ? (
                         <img src={p.avatarUrl} alt={p.email} className="w-8 h-8 rounded-full border-2 border-white shadow-sm object-cover" />
                       ) : (
-                        <div className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-indigo-400 z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
+                        <div className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-sm ${p.isSelf ? 'ring-2 ring-[#e16b8c] z-10' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
                           {getInitial(p.email)}
                         </div>
                       )}
@@ -4168,9 +4204,9 @@ const MindMapApp = ({ user }: { user: User }) => {
                       {allParticipants.map((p: Participant) => (
                         <div key={p.user_id} className="flex items-center gap-3 text-sm">
                           {p.avatarUrl ? (
-                            <img src={p.avatarUrl} alt={p.email} className={`w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} />
+                            <img src={p.avatarUrl} alt={p.email} className={`w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-[#e16b8c] ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} />
                           ) : (
-                            <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-indigo-500 ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
+                            <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-inner ${p.isSelf ? 'ring-2 ring-[#e16b8c] ring-offset-1' : ''} ${!p.isOnline ? 'opacity-50 grayscale' : ''}`} style={{ backgroundColor: p.color }}>
                               {getInitial(p.email)}
                               <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white ${p.isOnline ? 'bg-emerald-400' : 'bg-slate-300'}`}></div>
                             </div>
@@ -4190,14 +4226,14 @@ const MindMapApp = ({ user }: { user: User }) => {
             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-end gap-2">
               {showMinimap && <MinimapPanel />}
               <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
-                <button onClick={() => setShowMinimap(prev => !prev)} className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all ${showMinimap ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : ''}`} title="ミニマップ"><MinimapIcon /></button>
+                <button onClick={() => setShowMinimap(prev => !prev)} className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all ${showMinimap ? 'bg-[#e16b8c]/10 text-[#e16b8c] ring-1 ring-[#e16b8c]/30' : ''}`} title="ミニマップ"><MinimapIcon /></button>
                 <div className="w-px h-5 bg-slate-200" />
                 <button onClick={scrollToHome} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all" title="ホームに戻る"><HomeIcon /></button>
                 <div className="w-px h-5 bg-slate-200" />
                 <button onClick={() => changeZoom(-0.1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all">−</button>
                 <span
                   className={`text-xs font-semibold w-12 text-center cursor-pointer transition-colors ${
-                    zoomChanged ? 'text-indigo-600 bg-indigo-50 rounded' : 'text-slate-600'
+                    zoomChanged ? 'text-[#e16b8c] bg-[#e16b8c]/10 rounded' : 'text-slate-600'
                   }`}
                   onClick={() => setZoomLevel(1.0)}
                 >
@@ -4205,11 +4241,11 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </span>
                 <button onClick={() => changeZoom(0.1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-all">＋</button>
                 <div className="w-px h-5 bg-slate-200" />
-                <button onClick={cycleGridStyle} title={`グリッド: ${gridStyle}`} className={`p-2 rounded-lg transition-colors ${gridStyle !== 'none' ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`}>
+                <button onClick={cycleGridStyle} title={`グリッド: ${gridStyle}`} className={`p-2 rounded-lg transition-colors ${gridStyle !== 'none' ? 'bg-[#e16b8c]/10 text-[#e16b8c] ring-1 ring-[#e16b8c]/30' : 'hover:bg-slate-100 text-slate-600'}`}>
                   {gridStyle === 'line' ? <GridLineIcon /> : <GridIcon />}
                 </button>
                 <div className="w-px h-5 bg-slate-200" />
-                <button onClick={() => setSnapToGrid(prev => !prev)} className={`p-2 rounded-lg transition-colors ${snapToGrid ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'hover:bg-slate-100 text-slate-600'}`} title="グリッドスナップ"><SnapIcon /></button>
+                <button onClick={() => setSnapToGrid(prev => !prev)} className={`p-2 rounded-lg transition-colors ${snapToGrid ? 'bg-[#e16b8c]/10 text-[#e16b8c] ring-1 ring-[#e16b8c]/30' : 'hover:bg-slate-100 text-slate-600'}`} title="グリッドスナップ"><SnapIcon /></button>
                 <div className="w-px h-5 bg-slate-200" />
                 <button
                   onClick={() => setShowSettingsPopover(prev => !prev)}
@@ -4224,19 +4260,19 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 mb-2 z-50 w-56">
                   <div className="text-xs font-bold text-slate-500 mb-2">表示設定</div>
                   <div className="flex flex-col gap-2">
-                    <button onClick={cycleGridStyle} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${gridStyle !== 'none' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                    <button onClick={cycleGridStyle} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${gridStyle !== 'none' ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : 'text-slate-600 hover:bg-slate-50'}`}>
                       {gridStyle === 'line' ? <GridLineIcon /> : <GridIcon />} グリッド ({gridStyle === 'none' ? 'OFF' : gridStyle})
                     </button>
-                    <button onClick={() => setShowCanvasBgPalette(!showCanvasBgPalette)} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${showCanvasBgPalette ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                    <button onClick={() => setShowCanvasBgPalette(!showCanvasBgPalette)} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${showCanvasBgPalette ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : 'text-slate-600 hover:bg-slate-50'}`}>
                       <BackgroundIcon /> 背景色
                     </button>
-                    <button onClick={() => setShowTaskInfo(prev => !prev)} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${showTaskInfo ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                    <button onClick={() => setShowTaskInfo(prev => !prev)} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${showTaskInfo ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : 'text-slate-600 hover:bg-slate-50'}`}>
                       <TaskIcon /> タスク情報 {showTaskInfo ? 'ON' : 'OFF'}
                     </button>
                     <div className="border-t border-slate-100 pt-2">
                       <div className="text-[10px] text-slate-400 mb-1 px-2">エッジスタイル</div>
                       {(['bezier', 'step', 'straight'] as EdgeStyle[]).map(style => (
-                        <button key={style} onClick={() => handleEdgeStyleChange(style)} className={`w-full text-left px-2 py-1.5 rounded text-sm ${edgeStyle === style ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}>
+                        <button key={style} onClick={() => handleEdgeStyleChange(style)} className={`w-full text-left px-2 py-1.5 rounded text-sm ${edgeStyle === style ? 'bg-[#e16b8c]/10 text-[#e16b8c] font-medium' : 'text-slate-600 hover:bg-slate-50'}`}>
                           {style === 'bezier' ? '曲線' : style === 'step' ? '直角' : '直線'}
                         </button>
                       ))}
@@ -4318,8 +4354,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                       onClick={() => { if (contextMenu.nodeId) updateNodeShape(contextMenu.nodeId, shape); closeContextMenu(); }}
                       className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
                         currentShape === shape
-                          ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
-                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-indigo-50'
+                          ? 'bg-[#e16b8c]/10 text-[#e16b8c] border border-[#e16b8c]/30'
+                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-[#e16b8c]/5'
                       }`}
                     >
                       {label}
@@ -4432,7 +4468,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         {showColorPalette && (
           <div className="fixed z-[110] bg-white border border-slate-200 rounded-xl shadow-2xl p-4 text-sm" style={{ left: showColorPalette.x, top: showColorPalette.y }} onClick={e => e.stopPropagation()}>
             <div className="text-xs font-bold text-slate-500 mb-3 text-center uppercase tracking-wide">カラーパレット</div>
-            <div className="grid grid-cols-4 gap-3 mb-4">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-10 h-10 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05), 0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { if(showColorPalette.nodeId && selectedNodeIds.length > 1) updateMultipleNodeColors(selectedNodeIds, cp.bg, cp.text); else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); else if(showColorPalette.outlineId) updateOutlineColor(showColorPalette.outlineId, cp.text); setShowColorPalette(null); closeContextMenu(); }} />))}</div>
+            <div className="grid grid-cols-4 gap-3 mb-4">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-10 h-10 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#e16b8c]" style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05), 0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { if(showColorPalette.nodeId && selectedNodeIds.length > 1) updateMultipleNodeColors(selectedNodeIds, cp.bg, cp.text); else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); else if(showColorPalette.outlineId) updateOutlineColor(showColorPalette.outlineId, cp.text); setShowColorPalette(null); closeContextMenu(); }} />))}</div>
             <button onClick={() => setShowColorPalette(null)} className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">キャンセル</button>
           </div>
         )}
@@ -4465,8 +4501,8 @@ const MindMapApp = ({ user }: { user: User }) => {
                   >
                     <button onClick={() => setShowColorPalette({ nodeId: selectedNodeId!, x: window.innerWidth / 2, y: window.innerHeight / 2 })} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors" title="色を変更"><PaletteIcon /></button>
                     <div className="w-px h-5 bg-slate-200 mx-0.5" />
-                    <button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-1" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
-                    <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-1" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
+                    <button onClick={() => addChildNode(selectedNodeId!)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-[#e16b8c] transition-colors flex items-center gap-1" title="右に追加 (Tab)"><SubNodeIcon /><span className="text-[10px] font-bold">右</span></button>
+                    <button onClick={() => addSiblingNode(selectedNodeId!, 'after')} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-[#e16b8c] transition-colors flex items-center gap-1" title="下に追加 (Enter)"><SiblingNodeIcon /><span className="text-[10px] font-bold">下</span></button>
                     <div className="w-px h-5 bg-slate-200 mx-0.5" />
                     <button onClick={() => deleteNode(selectedNodeId!)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="削除 (Delete/Backspace)"><TrashIcon /></button>
                     <div className="w-px h-5 bg-slate-200 mx-0.5" />
@@ -4507,7 +4543,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                                 title={label}
                                 className={`p-1.5 rounded transition-colors flex flex-col items-center gap-0.5 min-w-[36px] ${
                                   currentShape === shape
-                                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
+                                    ? 'bg-[#e16b8c]/10 text-[#e16b8c] border border-[#e16b8c]/30'
                                     : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
                                 }`}
                               >
@@ -4528,7 +4564,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                         }}
                         className={`p-1.5 rounded-lg transition-colors ${
                           mindMap && findNodeById(mindMap, selectedNodeId!)?.taskEnabled
-                            ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200'
+                            ? 'bg-[#e16b8c]/10 text-[#e16b8c] ring-1 ring-[#e16b8c]/30'
                             : 'hover:bg-slate-100 text-slate-500 hover:text-slate-700'
                         }`}
                         title="タスク管理"
@@ -4541,7 +4577,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                       onClick={() => setFocusNodeId(selectedNodeId!)}
                       className={`p-1.5 rounded-lg transition-colors ${
                         focusNodeId === selectedNodeId
-                          ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200'
+                          ? 'bg-[#e16b8c]/10 text-[#e16b8c] ring-1 ring-[#e16b8c]/30'
                           : 'hover:bg-slate-100 text-slate-500 hover:text-slate-700'
                       }`}
                       title="フォーカスモード (Ctrl+Shift+F)"
@@ -4564,7 +4600,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                       <textarea
                         ref={memoInputRef}
                         defaultValue={mindMap && findNodeById(mindMap, selectedNodeId)?.memo || ''}
-                        className="w-full h-20 resize-none border border-slate-200 rounded px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-400"
+                        className="w-full h-20 resize-none border border-slate-200 rounded px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-[#e16b8c]"
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                         onFocus={(e) => e.stopPropagation()}
@@ -4636,7 +4672,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                           type="date"
                           value={findNodeById(mindMap, selectedNodeId!)?.taskDueDate || ''}
                           onChange={e => updateNodeTask(selectedNodeId!, { taskDueDate: e.target.value || undefined })}
-                          className="text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 text-slate-700"
+                          className="text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-[#e16b8c] text-slate-700"
                         />
                         {findNodeById(mindMap, selectedNodeId!)?.taskDueDate && (
                           <button
@@ -4658,7 +4694,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                                   : { taskAssigneeUserId: p.user_id, taskAssigneeEmail: p.email, taskAssigneeAvatarUrl: p.avatarUrl }
                                 )}
                                 title={p.email}
-                                className={`relative rounded-full transition-all ${isAssigned ? 'ring-2 ring-indigo-500 ring-offset-1' : 'opacity-60 hover:opacity-100'}`}
+                                className={`relative rounded-full transition-all ${isAssigned ? 'ring-2 ring-[#e16b8c] ring-offset-1' : 'opacity-60 hover:opacity-100'}`}
                               >
                                 {p.avatarUrl ? (
                                   <img src={p.avatarUrl} alt={p.email} className="w-7 h-7 rounded-full object-cover" />
@@ -4671,7 +4707,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                                   </div>
                                 )}
                                 {isAssigned && (
-                                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-indigo-500 rounded-full border border-white flex items-center justify-center">
+                                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#e16b8c] rounded-full border border-white flex items-center justify-center">
                                     <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                     </svg>
@@ -4695,7 +4731,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 const ta = outline.textAlign ?? 'left';
                 return (
                   <div key={outline.id} 
-                    className={`absolute cursor-move transition-shadow group ${isSelected ? 'ring-2 ring-indigo-500/50 shadow-md' : 'hover:ring-2 hover:ring-slate-300/50'} ${outline.type === 'text' ? '' : 'bg-transparent'}`} 
+                    className={`absolute cursor-move transition-shadow group ${isSelected ? 'ring-2 ring-[#e16b8c]/50 shadow-md' : 'hover:ring-2 hover:ring-slate-300/50'} ${outline.type === 'text' ? '' : 'bg-transparent'}`} 
                     style={{ left: outline.x, top: outline.y, width: outline.width, height: outline.height, zIndex: outline.zIndex ?? 4, borderRadius: outline.type === 'circle' ? '50%' : '0' }} 
                     onMouseDown={(e) => handleMouseDownOnOutline(e, outline.id)} 
                     onContextMenu={(e) => handleOutlineContextMenu(e, outline.id)} 
@@ -4753,7 +4789,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                         <select value={sw} onChange={(e) => updateOutlineStyle(outline.id, { strokeWidth: Number(e.target.value) })} className="text-xs bg-slate-50 border border-slate-300 rounded px-1 py-0.5 outline-none">
                           {STROKE_WIDTHS.map(s => <option key={s} value={s}>{s}px</option>)}
                         </select>
-                        <button onClick={() => updateOutlineStyle(outline.id, { strokeDasharray: dash === '' ? '8 4' : dash === '8 4' ? '2 4' : '' })} className={`p-1 rounded text-xs ${dash === '' ? 'bg-indigo-100 text-indigo-700' : dash === '8 4' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>線種</button>
+                        <button onClick={() => updateOutlineStyle(outline.id, { strokeDasharray: dash === '' ? '8 4' : dash === '8 4' ? '2 4' : '' })} className={`p-1 rounded text-xs ${dash === '' ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : dash === '8 4' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>線種</button>
                       </div>
                     )}
                     {isSelected && outline.type === 'text' && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (
@@ -4761,30 +4797,30 @@ const MindMapApp = ({ user }: { user: User }) => {
                         <select value={fontSize} onChange={(e) => updateOutlineFontSize(outline.id, Number(e.target.value))} className="text-xs bg-slate-50 border border-slate-300 rounded px-1 py-0.5 outline-none">
                           {FONT_SIZES.map(size => <option key={size} value={size}>{size}px</option>)}
                         </select>
-                        <button onClick={() => updateOutlineStyle(outline.id, { textAlign: ta === 'left' ? 'center' : ta === 'center' ? 'right' : 'left' })} className={`p-1 rounded text-xs ${ta === 'left' ? 'bg-indigo-100 text-indigo-700' : ta === 'center' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                        <button onClick={() => updateOutlineStyle(outline.id, { textAlign: ta === 'left' ? 'center' : ta === 'center' ? 'right' : 'left' })} className={`p-1 rounded text-xs ${ta === 'left' ? 'bg-[#e16b8c]/10 text-[#e16b8c]' : ta === 'center' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
                           {ta === 'left' ? '≡左' : ta === 'center' ? '≡中' : '≡右'}
                         </button>
                       </div>
                     )}
                     {isSelected && selectedOutlineIds.length === 1 && totalSelectedCount === 1 && (
                       <>
-                        <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'nw')} />
-                        <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'ne')} />
-                        <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'sw')} />
-                        <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'se')} />
+                        <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#e16b8c] rounded-full cursor-nw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'nw')} />
+                        <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-[#e16b8c] rounded-full cursor-ne-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'ne')} />
+                        <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-[#e16b8c] rounded-full cursor-sw-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'sw')} />
+                        <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-[#e16b8c] rounded-full cursor-se-resize shadow-sm" onMouseDown={(e) => handleOutlineResizeHandleMouseDown(e, outline.id, 'se')} />
                       </>
                     )}
                   </div>
                 ); 
               })}
-              {images.map((image: ImageData) => { const isSelected = selectedImageIds.includes(image.id); return (<div key={image.id} className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${isSelected ? 'border-indigo-500 shadow-2xl ring-4 ring-indigo-500/20' : 'border-slate-300 shadow-md hover:shadow-lg'}`} style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: image.zIndex ?? 6 }} onMouseDown={(e) => handleMouseDownOnImage(e, image.id)} onContextMenu={(e) => handleImageContextMenu(e, image.id)} onClick={(e) => handleImageClick(e, image.id)}><img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />{isSelected && selectedImageIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'se')} /></>)}</div>); })}
+              {images.map((image: ImageData) => { const isSelected = selectedImageIds.includes(image.id); return (<div key={image.id} className={`absolute cursor-move border-2 rounded-lg overflow-hidden transition-shadow ${isSelected ? 'border-[#e16b8c] shadow-2xl ring-4 ring-[#e16b8c]/20' : 'border-slate-300 shadow-md hover:shadow-lg'}`} style={{ left: image.x, top: image.y, width: image.width, height: image.height, zIndex: image.zIndex ?? 6 }} onMouseDown={(e) => handleMouseDownOnImage(e, image.id)} onContextMenu={(e) => handleImageContextMenu(e, image.id)} onClick={(e) => handleImageClick(e, image.id)}><img src={getImageUrl(image.storagePath)} alt="" className="w-full h-full object-contain pointer-events-none" />{isSelected && selectedImageIds.length === 1 && totalSelectedCount === 1 && (<><div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'nw')} /><div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'ne')} /><div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'sw')} /><div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleResizeHandleMouseDown(e, image.id, 'se')} /></>)}</div>); })}
               {stickies.map((sticky: StickyData) => { 
                 const isEditing = editingStickyId === sticky.id; 
                 const isSelected = selectedStickyIds.includes(sticky.id); 
                 return (
                   <div 
                     key={sticky.id} 
-                    className={`absolute cursor-move rounded-sm overflow-visible transition-shadow group ${isSelected ? 'ring-4 ring-indigo-500/20 shadow-2xl' : 'shadow-lg hover:shadow-xl'}`} 
+                    className={`absolute cursor-move rounded-sm overflow-visible transition-shadow group ${isSelected ? 'ring-4 ring-[#e16b8c]/20 shadow-2xl' : 'shadow-lg hover:shadow-xl'}`} 
                     style={{ 
                       left: sticky.x, 
                       top: sticky.y, 
@@ -4833,10 +4869,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                     </div>
                     {isSelected && selectedStickyIds.length === 1 && totalSelectedCount === 1 && (
                       <>
-                        <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'nw')} />
-                        <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'ne')} />
-                        <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'sw')} />
-                        <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-indigo-600 rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'se')} />
+                        <div className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-nw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'nw')} />
+                        <div className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-ne-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'ne')} />
+                        <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-sw-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'sw')} />
+                        <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-[#e16b8c] rounded-full cursor-se-resize shadow-md" onMouseDown={(e) => handleStickyResizeHandleMouseDown(e, sticky.id, 'se')} />
                       </>
                     )}
                   </div>
@@ -4844,7 +4880,7 @@ const MindMapApp = ({ user }: { user: User }) => {
               })}
               {stamps.map((stamp) => (
                 <div key={stamp.id} 
-                  className={`absolute cursor-move flex items-center justify-center transition-all duration-300 ${selectedStampIds.includes(stamp.id) ? 'ring-4 ring-indigo-500/30 scale-105 shadow-2xl' : 'hover:shadow-xl hover:scale-105 hover:-translate-y-1'}`} 
+                  className={`absolute cursor-move flex items-center justify-center transition-all duration-300 ${selectedStampIds.includes(stamp.id) ? 'ring-4 ring-[#e16b8c]/30 scale-105 shadow-2xl' : 'hover:shadow-xl hover:scale-105 hover:-translate-y-1'}`} 
                   style={{ left: stamp.x, top: stamp.y, width: stamp.width, height: stamp.height, backgroundColor: 'transparent', color: stamp.color, zIndex: stamp.zIndex ?? 3, fontFamily: "'MS Mincho', 'Yu Mincho', serif" }} 
                   onMouseDown={(e) => handleMouseDownOnStamp(e, stamp.id)} 
                   onContextMenu={(e) => handleStampContextMenu(e, stamp.id)} 
@@ -4862,16 +4898,16 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <defs>
                   <marker id="arrowStart" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#94a3b8" /></marker>
                   <marker id="arrowEnd" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#94a3b8" /></marker>
-                  <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
-                  <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#6366f1" /></marker>
+                  <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#e16b8c" /></marker>
+                  <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#e16b8c" /></marker>
                 </defs>
-                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x; const dy = childPos.y - parentPos.y; const gapX = Math.abs(dx) - (parentPos.width + childPos.width) / 2; const gapY = Math.abs(dy) - (parentPos.height + childPos.height) / 2; let parentPoint: ConnectionPoint; let childPoint: ConnectionPoint; if (gapX >= gapY) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint  = dx > 0 ? 'left'  : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint  = dy > 0 ? 'top'    : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; const isVisible = !focusedNodeIds || (focusedNodeIds.has(fn.parentId as string) && focusedNodeIds.has(fn.id)); return (<g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#6366f1' : '#e2e8f0'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
-                {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#6366f1' : (el.color ?? '#94a3b8')} strokeWidth={el.strokeWidth ?? (el.selected ? 4 : 3)} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-indigo-500' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#6366f1" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
-                {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#818cf8" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
+                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x; const dy = childPos.y - parentPos.y; const gapX = Math.abs(dx) - (parentPos.width + childPos.width) / 2; const gapY = Math.abs(dy) - (parentPos.height + childPos.height) / 2; let parentPoint: ConnectionPoint; let childPoint: ConnectionPoint; if (gapX >= gapY) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint  = dx > 0 ? 'left'  : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint  = dy > 0 ? 'top'    : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; const isVisible = !focusedNodeIds || (focusedNodeIds.has(fn.parentId as string) && focusedNodeIds.has(fn.id)); return (<g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#e16b8c' : '#e2e8f0'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
+                {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#e16b8c' : (el.color ?? '#94a3b8')} strokeWidth={el.strokeWidth ?? (el.selected ? 4 : 3)} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'stroke-[#e16b8c]' : 'stroke-slate-400 hover:stroke-slate-500'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#e16b8c" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#e16b8c" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
+                {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#e16b8c" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
                 {drawingShape && (
                   <g opacity={0.5}>
-                    {drawingShape.type === 'rectangle' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
-                    {drawingShape.type === 'circle' && <ellipse cx={(drawingShape.startX + drawingShape.currentX) / 2} cy={(drawingShape.startY + drawingShape.currentY) / 2} rx={Math.abs(drawingShape.currentX - drawingShape.startX) / 2} ry={Math.abs(drawingShape.currentY - drawingShape.startY) / 2} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
+                    {drawingShape.type === 'rectangle' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#e16b8c" strokeWidth={3} strokeDasharray="6 6" />}
+                    {drawingShape.type === 'circle' && <ellipse cx={(drawingShape.startX + drawingShape.currentX) / 2} cy={(drawingShape.startY + drawingShape.currentY) / 2} rx={Math.abs(drawingShape.currentX - drawingShape.startX) / 2} ry={Math.abs(drawingShape.currentY - drawingShape.startY) / 2} fill="none" stroke="#e16b8c" strokeWidth={3} strokeDasharray="6 6" />}
                     {drawingShape.type === 'cloud' && (() => {
                       const x = Math.min(drawingShape.startX, drawingShape.currentX);
                       const y = Math.min(drawingShape.startY, drawingShape.currentY);
@@ -4903,7 +4939,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                                 Z
                               "
                               fill="none"
-                              stroke="#6366f1"
+                              stroke="#e16b8c"
                               strokeWidth={3}
                               strokeDasharray="6 6"
                               strokeLinejoin="round"
@@ -4914,10 +4950,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                         </foreignObject>
                       );
                     })()}
-                    {drawingShape.type === 'text' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
+                    {drawingShape.type === 'text' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#e16b8c" strokeWidth={3} strokeDasharray="6 6" />}
                   </g>
                 )}
-                {selectionRect && (<rect x={Math.min(selectionRect.x1, selectionRect.x2)} y={Math.min(selectionRect.y1, selectionRect.y2)} width={Math.abs(selectionRect.x2 - selectionRect.x1)} height={Math.abs(selectionRect.y2 - selectionRect.y1)} fill="rgba(99, 102, 241, 0.15)" stroke="#6366f1" strokeWidth={2} strokeDasharray="6 6" className="rounded-sm" />)}
+                {selectionRect && (<rect x={Math.min(selectionRect.x1, selectionRect.x2)} y={Math.min(selectionRect.y1, selectionRect.y2)} width={Math.abs(selectionRect.x2 - selectionRect.x1)} height={Math.abs(selectionRect.y2 - selectionRect.y1)} fill="rgba(225,107,140,0.15)" stroke="#e16b8c" strokeWidth={2} strokeDasharray="6 6" className="rounded-sm" />)}
               </svg>
               <RecursiveNode 
                 node={mindMap} 
@@ -4962,7 +4998,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 <div className="absolute right-4 top-20 bottom-20 z-40 w-72 bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
                   <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                     <div>
-                      <div className="text-xs font-bold text-indigo-600 uppercase tracking-wider">フォーカスモード</div>
+                      <div className="text-xs font-bold text-[#e16b8c] uppercase tracking-wider">フォーカスモード</div>
                       <div className="text-sm font-bold text-slate-800 truncate max-w-[180px]">{focusNode?.text}</div>
                     </div>
                     <button onClick={() => setFocusNodeId(null)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
@@ -5047,31 +5083,43 @@ const MindMapApp = ({ user }: { user: User }) => {
             })()}
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-slate-50">
-            <div className="text-center max-w-sm">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="2.5" strokeWidth={2}/>
-                  <circle cx="5" cy="7" r="1.5" strokeWidth={2}/>
-                  <circle cx="19" cy="7" r="1.5" strokeWidth={2}/>
-                  <circle cx="5" cy="17" r="1.5" strokeWidth={2}/>
-                  <circle cx="19" cy="17" r="1.5" strokeWidth={2}/>
-                  <line x1="12" y1="12" x2="5" y2="7" strokeWidth={1.5}/>
-                  <line x1="12" y1="12" x2="19" y2="7" strokeWidth={1.5}/>
-                  <line x1="12" y1="12" x2="5" y2="17" strokeWidth={1.5}/>
-                  <line x1="12" y1="12" x2="19" y2="17" strokeWidth={1.5}/>
-                </svg>
-              </div>
-              <h3 className="text-base font-bold text-slate-700 mb-1">マップを選択してください</h3>
-              <p className="text-sm text-slate-400 mb-5">左のサイドバーから既存のマップを選ぶか、新しく作成します</p>
-              <button
-                onClick={handleNewMap}
-                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-colors shadow-sm"
-              >
-                <PlusIcon />
-                新規マップを作成
-              </button>
+          <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-slate-800">MindMap Pro</h2>
+              <p className="text-sm text-slate-500 mt-1">最近のマップ</p>
             </div>
+            {savedMaps.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#e16b8c]/10 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-[#e16b8c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="2.5" strokeWidth={2}/>
+                    <circle cx="5" cy="7" r="1.5" strokeWidth={2}/>
+                    <circle cx="19" cy="7" r="1.5" strokeWidth={2}/>
+                    <circle cx="5" cy="17" r="1.5" strokeWidth={2}/>
+                    <circle cx="19" cy="17" r="1.5" strokeWidth={2}/>
+                    <line x1="12" y1="12" x2="5" y2="7" strokeWidth={1.5}/>
+                    <line x1="12" y1="12" x2="19" y2="7" strokeWidth={1.5}/>
+                    <line x1="12" y1="12" x2="5" y2="17" strokeWidth={1.5}/>
+                    <line x1="12" y1="12" x2="19" y2="17" strokeWidth={1.5}/>
+                  </svg>
+                </div>
+                <h3 className="text-base font-bold text-slate-700 mb-1">マップがありません</h3>
+                <p className="text-sm text-slate-400 mb-5">新しいマップを作成してください</p>
+                <button
+                  onClick={handleNewMap}
+                  className="inline-flex items-center gap-2 bg-[#e16b8c] hover:bg-[#d45a7a] text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-colors shadow-sm"
+                >
+                  <PlusIcon />
+                  新規マップを作成
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {savedMaps.map(map => (
+                  <MapThumbnail key={map.id} map={map} onOpen={handleLoadMap} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -5199,7 +5247,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
     .map(([, state]) => state as AwarenessState)
     .filter(Boolean);
   
-  const borderColor = isTarget ? '#10b981' : (isSelected ? (isSingleSelected ? '#6366f1' : '#9333ea') : (isEditing ? '#f59e0b' : (node.textColor || '#0ea5e9')));
+  const borderColor = isTarget ? '#10b981' : (isSelected ? (isSingleSelected ? '#e16b8c' : '#9333ea') : (isEditing ? '#f59e0b' : (node.textColor || '#0ea5e9')));
   
   const connectionPoints: ConnectionPoint[] = ['top', 'right', 'bottom', 'left'];
 
@@ -5216,8 +5264,8 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           opacity: focusedNodeIds && !focusedNodeIds.has(node.id) ? 0.15 : 1,
           pointerEvents: focusedNodeIds && !focusedNodeIds.has(node.id) ? 'none' : undefined,
           transition: 'opacity 0.3s ease',
-          ...(node.imageUrl ? { border: '2px solid', borderColor: isSelected ? '#6366f1' : (isEditing ? '#f59e0b' : (isTarget ? '#10b981' : '#cbd5e1')) } : {}),
-          boxShadow: node.imageUrl ? (isSelected ? '0 8px 24px rgba(99,102,241,0.3)' : '0 1px 4px rgba(0,0,0,0.08)') : undefined,
+          ...(node.imageUrl ? { border: '2px solid', borderColor: isSelected ? '#e16b8c' : (isEditing ? '#f59e0b' : (isTarget ? '#10b981' : '#cbd5e1')) } : {}),
+          boxShadow: node.imageUrl ? (isSelected ? '0 8px 24px rgba(225,107,140,0.3)' : '0 1px 4px rgba(0,0,0,0.08)') : undefined,
         }}
         onClick={e => onNodeClick(e, node.id)}
         onDoubleClick={e => onNodeDoubleClick(e, node.id)}
@@ -5424,7 +5472,7 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             onMouseDown={e => onConnectionPointMouseDown(e, node.id, point)}
             title={`ここからドラッグして線を引く（${pointLabel}）`}
           >
-            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white shadow-md hover:scale-150 transition-transform" />
+            <div className="w-2.5 h-2.5 rounded-full bg-[#e16b8c] border-2 border-white shadow-md hover:scale-150 transition-transform" />
           </div>
         );
       })}
