@@ -721,6 +721,7 @@ const CloudIcon = () => (
     <path d="M6.5 17.5H17c2.5 0 4.5-2 4.5-4.5s-2-4.5-4.5-4.5c-.5 0-1 .1-1.5.3-.2-2-1.8-3.5-3.8-3.5-1.5 0-2.8.8-3.4 2-.3-.1-.6-.2-1-.2C5.5 7 4 8.5 4 10.3c0 1.7 1.3 3 3 3.2v.3c0 1.7 1.3 3 3 3h-.5c-.3 0-.5-.2-.5-.5s.2-.5.5-.5z" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+const TriangleIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,4 20,20 4,20" strokeWidth={2} strokeLinejoin="round" /></svg> );
 const TextOutlineIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7V4h16v3M9 20h6M12 4v16" /></svg> );
 const CollapseIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg> );
 const ExpandIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg> );
@@ -4431,8 +4432,27 @@ const MindMapApp = ({ user }: { user: User }) => {
                       <div className="w-full h-full rounded-full" style={{ border: `${sw}px solid ${outline.color}`, borderStyle: dash ? 'dashed' : 'solid' }}></div>
                     )}
                     {outline.type === 'cloud' && (
-                      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none">
-                        <path d="M25 65 L25 40 Q25 25 35 25 Q40 15 50 15 Q60 15 65 25 Q75 25 75 35 L75 65 Z" fill="none" stroke={outline.color} strokeWidth={sw} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+                      <svg width="100%" height="100%" viewBox="0 0 200 120" preserveAspectRatio="none" className="absolute inset-0 pointer-events-none">
+                        <path
+                          d="
+                            M 30 90
+                            C 10 90, 5 70, 18 62
+                            C 12 48, 22 36, 36 36
+                            C 38 22, 52 14, 66 20
+                            C 74 10, 92 10, 98 24
+                            C 110 18, 126 24, 128 38
+                            C 142 36, 154 48, 148 62
+                            C 160 68, 158 88, 142 90
+                            Z
+                          "
+                          fill="none"
+                          stroke={outline.color}
+                          strokeWidth={sw}
+                          strokeDasharray={dash}
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                          vectorEffect="non-scaling-stroke"
+                        />
                       </svg>
                     )}
                     {outline.type === 'triangle' && (
@@ -4573,17 +4593,46 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <g opacity={0.5}>
                     {drawingShape.type === 'rectangle' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
                     {drawingShape.type === 'circle' && <ellipse cx={(drawingShape.startX + drawingShape.currentX) / 2} cy={(drawingShape.startY + drawingShape.currentY) / 2} rx={Math.abs(drawingShape.currentX - drawingShape.startX) / 2} ry={Math.abs(drawingShape.currentY - drawingShape.startY) / 2} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
-                    {drawingShape.type === 'cloud' && (
-                      <path d={`M${Math.min(drawingShape.startX, drawingShape.currentX)} ${Math.min(drawingShape.startY, drawingShape.currentY)} 
-                        Q${Math.min(drawingShape.startX, drawingShape.currentX)} ${Math.min(drawingShape.startY, drawingShape.currentY) - 20} 
-                        ${Math.min(drawingShape.startX, drawingShape.currentX) + 20} ${Math.min(drawingShape.startY, drawingShape.currentY) - 20}
-                        Q${Math.min(drawingShape.startX, drawingShape.currentX) + 40} ${Math.min(drawingShape.startY, drawingShape.currentY) - 20}
-                        ${Math.max(drawingShape.startX, drawingShape.currentX)} ${Math.min(drawingShape.startY, drawingShape.currentY)}
-                        L${Math.max(drawingShape.startX, drawingShape.currentX)} ${Math.max(drawingShape.startY, drawingShape.currentY)}
-                        L${Math.min(drawingShape.startX, drawingShape.currentX)} ${Math.max(drawingShape.startY, drawingShape.currentY)}
-                        Z`}
-                        fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />
-                    )}
+                    {drawingShape.type === 'cloud' && (() => {
+                      const x = Math.min(drawingShape.startX, drawingShape.currentX);
+                      const y = Math.min(drawingShape.startY, drawingShape.currentY);
+                      const w = Math.abs(drawingShape.currentX - drawingShape.startX);
+                      const h = Math.abs(drawingShape.currentY - drawingShape.startY);
+                      if (w < 10 || h < 10) return null;
+                      return (
+                        <foreignObject x={x} y={y} width={w} height={h}>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="100%"
+                            height="100%"
+                            viewBox="0 0 200 120"
+                            preserveAspectRatio="none"
+                            style={{ opacity: 0.5 }}
+                          >
+                            <path
+                              d="
+                                M 30 90
+                                C 10 90, 5 70, 18 62
+                                C 12 48, 22 36, 36 36
+                                C 38 22, 52 14, 66 20
+                                C 74 10, 92 10, 98 24
+                                C 110 18, 126 24, 128 38
+                                C 142 36, 154 48, 148 62
+                                C 160 68, 158 88, 142 90
+                                Z
+                              "
+                              fill="none"
+                              stroke="#6366f1"
+                              strokeWidth={3}
+                              strokeDasharray="6 6"
+                              strokeLinejoin="round"
+                              strokeLinecap="round"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          </svg>
+                        </foreignObject>
+                      );
+                    })()}
                     {drawingShape.type === 'text' && <rect x={Math.min(drawingShape.startX, drawingShape.currentX)} y={Math.min(drawingShape.startY, drawingShape.currentY)} width={Math.abs(drawingShape.currentX - drawingShape.startX)} height={Math.abs(drawingShape.currentY - drawingShape.startY)} fill="none" stroke="#6366f1" strokeWidth={3} strokeDasharray="6 6" />}
                   </g>
                 )}
