@@ -1172,6 +1172,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const memoInputRef = useRef<HTMLTextAreaElement>(null);
   const [mapId, setMapId] = useState<number | null>(null);
   const [mapTitle, setMapTitle] = useState('NEW');
+  const mapTitleRef = useRef(mapTitle);
+  useEffect(() => { mapTitleRef.current = mapTitle; }, [mapTitle]);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [savedMaps, setSavedMaps] = useState<MapRecord[]>([]);
@@ -2312,7 +2314,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         if (mapId) {
           const { error } = await supabase
             .from('maps')
-            .update({ data: tree, updated_at: new Date().toISOString() })
+            .update({ data: tree, title: mapTitleRef.current, updated_at: new Date().toISOString() })
             .eq('id', mapId);
           if (!error) {
             setIsDirty(false);
@@ -2324,7 +2326,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           const { data, error } = await supabase
             .from('maps')
             .insert({
-              title: mapTitle,
+              title: mapTitleRef.current,
               data: tree,
               room_id: roomId,
               user_id: user.id,
@@ -2355,7 +2357,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       doc.off('update', handleUpdate);
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [mapId, mapTitle, roomId, user.id, user.email]);
+  }, [mapId, roomId, user.id, user.email]);
 
   const repairOrphanNodes = useCallback(() => {
     const yNodes = yNodesRef.current;
@@ -2434,10 +2436,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     }
   }, []);
 
-  const initYjs = (room: string, initialTree?: MindNode): RealtimeChannel => {
+  const repairOrphanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const initYjs = useCallback((room: string, initialTree?: MindNode): RealtimeChannel => {
     addLog(`initYjs: ${room}`);
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
     ydocRef.current?.destroy(); if (undoManagerRef.current) { undoManagerRef.current.destroy(); undoManagerRef.current = null; }
+    if (repairOrphanTimerRef.current) { clearTimeout(repairOrphanTimerRef.current); repairOrphanTimerRef.current = null; }
     setAwarenessStates({});
     setConnectionStatus('接続中...'); setCanUndo(false); setCanRedo(false); setIsDirty(false);
     
@@ -2623,7 +2628,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           event: 'sync-step-1',
           payload: { stateVector: uint8ArrayToBase64(Y.encodeStateVector(ydoc)) }
         });
-        setTimeout(() => repairOrphanNodes(), 2000);
+        repairOrphanTimerRef.current = setTimeout(() => repairOrphanNodes(), 2000);
       } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatus('切断');
       else if (status === 'TIMED_OUT') setConnectionStatus('タイムアウト');
       else setConnectionStatus('接続中...');
@@ -2641,7 +2646,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
     
     channelRef.current = channel; setRoomId(room); return channel;
-  };
+  }, [broadcastAwareness, myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, user.user_metadata?.avatar_url, repairOrphanNodes]);
 
   useEffect(() => {
     Object.entries(awarenessStates).forEach(([userId, state]) => {
@@ -2715,12 +2720,12 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (data && data.length > 0) { setMapId(data[0].id); setMapOwnerId(data[0].user_id); setSaveMessage('保存完了'); setIsDirty(false); setTimeout(() => setSaveMessage(''), 2500); await fetchMaps(); }
     setFocusNodeIds([]);
     setAlignAnchorId(null);
-  }, [user.id, user.email, fetchMaps]);
+  }, [user.id, user.email, fetchMaps, initYjs]);
 
   const handleUndo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.undo(); }, []);
   const handleRedo = useCallback(() => { if (undoManagerRef.current) undoManagerRef.current.redo(); }, []);
   const handleLogout = useCallback(async () => { if (channelRef.current) { broadcastAwareness(channelRef.current, myUserId, null); supabase.removeChannel(channelRef.current); } ydocRef.current?.destroy(); if (undoManagerRef.current) undoManagerRef.current.destroy(); await supabase.auth.signOut(); }, [broadcastAwareness, myUserId]);
-  const handleLoadMap = useCallback((map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); if(typeof window !== 'undefined') window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); setMapOwnerId(map.user_id); initYjs(map.room_id, map.data); setFocusNodeIds([]); setAlignAnchorId(null); }, []);
+  const handleLoadMap = useCallback((map: MapRecord) => { if (channelRef.current) supabase.removeChannel(channelRef.current); if(typeof window !== 'undefined') window.location.hash = map.room_id; setMapId(map.id); setMapTitle(map.title); setMapOwnerId(map.user_id); initYjs(map.room_id, map.data); setFocusNodeIds([]); setAlignAnchorId(null); }, [initYjs]);
 
   const inviteAcceptedRef = useRef(false);
   useEffect(() => { const processInvite = async () => { if (inviteAcceptedRef.current || !user) return; const urlParams = new URLSearchParams(window.location.search); const inviteCode = urlParams.get('invite'); if (!inviteCode) return; inviteAcceptedRef.current = true; try { const { data: invitation, error } = await supabase.from('map_invitations').select('*, maps:maps!inner(id, title, room_id, data, user_id, owner_email, updated_at)').eq('invite_code', inviteCode).single(); if (error || !invitation) { alert('招待が無効か、既に削除されています。'); return; } if (invitation.email.toLowerCase() !== user.email?.toLowerCase()) { alert('この招待は別のメールアドレス宛です。'); return; } const { error: memberError } = await supabase.from('map_members').upsert({ map_id: invitation.map_id, user_id: user.id, role: 'editor', email: user.email }, { onConflict: 'map_id,user_id' }); if (memberError) throw memberError; await supabase.from('map_invitations').delete().eq('id', invitation.id); window.history.replaceState(null, '', window.location.pathname); handleLoadMap(invitation.maps); } catch (err) { console.error('招待の受け入れに失敗しました:', err); alert('招待の受け入れに失敗しました。'); } }; processInvite(); }, [user, handleLoadMap]);
@@ -2988,8 +2993,11 @@ const MindMapApp = ({ user }: { user: User }) => {
       return;
     }
     const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) { setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); setSelectedEdgeId(null); closeContextMenu(); wasDraggingRef.current = true; setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y }); setAlignAnchorId(null); }
-  }, [mindMap, zoomLevel, isSpacePressed, currentTool, closeContextMenu]);
+    if (!nodeUnder) {
+      wasDraggingRef.current = true;
+      setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
+    }
+  }, [mindMap, zoomLevel, isSpacePressed, currentTool]);
 
   const handleCanvasDoubleClick = useCallback((e: ReactMouseEvent) => { if (e.button !== 0 || isSpacePressed || currentTool !== 'select') return; const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null; if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y, false); } }, [mindMap, zoomLevel, isSpacePressed, currentTool, addNodeAtPosition]);
 
@@ -3144,7 +3152,7 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (resizingImageHandle) { setResizingImageHandle(null); return; }
     if (resizingStickyHandle) { setResizingStickyHandle(null); return; }
     if (resizingOutlineHandle) { setResizingOutlineHandle(null); return; }
-    if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); setAlignAnchorId(null); } setSelectionRect(null); return; }
+    if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); setAlignAnchorId(null); } setSelectionRect(null); wasDraggingRef.current = false; return; }
     if (draggingNodeId) {
       if (hasDraggedRef.current) {
         const pos = dragPositionsRef.current[draggingNodeId];
@@ -3165,9 +3173,10 @@ const MindMapApp = ({ user }: { user: User }) => {
       const { [nodeIdToClean]: _r, ...restRef } = dragPositionsRef.current;
       dragPositionsRef.current = restRef;
       setDragPositions(prev => { const { [nodeIdToClean]: _, ...rest } = prev; return rest; });
+      wasDraggingRef.current = false;
       return;
     }
-    if (isMultiDragging && multiDragOffsets) { ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { const p = initialGroupDragPositions.current[id]; if (p) { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, x: snapValue(p.x + multiDragOffsets.dx), y: snapValue(p.y + multiDragOffsets.dy)}); } }); selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); }); setDragPositions({}); initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {}; setMultiDragOffsets(null); return; }
+    if (isMultiDragging && multiDragOffsets) { ydocRef.current?.transact(() => { selectedNodeIds.forEach(id => { const p = initialGroupDragPositions.current[id]; if (p) { const n = yNodesRef.current?.get(id); if(n) yNodesRef.current?.set(id, {...n, x: snapValue(p.x + multiDragOffsets.dx), y: snapValue(p.y + multiDragOffsets.dy)}); } }); selectedImageIds.forEach(id => { const p = initialGroupImagePositions.current[id]; if (p) { const n = yImagesRef.current?.get(id); if(n) yImagesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStickyIds.forEach(id => { const p = initialGroupStickyPositions.current[id]; if (p) { const n = yStickiesRef.current?.get(id); if(n) yStickiesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedOutlineIds.forEach(id => { const p = initialGroupOutlinePositions.current[id]; if (p) { const n = yOutlinesRef.current?.get(id); if(n) yOutlinesRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); selectedStampIds.forEach(id => { const p = initialGroupStampPositions.current[id]; if (p) { const n = yStampsRef.current?.get(id); if(n) yStampsRef.current?.set(id, {...n, x: p.x + multiDragOffsets.dx, y: p.y + multiDragOffsets.dy}); } }); }); setDragPositions({}); initialGroupDragPositions.current = {}; initialGroupImagePositions.current = {}; initialGroupStickyPositions.current = {}; initialGroupOutlinePositions.current = {}; initialGroupStampPositions.current = {}; setMultiDragOffsets(null); wasDraggingRef.current = false; return; }
   }, [drawingShape, addOutline, editingEdgeEndpoint, drawingEdge, draggingImageId, draggingStickyId, draggingOutlineId, draggingStampId, resizingImageHandle, resizingStickyHandle, resizingOutlineHandle, selectionRect, draggingNodeId, isMultiDragging, multiDragOffsets, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, dragPositions, dragTargetNodeId, mindMap, addEdge, updatePosition, reparentNode, isCanvasPanning, images, stickies, outlines, stamps, snapValue]);
 
   useEffect(() => { if (isAnyDragging) { if(typeof window !== 'undefined') { window.addEventListener('mousemove', handleMouseMove as EventListener); window.addEventListener('mouseup', handleMouseUp); } return () => { if(typeof window !== 'undefined') { window.removeEventListener('mousemove', handleMouseMove as EventListener); window.removeEventListener('mouseup', handleMouseUp); } }; } }, [isAnyDragging, handleMouseMove, handleMouseUp]);
@@ -3396,7 +3405,12 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); setAlignAnchorId(null); }, [closeContextMenu, showColorPalette]);
   const handleStampClick = useCallback((e: ReactMouseEvent, stampId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStampIds(prev => prev.includes(stampId) ? prev.filter(id => id !== stampId) : [...prev, stampId]); } else { setSelectedStampIds([stampId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); setAlignAnchorId(null); }, [closeContextMenu, showColorPalette]);
   const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); } }, [mindMap]);
-  const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); setShowQuickMenu(false); };
+  const handleCanvasClick = () => {
+    if (isCanvasPanning) return;
+    closeContextMenu();
+    setShowQuickMenu(false);
+    wasDraggingRef.current = false;
+  };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); setShowQuickMenu(false); setAlignAnchorId(null); }, [closeContextMenu]);
   const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); const MENU_W = 200, MENU_H = 300; const x = e.clientX + MENU_W > window.innerWidth ? e.clientX - MENU_W : e.clientX; const y = e.clientY + MENU_H > window.innerHeight ? e.clientY - MENU_H : e.clientY; setContextMenu({ visible: true, x, y, type: 'edge', edgeId }); setShowQuickMenu(false); }, []);
@@ -4493,7 +4507,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 ))}
               </div>
               <div className="mx-3 my-1 border-b border-slate-100" />
-              {/* 修正: 複数選択に対応したフォーカスモード */}
               <button
                 onClick={() => {
                   if (selectedNodeIds.length > 1) {
