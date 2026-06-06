@@ -2832,7 +2832,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   let isMulti = false;
   const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
   if (e.ctrlKey || e.metaKey) {
-    console.log('→ ctrl/meta detected in mouseDown');
+    e.preventDefault();
+    e.stopPropagation();
     setSelectedNodeIds(prev =>
       prev.includes(nodeId)
         ? prev.filter(id => id !== nodeId)
@@ -2958,6 +2959,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleOutlineResizeHandleMouseDown = useCallback((e: ReactMouseEvent, outlineId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingOutlineHandle({ outlineId, handle }); }, []);
 
   const handleCanvasMouseDown = useCallback((e: ReactMouseEvent) => {
+    console.log('handleCanvasMouseDown fired', { ctrlKey: e.ctrlKey, metaKey: e.metaKey });
     if (e.button !== 0) return;
     const container = scrollContainerRef.current; if (!container) return;
     if (isSpacePressed) { e.preventDefault(); setIsCanvasPanning(true); panStartCoords.current = { x: e.clientX, y: e.clientY, scrollLeft: container.scrollLeft, scrollTop: container.scrollTop }; return; }
