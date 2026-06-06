@@ -2831,12 +2831,14 @@ const MindMapApp = ({ user }: { user: User }) => {
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
     if (e.ctrlKey || e.metaKey) {
-      isMulti = true;
-      selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
-      if (newSelectedNodeIds.has(nodeId)) newSelectedNodeIds.delete(nodeId); else newSelectedNodeIds.add(nodeId);
-      setSelectedNodeIds(Array.from(newSelectedNodeIds));
-      return; // Ctrl/Cmd+click ではドラッグ開始しない
-    } else {
+  setSelectedNodeIds(prev =>
+    prev.includes(nodeId)
+      ? prev.filter(id => id !== nodeId)
+      : [...prev, nodeId]
+  );
+  setSelectedEdgeId(null);
+  return; // Ctrl/Cmd+click ではドラッグ開始しない
+} else {
       if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
@@ -3349,18 +3351,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { 
   e.stopPropagation(); 
   if (showColorPalette) { setShowColorPalette(null); return; } 
-  const ctrlOrMeta = e.ctrlKey || e.metaKey; 
-  if (ctrlOrMeta) {
-    // Ctrl/Cmd+クリック時はトグル選択（追加・解除）
-    setSelectedNodeIds(prev => 
-      prev.includes(nodeId) 
-        ? prev.filter(id => id !== nodeId)  // すでに選択中なら解除
-        : [...prev, nodeId]                  // 未選択なら追加
-    );
-    setSelectedEdgeId(null);
-    closeContextMenu(); 
-    setShowQuickMenu(false); 
-    setShowMemoEdit(false); 
+  // Ctrl/Cmd+クリックはmouseDownで処理済みなのでここでは何もしない
+  if (e.ctrlKey || e.metaKey) {
     return; 
   } 
   setSelectedNodeIds([nodeId]); 
