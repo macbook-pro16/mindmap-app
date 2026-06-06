@@ -513,7 +513,6 @@ const NodeShapeBackground = ({
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
-      const aspect = height / width; // 縦横比
       // 正六角形（頂点左右）の頂点を計算し、縦方向に aspect を掛けて変形
       const vertices: { x: number; y: number }[] = [];
       const R = Math.min(width / 2, height / (Math.sqrt(3) * 0.6)) - pad;
