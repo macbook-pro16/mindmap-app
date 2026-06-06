@@ -2818,11 +2818,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragOverMapItemIndex = useRef<number | null>(null);
 
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
-  console.log('handleMouseDownOnNode v3', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, button: e.button, nodeId, isSpacePressed });
   if (e.button !== 0 || isSpacePressed) return;
   const isCtrlOrMeta = e.ctrlKey || e.metaKey;
   e.stopPropagation();
-  console.log('passed button/space check', { isCtrlOrMeta });
   const container = scrollContainerRef.current; if (!container) return;
   const nodeData = yNodesRef.current?.get(nodeId);
   if (nodeData?.locked) {
@@ -2835,15 +2833,11 @@ const MindMapApp = ({ user }: { user: User }) => {
   let isMulti = false;
   const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
   if (isCtrlOrMeta) {
-    console.log('INSIDE ctrl/meta block');
-    e.preventDefault();
-    e.stopPropagation();
-    setSelectedNodeIds(prev => {
-      console.log('setSelectedNodeIds called', { prev, nodeId });
-      return prev.includes(nodeId)
+    setSelectedNodeIds(prev =>
+      prev.includes(nodeId)
         ? prev.filter(id => id !== nodeId)
-        : [...prev, nodeId];
-    });
+        : [...prev, nodeId]
+    );
     setSelectedEdgeId(null);
     return;
   } else {
@@ -2884,14 +2878,16 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [mindMap, zoomLevel, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, isSpacePressed, images, stickies, outlines, stamps]);
 
   const handleMouseDownOnImage = useCallback((e: ReactMouseEvent, imageId: string) => {
-    if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
+    if (e.button !== 0 || isSpacePressed) return;
+const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+e.stopPropagation();
     const image = images.find((img: ImageData) => img.id === imageId); if (!image) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yImagesRef.current?.get(imageId)?.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
-    if (e.ctrlKey || e.metaKey) { 
+    if (isCtrlOrMeta){ 
       isMulti = true; 
       selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id)); 
       if (newSelectedImageIds.has(imageId)) newSelectedImageIds.delete(imageId); else newSelectedImageIds.add(imageId); 
@@ -2903,14 +2899,16 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [images, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, stickies, outlines, stamps]);
 
   const handleMouseDownOnSticky = useCallback((e: ReactMouseEvent, stickyId: string) => {
-    if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
+    if (e.button !== 0 || isSpacePressed) return;
+const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+e.stopPropagation();
     const sticky = stickies.find((s: StickyData) => s.id === stickyId); if (!sticky) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yStickiesRef.current?.get(stickyId)?.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
-    if (e.ctrlKey || e.metaKey) { 
+    if (isCtrlOrMeta) { 
       isMulti = true; 
       selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id)); 
       if (newSelectedStickyIds.has(stickyId)) newSelectedStickyIds.delete(stickyId); else newSelectedStickyIds.add(stickyId); 
@@ -2922,14 +2920,16 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [stickies, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, outlines, stamps]);
 
   const handleMouseDownOnOutline = useCallback((e: ReactMouseEvent, outlineId: string) => {
-    if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
+    if (e.button !== 0 || isSpacePressed) return;
+const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+e.stopPropagation();
     const outline = outlines.find((o: OutlineData) => o.id === outlineId); if (!outline) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yOutlinesRef.current?.get(outlineId)?.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
-    if (e.ctrlKey || e.metaKey) { 
+    if (isCtrlOrMeta) { 
       isMulti = true; 
       selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id)); 
       if (newSelectedOutlineIds.has(outlineId)) newSelectedOutlineIds.delete(outlineId); else newSelectedOutlineIds.add(outlineId); 
@@ -2941,14 +2941,16 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [outlines, zoomLevel, isSpacePressed, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, mindMap, images, stickies, stamps]);
 
   const handleMouseDownOnStamp = useCallback((e: ReactMouseEvent, stampId: string) => {
-    if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
+    if (e.button !== 0 || isSpacePressed) return;
+const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+e.stopPropagation();
     const stamp = stamps.find(s => s.id === stampId); if (!stamp) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
     const targetGroupId = yStampsRef.current?.get(stampId)?.groupId;
     let isMulti = false;
     const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
-    if (e.ctrlKey || e.metaKey) { 
+    if (isCtrlOrMeta) { 
       isMulti = true; 
       selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id)); 
       if (newSelectedStampIds.has(stampId)) newSelectedStampIds.delete(stampId); else newSelectedStampIds.add(stampId); 
