@@ -5443,7 +5443,13 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           ...(node.imageUrl ? { border: '2px solid', borderColor: isSelected ? '#e16b8c' : (isEditing ? '#f59e0b' : (isTarget ? '#10b981' : '#cbd5e1')) } : {}),
           boxShadow: node.imageUrl ? (isSelected ? '0 8px 24px rgba(225,107,140,0.3)' : '0 1px 4px rgba(0,0,0,0.08)') : undefined,
         }}
-        onClick={e => onNodeClick(e, node.id)}
+        onClick={e => {
+  if (e.ctrlKey || e.metaKey) {
+    e.stopPropagation();
+    return;
+  }
+  onNodeClick(e, node.id);
+}}
         onDoubleClick={e => onNodeDoubleClick(e, node.id)}
         onMouseDown={e => onMouseDownOnNode(e, node.id)}
         onContextMenu={e => onContextMenu(e, node.id)}
