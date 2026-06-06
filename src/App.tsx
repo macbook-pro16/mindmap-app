@@ -2834,11 +2834,12 @@ const MindMapApp = ({ user }: { user: User }) => {
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedNodeIds(prev =>
-      prev.includes(nodeId)
+    setSelectedNodeIds(prev => {
+      console.log('setSelectedNodeIds called', { prev, nodeId });
+      return prev.includes(nodeId)
         ? prev.filter(id => id !== nodeId)
-        : [...prev, nodeId]
-    );
+        : [...prev, nodeId];
+    });
     setSelectedEdgeId(null);
     return;
   }else {
