@@ -384,14 +384,14 @@ const getNodeShapeSize = (
       return { width: d, height: d };
     }
     case 'diamond': {
-      // テキスト領域がbaseWidth × baseHeightに収まるよう逆算
       const w = Math.max(Math.ceil(baseWidth / 0.65), 120);
       const h = Math.max(Math.ceil(baseHeight / 0.55), 80);
       return { width: w, height: h };
     }
     case 'hexagon': {
-      const w = Math.max(Math.ceil(baseWidth * 1.3), 100);
-      const h = Math.max(Math.ceil(baseHeight * 1.1), 60);
+      // 八角形の内接矩形を考慮してテキストが収まるサイズを計算
+      const w = Math.max(Math.ceil(baseWidth / 0.75), 120);
+      const h = Math.max(Math.ceil(baseHeight / 0.75), 70);
       return { width: w, height: h };
     }
     case 'rounded':
@@ -409,8 +409,8 @@ const getShapePadding = (
     case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
     case 'diamond': return `${Math.ceil(height * 0.28)}px ${Math.ceil(width * 0.22)}px`;
     case 'hexagon': {
-      const padY = Math.ceil(height * 0.15);
-      const padX = Math.ceil(width * 0.2);
+      const padY = Math.ceil(height * 0.18);
+      const padX = Math.ceil(width * 0.18);
       return `${padY}px ${padX}px`;
     }
     default: return '12px 20px';
@@ -793,9 +793,12 @@ const BackgroundIcon = () => (
 );
 const FocusIcon = () => (
   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-      d="M4 8V5a1 1 0 011-1h3M4 16v3a1 1 0 001 1h3m10-14h3a1 1 0 011 1v3m0 10v3a1 1 0 01-1 1h-3" />
-    <circle cx="12" cy="12" r="3" strokeWidth={2} />
+    <circle cx="12" cy="12" r="9" strokeWidth={2} />
+    <circle cx="12" cy="12" r="4" strokeWidth={2} />
+    <line x1="12" y1="3" x2="12" y2="7" strokeWidth={2} strokeLinecap="round" />
+    <line x1="12" y1="17" x2="12" y2="21" strokeWidth={2} strokeLinecap="round" />
+    <line x1="3" y1="12" x2="7" y2="12" strokeWidth={2} strokeLinecap="round" />
+    <line x1="17" y1="12" x2="21" y2="12" strokeWidth={2} strokeLinecap="round" />
   </svg>
 );
 
@@ -4133,7 +4136,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                             }}
                             className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2.5"
                           >
-                            <span className="text-base leading-none">🎯</span>
+                            <FocusIcon />
                             フォーカスモード
                           </button>
                         )}
@@ -4402,32 +4405,50 @@ const MindMapApp = ({ user }: { user: User }) => {
             {contextMenu.type === 'node' && contextMenu.nodeId && (<>
               {/* 追加（矢印） */}
               <div className="px-3 pt-3 pb-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">追加</div>
-              <div className="flex items-center justify-center gap-1 px-2 py-1">
-                <button onClick={() => executeContextAction('addSiblingBefore')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="上に追加 (Shift+Enter)">
+              <div className="px-2 py-1.5 grid grid-cols-3 gap-1">
+                {/* 上段：空・上・空 */}
+                <div />
+                <button
+                  onClick={() => executeContextAction('addSiblingBefore')}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg hover:bg-[#e16b8c]/10 hover:text-[#e16b8c] text-slate-500 border border-slate-200 transition-colors"
+                  title="上に追加 (Shift+Enter)"
+                >
                   <ArrowUpIcon />
-                  <span className="text-[9px] mt-0.5">上</span>
+                  <span className="text-[9px] font-bold">上</span>
                 </button>
-                <button onClick={() => executeContextAction('addParent')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="左に追加 (⌘Enter)">
+                <div />
+                {/* 中段：左・（中央空）・右 */}
+                <button
+                  onClick={() => executeContextAction('addParent')}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg hover:bg-[#e16b8c]/10 hover:text-[#e16b8c] text-slate-500 border border-slate-200 transition-colors"
+                  title="左に追加 (⌘Enter)"
+                >
                   <ArrowLeftIcon />
-                  <span className="text-[9px] mt-0.5">左</span>
+                  <span className="text-[9px] font-bold">左</span>
                 </button>
-                <button onClick={() => executeContextAction('addChild')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="右に追加 (Tab)">
+                <div />
+                <button
+                  onClick={() => executeContextAction('addChild')}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg hover:bg-[#e16b8c]/10 hover:text-[#e16b8c] text-slate-500 border border-slate-200 transition-colors"
+                  title="右に追加 (Tab)"
+                >
                   <ArrowRightIcon />
-                  <span className="text-[9px] mt-0.5">右</span>
+                  <span className="text-[9px] font-bold">右</span>
                 </button>
-                <button onClick={() => executeContextAction('addSiblingAfter')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="下に追加 (Enter)">
+                {/* 下段：空・下・空 */}
+                <div />
+                <button
+                  onClick={() => executeContextAction('addSiblingAfter')}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg hover:bg-[#e16b8c]/10 hover:text-[#e16b8c] text-slate-500 border border-slate-200 transition-colors"
+                  title="下に追加 (Enter)"
+                >
                   <ArrowDownIcon />
-                  <span className="text-[9px] mt-0.5">下</span>
+                  <span className="text-[9px] font-bold">下</span>
                 </button>
+                <div />
               </div>
-              <div className="mx-3 my-1 border-b border-slate-100" />
-              {/* 折りたたみ */}
-              <button onClick={() => executeContextAction('toggleCollapse')} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 text-sm font-medium text-slate-700 rounded-lg mx-1 transition-colors cursor-pointer">
-                <span className="text-slate-400 flex-shrink-0">{mindMap && findNodeById(mindMap, contextMenu.nodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}</span>
-                <span>折りたたみ/展開</span>
-              </button>
-              <div className="mx-3 my-1 border-b border-slate-100" />
               {/* カラーパレット */}
+              <div className="mx-3 my-1 border-b border-slate-100" />
               <div className="px-3 pt-3 pb-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">色</div>
               <div className="px-2 py-1 flex flex-wrap gap-1 justify-center">
                 {COLOR_PALETTE.map(cp => (
