@@ -3155,7 +3155,33 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (resizingImageHandle) { setResizingImageHandle(null); return; }
     if (resizingStickyHandle) { setResizingStickyHandle(null); return; }
     if (resizingOutlineHandle) { setResizingOutlineHandle(null); return; }
-    if (selectionRect) { if (mindMap) { const _selNodes: string[] = []; const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); }; collectNodes(mindMap); const _selImages: string[] = []; images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); }); const _selStickies: string[] = []; stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); }); const _selOutlines: string[] = []; outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); }); const _selStamps: string[] = []; stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); }); setSelectedNodeIds(_selNodes); setSelectedImageIds(_selImages); setSelectedStickyIds(_selStickies); setSelectedOutlineIds(_selOutlines); setSelectedStampIds(_selStamps); setAlignAnchorId(null); } setSelectionRect(null); wasDraggingRef.current = false; return; }
+   if (selectionRect) {
+      const rectWidth = Math.abs(selectionRect.x2 - selectionRect.x1);
+      const rectHeight = Math.abs(selectionRect.y2 - selectionRect.y1);
+      const didDrag = rectWidth > 4 || rectHeight > 4;
+      if (didDrag && mindMap) {
+        const _selNodes: string[] = [];
+        const collectNodes = (node: MindNode) => { if (isNodeInRect(node, selectionRect)) _selNodes.push(node.id); node.children.forEach((c: MindNode) => collectNodes(c)); };
+        collectNodes(mindMap);
+        const _selImages: string[] = [];
+        images.forEach(img => { if(isImageInRect(img, selectionRect)) _selImages.push(img.id); });
+        const _selStickies: string[] = [];
+        stickies.forEach(st => { if(isStickyInRect(st, selectionRect)) _selStickies.push(st.id); });
+        const _selOutlines: string[] = [];
+        outlines.forEach(ol => { if(isOutlineInRect(ol, selectionRect)) _selOutlines.push(ol.id); });
+        const _selStamps: string[] = [];
+        stamps.forEach(st => { if(isStampInRect(st, selectionRect)) _selStamps.push(st.id); });
+        setSelectedNodeIds(_selNodes);
+        setSelectedImageIds(_selImages);
+        setSelectedStickyIds(_selStickies);
+        setSelectedOutlineIds(_selOutlines);
+        setSelectedStampIds(_selStamps);
+        setAlignAnchorId(null);
+        wasDraggingRef.current = true; // ドラッグ確定。clickイベントで選択解除しない
+      }
+      setSelectionRect(null);
+      return;
+    }
     if (draggingNodeId) {
       if (hasDraggedRef.current) {
         const pos = dragPositionsRef.current[draggingNodeId];
@@ -3410,17 +3436,21 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); } }, [mindMap]);
   const handleCanvasClick = () => {
     if (isCanvasPanning) return;
-    if (!wasDraggingRef.current) {
-      setSelectedNodeIds([]);
-      setSelectedImageIds([]);
-      setSelectedStickyIds([]);
-      setSelectedOutlineIds([]);
-      setSelectedStampIds([]);
-      setSelectedEdgeId(null);
+    if (wasDraggingRef.current) {
+      // 矩形選択ドラッグ後のクリックイベントなので選択解除しない
+      wasDraggingRef.current = false;
+      closeContextMenu();
+      setShowQuickMenu(false);
+      return;
     }
+    setSelectedNodeIds([]);
+    setSelectedImageIds([]);
+    setSelectedStickyIds([]);
+    setSelectedOutlineIds([]);
+    setSelectedStampIds([]);
+    setSelectedEdgeId(null);
     closeContextMenu();
     setShowQuickMenu(false);
-    wasDraggingRef.current = false;
   };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); setShowQuickMenu(false); setAlignAnchorId(null); }, [closeContextMenu]);
