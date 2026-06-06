@@ -388,21 +388,12 @@ const getNodeShapeSize = (
       const h = Math.max(Math.ceil(baseHeight / 0.7), 60);
       return { width: w, height: h };
     }
-    case 'hexagon': {
-      // 頂点が左右の横長六角形（90度回転）
-      // 外接矩形の幅 W = 2R, 高さ H = R * √3 をベースに、
-      // 縦方向の比率を小さくする（縦を横の 0.6 倍程度に）
-      const minR = 30;
-      const aspectVertical = 0.6; // 縦方向の圧縮率
-      // テキストフィット：内部の利用可能な幅は頂点を除いた部分で約 R、高さは H 全体
-      // baseWidth に対して R >= baseWidth * 1.1 (パディング込み)、baseHeight に対して H >= baseHeight * 1.2 となるように
-      const rFromWidth = baseWidth * 1.15;
-      const rFromHeight = (baseHeight * 1.3) / (Math.sqrt(3) * aspectVertical);
-      const R = Math.max(rFromWidth, rFromHeight, minR);
-      const W = 2 * R;
-      const H = R * Math.sqrt(3) * aspectVertical;
-      return { width: Math.ceil(W), height: Math.ceil(H) };
-    }
+   case 'hexagon': {
+  // 左右に頂点がある横長の六角形にフィットさせる
+  const w = Math.max(Math.ceil(baseWidth * 1.35), 100);
+  const h = Math.max(Math.ceil(baseHeight * 1.15), 60);
+  return { width: w, height: h };
+}
     case 'rounded':
     default:
       return { width: baseWidth, height: baseHeight };
@@ -418,11 +409,10 @@ const getShapePadding = (
     case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
     case 'diamond': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.18)}px`;
     case 'hexagon': {
-      // 横長六角形に合わせたパディング（左右に余裕、上下は小さめ）
-      const padY = Math.ceil(height * 0.12);
-      const padX = Math.ceil(width * 0.20);
-      return `${padY}px ${padX}px`;
-    }
+  const padY = Math.ceil(height * 0.18);
+  const padX = Math.ceil(width * 0.18);
+  return `${padY}px ${padX}px`;
+}
     default: return '12px 20px';
   }
 };
@@ -509,21 +499,21 @@ const NodeShapeBackground = ({
       );
     }
     case 'hexagon': {
-      // 頂点が左右の横長六角形（90度回転）
-      const pad = strokeWidth;
-      const cx = width / 2;
-      const cy = height / 2;
-      // 正六角形（頂点左右）の頂点を計算し、縦方向に aspect を掛けて変形
-      const vertices: { x: number; y: number }[] = [];
-      const R = Math.min(width / 2, height / (Math.sqrt(3) * 0.6)) - pad;
-      for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 3) * i; // 0° からスタート（右の頂点）
-        vertices.push({
-          x: cx + R * Math.cos(angle),
-          y: cy - R * Math.sin(angle) * 0.6, // 縦方向のみ圧縮
-        });
-      }
-      const d = vertices.map((v, i) => (i === 0 ? 'M' : 'L') + ` ${v.x} ${v.y}`).join(' ') + ' Z';
+  const pad = strokeWidth;
+  const cx = width / 2;
+  const cy = height / 2;
+  // 頂点が左右に来るように、90度（π/2）を基準に開始
+  const vertices: { x: number; y: number }[] = [];
+  // 外接円の半径を計算（横と縦の制約に合わせる）
+  const R = Math.min(width / 2, height / (Math.sqrt(3) * 0.7)) - pad;
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 2 + (Math.PI / 3) * i; // 右の頂点から時計回り
+    vertices.push({
+      x: cx + R * Math.cos(angle),
+      y: cy - R * Math.sin(angle) * (height / width) * 0.7, // 縦横比に応じた自然な変形
+    });
+  }
+  const d = vertices.map((v, i) => (i === 0 ? 'M' : 'L') + ` ${v.x} ${v.y}`).join(' ') + ' Z';
 
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
