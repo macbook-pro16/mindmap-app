@@ -3349,12 +3349,13 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { 
-  e.stopPropagation(); 
+  e.stopPropagation();
+  console.log('handleNodeClick fired', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, nodeId });
   if (showColorPalette) { setShowColorPalette(null); return; } 
-  // Ctrl/Cmd+クリックはmouseDownで処理済みなのでここでは何もしない
   if (e.ctrlKey || e.metaKey) {
+    console.log('→ ctrl/meta detected, returning early');
     return; 
-  } 
+  }
   setSelectedNodeIds([nodeId]); 
   setSelectedImageIds([]); 
   setSelectedStickyIds([]); 
