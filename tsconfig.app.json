@@ -4,7 +4,8 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    // ★ 以下の行に "vite-plugin-pwa/client" を追加しました
+    "types": ["vite/client", "vite-plugin-pwa/client"],
     "skipLibCheck": true,
 
     /* Bundler mode */
@@ -21,5 +22,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  // ★ 以下の行を "src" から "src/**/*"（src内の全ファイル対象）に変更しました
+  "include": ["src/**/*"]
 }
