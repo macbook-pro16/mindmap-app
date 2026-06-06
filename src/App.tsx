@@ -1360,8 +1360,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [fetchInviteHistory]);
 
   const [focusNodeIds, setFocusNodeIds] = useState<string[]>([]);
-// 後方互換のため単一取得用を残す
-const focusNodeId = focusNodeIds.length === 1 ? focusNodeIds[0] : (focusNodeIds[0] ?? null);
+  // (focusNodeId was removed because it was unused)
 
   const getFocusedNodeIds = useCallback((rootNode: MindNode | null, targetIds: string[]): Set<string> => {
     const result = new Set<string>();
@@ -2834,20 +2833,23 @@ const focusNodeId = focusNodeIds.length === 1 ? focusNodeIds[0] : (focusNodeIds[
       }
       return;
     }
-  const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
-  const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
-  const targetGroupId = node.groupId;
-  let isMulti = false;
-  const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
-  if (isCtrlOrMeta) {
-    setSelectedNodeIds(prev =>
-      prev.includes(nodeId)
-        ? prev.filter(id => id !== nodeId)
-        : [...prev, nodeId]
-    );
-    setSelectedEdgeId(null);
-    return;
-  } else {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
+    const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
+    const targetGroupId = node.groupId;
+    let isMulti = false;
+    const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
+    const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+    if (isCtrlOrMeta) {
+      setSelectedNodeIds(prev =>
+        prev.includes(nodeId)
+          ? prev.filter(id => id !== nodeId)
+          : [...prev, nodeId]
+      );
+      setSelectedEdgeId(null);
+      return;
+    } else {
       if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
@@ -2886,8 +2888,8 @@ const focusNodeId = focusNodeIds.length === 1 ? focusNodeIds[0] : (focusNodeIds[
 
   const handleMouseDownOnImage = useCallback((e: ReactMouseEvent, imageId: string) => {
     if (e.button !== 0 || isSpacePressed) return;
-const isCtrlOrMeta = e.ctrlKey || e.metaKey;
-e.stopPropagation();
+    const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+    e.stopPropagation();
     const image = images.find((img: ImageData) => img.id === imageId); if (!image) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
@@ -2907,8 +2909,8 @@ e.stopPropagation();
 
   const handleMouseDownOnSticky = useCallback((e: ReactMouseEvent, stickyId: string) => {
     if (e.button !== 0 || isSpacePressed) return;
-const isCtrlOrMeta = e.ctrlKey || e.metaKey;
-e.stopPropagation();
+    const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+    e.stopPropagation();
     const sticky = stickies.find((s: StickyData) => s.id === stickyId); if (!sticky) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
@@ -2928,8 +2930,8 @@ e.stopPropagation();
 
   const handleMouseDownOnOutline = useCallback((e: ReactMouseEvent, outlineId: string) => {
     if (e.button !== 0 || isSpacePressed) return;
-const isCtrlOrMeta = e.ctrlKey || e.metaKey;
-e.stopPropagation();
+    const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+    e.stopPropagation();
     const outline = outlines.find((o: OutlineData) => o.id === outlineId); if (!outline) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
@@ -2949,8 +2951,8 @@ e.stopPropagation();
 
   const handleMouseDownOnStamp = useCallback((e: ReactMouseEvent, stampId: string) => {
     if (e.button !== 0 || isSpacePressed) return;
-const isCtrlOrMeta = e.ctrlKey || e.metaKey;
-e.stopPropagation();
+    const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+    e.stopPropagation();
     const stamp = stamps.find(s => s.id === stampId); if (!stamp) return;
     const container = scrollContainerRef.current; if (!container) return;
     const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
@@ -3367,26 +3369,26 @@ e.stopPropagation();
   }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { 
-  e.stopPropagation(); 
-  if (showColorPalette) { setShowColorPalette(null); return; }
-  // mouseDownの時点でCtrl/Cmd判定済みのため
-  // multiDragOffsetsかselectedNodeIdsが複数なら複数選択状態なので上書きしない
-  if (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
-    closeContextMenu();
-    setShowQuickMenu(false);
-    setShowMemoEdit(false);
-    return;
-  }
-  setSelectedNodeIds([nodeId]); 
-  setSelectedImageIds([]); 
-  setSelectedStickyIds([]); 
-  setSelectedOutlineIds([]); 
-  setSelectedStampIds([]); 
-  setSelectedEdgeId(null); 
-  closeContextMenu(); 
-  setShowQuickMenu(false); 
-  setShowMemoEdit(false); 
-}, [closeContextMenu, showColorPalette, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
+    e.stopPropagation(); 
+    if (showColorPalette) { setShowColorPalette(null); return; }
+    // mouseDownの時点でCtrl/Cmd判定済みのため
+    // multiDragOffsetsかselectedNodeIdsが複数なら複数選択状態なので上書きしない
+    if (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
+      closeContextMenu();
+      setShowQuickMenu(false);
+      setShowMemoEdit(false);
+      return;
+    }
+    setSelectedNodeIds([nodeId]); 
+    setSelectedImageIds([]); 
+    setSelectedStickyIds([]); 
+    setSelectedOutlineIds([]); 
+    setSelectedStampIds([]); 
+    setSelectedEdgeId(null); 
+    closeContextMenu(); 
+    setShowQuickMenu(false); 
+    setShowMemoEdit(false); 
+  }, [closeContextMenu, showColorPalette, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
   const handleImageClick = useCallback((e: ReactMouseEvent, imageId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]); } else { setSelectedImageIds([imageId]); setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]); } else { setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
@@ -3488,13 +3490,13 @@ e.stopPropagation();
     }
   }
 
-  const focusedNodeIds = focusNodeIds.length > 0
-  ? focusNodeIds.reduce((acc, id) => {
-      const ids = getFocusedNodeIds(mindMap, id);
-      ids.forEach(x => acc.add(x));
-      return acc;
-    }, new Set<string>())
-  : undefined;
+  const focusedNodeIdsSet = focusNodeIds.length > 0
+    ? focusNodeIds.reduce((acc, id) => {
+        const ids = getFocusedNodeIds(mindMap, [id]);
+        ids.forEach(x => acc.add(x));
+        return acc;
+      }, new Set<string>())
+    : undefined;
 
   const MinimapPanel = () => {
     const SCALE = 50;
@@ -4158,9 +4160,9 @@ e.stopPropagation();
                         {selectedNodeIds.length >= 1 && selectedNodeIds[0] && (
                           <button
                             onClick={() => {
-  setFocusNodeIds(selectedNodeIds.length > 0 ? [...selectedNodeIds] : (selectedNodeId ? [selectedNodeId] : []));
-  setShowQuickMenu(false);
-}}
+                              setFocusNodeIds(selectedNodeIds.length > 0 ? [...selectedNodeIds] : (selectedNodeId ? [selectedNodeId] : []));
+                              setShowQuickMenu(false);
+                            }}
                             className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2.5"
                           >
                             <FocusIcon />
@@ -5182,11 +5184,11 @@ e.stopPropagation();
               />
             </div>
             {focusNodeIds.length > 0 && mindMap && (() => {
-  const focusNode = focusNodeIds.length === 1
-    ? findNodeById(mindMap, focusNodeIds[0])
-    : null;
-  const tasks = focusNodeIds.flatMap(id => getFocusedTasks(mindMap, id))
-    .filter((t, i, arr) => arr.findIndex(x => x.id === t.id) === i); // 重複除去
+              const focusNode = focusNodeIds.length === 1
+                ? findNodeById(mindMap, focusNodeIds[0])
+                : null;
+              const tasks = focusNodeIds.flatMap(id => getFocusedTasks(mindMap, [id]))
+                .filter((t, i, arr) => arr.findIndex(x => x.id === t.id) === i); // 重複除去
               const today = new Date().toISOString().slice(0, 10);
 
               const overdueTasks = tasks.filter(t => !t.taskDone && t.taskDueDate && t.taskDueDate < today);
@@ -5195,7 +5197,7 @@ e.stopPropagation();
               const doneTasks = tasks.filter(t => t.taskDone);
               const undoneTasks = tasks.filter(t => !t.taskDone);
 
-              const titleNode = focusNodeIds.length === 1 ? findNodeById(mindMap, focusNodeIds[0]) : null;
+              // titleNode removed (unused variable)
 
               return (
                 <div className="absolute right-4 top-20 bottom-20 z-40 w-72 bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -5203,8 +5205,8 @@ e.stopPropagation();
                     <div>
                       <div className="text-xs font-bold text-[#e16b8c] uppercase tracking-wider">フォーカスモード</div>
                       <div className="text-sm font-bold text-slate-800 truncate max-w-[180px]">
-  {focusNode?.text ?? `${focusNodeIds.length}件のノード`}
-</div>
+                        {focusNode?.text ?? `${focusNodeIds.length}件のノード`}
+                      </div>
                     </div>
                     <button onClick={() => setFocusNodeIds([])} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
                   </div>
@@ -5473,12 +5475,12 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
           boxShadow: node.imageUrl ? (isSelected ? '0 8px 24px rgba(225,107,140,0.3)' : '0 1px 4px rgba(0,0,0,0.08)') : undefined,
         }}
         onClick={e => {
-  if (e.ctrlKey || e.metaKey) {
-    e.stopPropagation();
-    return;
-  }
-  onNodeClick(e, node.id);
-}}
+          if (e.ctrlKey || e.metaKey) {
+            e.stopPropagation();
+            return;
+          }
+          onNodeClick(e, node.id);
+        }}
         onDoubleClick={e => onNodeDoubleClick(e, node.id)}
         onMouseDown={e => onMouseDownOnNode(e, node.id)}
         onContextMenu={e => onContextMenu(e, node.id)}
