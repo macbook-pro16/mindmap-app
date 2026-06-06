@@ -2843,9 +2843,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
     setSelectedEdgeId(null);
     return;
-  } else {
-    console.log('OUTSIDE ctrl/meta block - ctrlKey:', e.ctrlKey, 'metaKey:', e.metaKey);
-  }else {
+  }
+  console.log('OUTSIDE ctrl/meta block', e.ctrlKey, e.metaKey);else {
       if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
