@@ -2818,8 +2818,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragOverMapItemIndex = useRef<number | null>(null);
 
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
-  console.log('handleMouseDownOnNode v3', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, button: e.button, nodeId });
+  console.log('handleMouseDownOnNode v3', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, button: e.button, nodeId, isSpacePressed });
   if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
+  console.log('passed button/space check');
   const container = scrollContainerRef.current; if (!container) return;
   const nodeData = yNodesRef.current?.get(nodeId);
   if (nodeData?.locked) {
