@@ -2819,8 +2819,10 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
   console.log('handleMouseDownOnNode v3', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, button: e.button, nodeId, isSpacePressed });
-  if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
-  console.log('passed button/space check');
+  if (e.button !== 0 || isSpacePressed) return;
+  const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+  e.stopPropagation();
+  console.log('passed button/space check', { isCtrlOrMeta });
   const container = scrollContainerRef.current; if (!container) return;
   const nodeData = yNodesRef.current?.get(nodeId);
   if (nodeData?.locked) {
@@ -2832,7 +2834,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const targetGroupId = node.groupId;
   let isMulti = false;
   const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
-  if (e.ctrlKey || e.metaKey) {
+  if (isCtrlOrMeta) {
     console.log('INSIDE ctrl/meta block');
     e.preventDefault();
     e.stopPropagation();
