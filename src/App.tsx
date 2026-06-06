@@ -386,7 +386,7 @@ const getNodeShapeSize = (
     case 'diamond': {
       // テキストが切れないよう高さの比率を調整（縦方向を少し大きく）
       const w = Math.max(Math.ceil(baseWidth / 0.9), 100);
-      const h = Math.max(Math.ceil(baseHeight / 0.75), 60);
+      const h = Math.max(Math.ceil(baseHeight / 0.85), 60);
       return { width: w, height: h };
     }
     case 'hexagon': {
@@ -508,7 +508,7 @@ const NodeShapeBackground = ({
       const ry = height / 2 - pad;
       const vertices: { x: number; y: number }[] = [];
       for (let i = 0; i < 8; i++) {
-        const angle = (Math.PI / 4) * i + Math.PI / 8; // 22.5度オフセットで頂点が上下左右に
+        const angle = (Math.PI / 4) * i + Math.PI / 8;
         vertices.push({
           x: cx + rx * Math.cos(angle),
           y: cy - ry * Math.sin(angle),
@@ -798,6 +798,12 @@ const FocusIcon = () => (
     <circle cx="12" cy="12" r="9" strokeWidth={2} strokeDasharray="4 4"/>
   </svg>
 );
+
+// 矢印アイコン（コンパクト）
+const ArrowUpIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l0-14m0 0l-6 6m6-6l6 6" /></svg> );
+const ArrowDownIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5l0 14m0 0l6-6m-6 6l-6-6" /></svg> );
+const ArrowLeftIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 12H5m0 0l6 6M5 12l6-6" /></svg> );
+const ArrowRightIcon = () => ( <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m0 0l-6 6m6-6l-6-6" /></svg> );
 
 // --------------------- フォーカスタスクカード ---------------------
 const FocusTaskCard = ({ task, done = false, onClick }: { task: MindNode; done?: boolean; onClick: () => void }) => (
@@ -3234,8 +3240,8 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { 
     e.preventDefault(); e.stopPropagation(); 
-    const menuWidth = 200; // 想定メニュー幅
-    const menuHeight = 400; // 想定メニュー高さ
+    const menuWidth = 240;
+    const menuHeight = 400;
     const x = Math.min(e.clientX, window.innerWidth - menuWidth);
     const y = Math.min(e.clientY, window.innerHeight - menuHeight);
     setContextMenu({ visible: true, x, y, type: 'node', nodeId }); 
@@ -3321,13 +3327,11 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (showColorPalette) { setShowColorPalette(null); return; } 
     const ctrlOrMeta = e.ctrlKey || e.metaKey; 
     if (ctrlOrMeta) { 
-      // Ctrl/Cmd+クリックの場合は選択処理は mousedown で済ませるため、ここでは何も変更しない
       closeContextMenu(); 
       setShowQuickMenu(false); 
       setShowMemoEdit(false); 
       return; 
     } 
-    // 通常クリック：単一選択
     setSelectedNodeIds([nodeId]); 
     setSelectedImageIds([]); 
     setSelectedStickyIds([]); 
@@ -4374,41 +4378,55 @@ const MindMapApp = ({ user }: { user: User }) => {
         )}
         {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-4 right-4 z-50 bg-slate-900/80 backdrop-blur text-white border border-slate-700 rounded-full px-5 py-2 text-xs font-bold shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105">ZEN解除 (Alt+Cmd+F)</button>}
         {contextMenu.visible && !showColorPalette && (
-          <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px] max-h-[80vh] overflow-y-auto" style={{ left: Math.max(0, contextMenu.x), top: Math.max(0, contextMenu.y) }} onClick={e => e.stopPropagation()}>
+          <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[240px] max-h-[80vh] overflow-y-auto" style={{ left: Math.max(0, contextMenu.x), top: Math.max(0, contextMenu.y) }} onClick={e => e.stopPropagation()}>
             {contextMenu.type === 'node' && contextMenu.nodeId && (<>
+              {/* 追加（矢印） */}
               <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">追加</div>
-              <button onClick={() => executeContextAction('addChild')} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 font-medium text-sm flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
-                <span className="text-slate-400 flex-shrink-0"><SubNodeIcon /></span>
-                <span>右に追加</span>
-                <span className="ml-auto text-[10px] text-slate-400 font-mono">Tab</span>
-              </button>
-              <button onClick={() => executeContextAction('addSiblingAfter')} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 font-medium text-sm flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
-                <span className="text-slate-400 flex-shrink-0"><SiblingNodeIcon className="rotate-90" /></span>
-                <span>下に追加</span>
-                <span className="ml-auto text-[10px] text-slate-400 font-mono">Enter</span>
-              </button>
-              <button onClick={() => executeContextAction('addSiblingBefore')} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 font-medium text-sm flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
-                <span className="text-slate-400 flex-shrink-0"><SiblingNodeIcon className="-rotate-90" /></span>
-                <span>上に追加</span>
-                <span className="ml-auto text-[10px] text-slate-400 font-mono">⇧Enter</span>
-              </button>
-              <button onClick={() => executeContextAction('addParent')} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 font-medium text-sm flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
-                <span className="text-slate-400 flex-shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></span>
-                <span>左に追加</span>
-                <span className="ml-auto text-[10px] text-slate-400 font-mono">⌘Enter</span>
-              </button>
+              <div className="flex items-center justify-center gap-1 px-2 py-1">
+                <button onClick={() => executeContextAction('addSiblingBefore')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="上に追加 (Shift+Enter)">
+                  <ArrowUpIcon />
+                  <span className="text-[9px] mt-0.5">上</span>
+                </button>
+                <button onClick={() => executeContextAction('addParent')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="左に追加 (⌘Enter)">
+                  <ArrowLeftIcon />
+                  <span className="text-[9px] mt-0.5">左</span>
+                </button>
+                <button onClick={() => executeContextAction('addChild')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="右に追加 (Tab)">
+                  <ArrowRightIcon />
+                  <span className="text-[9px] mt-0.5">右</span>
+                </button>
+                <button onClick={() => executeContextAction('addSiblingAfter')} className="flex flex-col items-center p-1.5 rounded hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors" title="下に追加 (Enter)">
+                  <ArrowDownIcon />
+                  <span className="text-[9px] mt-0.5">下</span>
+                </button>
+              </div>
               <div className="mx-2 my-1 border-b border-slate-100" />
+              {/* 折りたたみ */}
               <button onClick={() => executeContextAction('toggleCollapse')} className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
                 <span className="text-slate-400 flex-shrink-0">{mindMap && findNodeById(mindMap, contextMenu.nodeId!)?.collapsed ? <ExpandIcon /> : <CollapseIcon />}</span>
                 <span>折りたたみ/展開</span>
               </button>
               <div className="mx-2 my-1 border-b border-slate-100" />
-              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">スタイル</div>
-              <button onClick={() => { setShowColorPalette({ nodeId: contextMenu.nodeId!, x: contextMenu.x, y: contextMenu.y }); setContextMenu(prev => ({ ...prev, visible: false })); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
-                <span className="text-slate-400 flex-shrink-0"><PaletteIcon /></span>
-                <span>色を変更</span>
-              </button>
-              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">ノード形状</div>
+              {/* カラーパレット */}
+              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">色</div>
+              <div className="px-2 py-1 flex flex-wrap gap-1 justify-center">
+                {COLOR_PALETTE.map(cp => (
+                  <button
+                    key={cp.label}
+                    onClick={() => {
+                      if (selectedNodeIds.length > 1) updateMultipleNodeColors(selectedNodeIds, cp.bg, cp.text);
+                      else if (contextMenu.nodeId) updateNodeColors(contextMenu.nodeId, cp.bg, cp.text);
+                      closeContextMenu();
+                    }}
+                    className="w-5 h-5 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm"
+                    style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05)` }}
+                    title={cp.label}
+                  />
+                ))}
+              </div>
+              <div className="mx-2 my-1 border-b border-slate-100" />
+              {/* 形状 */}
+              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">形状</div>
               <div className="px-2 py-1 flex gap-1">
                 {([
                   { shape: 'rounded', label: '角丸' },
@@ -4440,39 +4458,45 @@ const MindMapApp = ({ user }: { user: User }) => {
                   );
                 })}
               </div>
-              {/* 複数選択時のフォントサイズ変更 */}
-              {selectedNodeIds.length > 1 && (
-                <>
-                  <div className="mx-2 my-1 border-b border-slate-100" />
-                  <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">フォントサイズ</div>
-                  <div className="px-2 py-1 flex flex-wrap gap-1">
-                    {FONT_SIZES.map(size => (
-                      <button
-                        key={size}
-                        onClick={() => {
-                          selectedNodeIds.forEach(id => updateNodeFontSize(id, size));
-                          closeContextMenu();
-                        }}
-                        className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 hover:bg-[#e16b8c]/5 hover:border-[#e16b8c]/30 transition-colors"
-                      >
-                        {size}px
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              {/* 複数選択時のロック/解除 */}
-              {selectedNodeIds.length > 1 && (
-                <button
-                  onClick={() => { toggleMultipleNodesLock(selectedNodeIds); closeContextMenu(); }}
-                  className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors"
-                  style={{width: 'calc(100% - 8px)'}}
-                >
-                  <span className="text-slate-400 flex-shrink-0"><LockIcon /></span>
-                  <span>選択ノードをロック/解除</span>
-                </button>
-              )}
+              {/* フォントサイズ */}
               <div className="mx-2 my-1 border-b border-slate-100" />
+              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">フォント</div>
+              <div className="px-2 py-1 flex flex-wrap gap-1 justify-center">
+                {FONT_SIZES.map(size => (
+                  <button
+                    key={size}
+                    onClick={() => {
+                      if (selectedNodeIds.length > 1) selectedNodeIds.forEach(id => updateNodeFontSize(id, size));
+                      else if (contextMenu.nodeId) updateNodeFontSize(contextMenu.nodeId, size);
+                      closeContextMenu();
+                    }}
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 hover:bg-[#e16b8c]/5 hover:border-[#e16b8c]/30 transition-colors"
+                  >
+                    {size}px
+                  </button>
+                ))}
+              </div>
+              <div className="mx-2 my-1 border-b border-slate-100" />
+              {/* フォーカス */}
+              <button
+                onClick={() => { if (contextMenu.nodeId) { setFocusNodeId(contextMenu.nodeId); closeContextMenu(); } }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors"
+                style={{width: 'calc(100% - 8px)'}}
+              >
+                <span className="text-slate-400 flex-shrink-0">🎯</span>
+                <span>フォーカスモード</span>
+              </button>
+              {/* ロック/解除 */}
+              <button
+                onClick={() => { if (selectedNodeIds.length > 1) toggleMultipleNodesLock(selectedNodeIds); else if (contextMenu.nodeId) toggleNodeLock(contextMenu.nodeId); closeContextMenu(); }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors"
+                style={{width: 'calc(100% - 8px)'}}
+              >
+                <span className="text-slate-400 flex-shrink-0"><LockIcon /></span>
+                <span>{selectedNodeIds.length > 1 ? '選択ノードをロック/解除' : 'ロック/解除'}</span>
+              </button>
+              <div className="mx-2 my-1 border-b border-slate-100" />
+              {/* 整列（複数選択時のみ） */}
               {selectedNodeIds.length >= 2 && (<>
                 <button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
                   <span className="text-slate-400 flex-shrink-0"><AlignVerticalIcon /></span>
@@ -4482,7 +4506,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                   <span className="text-slate-400 flex-shrink-0"><AlignHorizontalIcon /></span>
                   <span>水平に整列</span>
                 </button>
-                <div className="mx-2 my-1 border-b border-slate-100" />
               </>)}
               <button onClick={() => executeContextAction('bringToFront')} className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
                 <span className="text-slate-400 flex-shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v16h16M4 20l6-6-6-6" /></svg></span>
