@@ -3347,25 +3347,32 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { 
-    e.stopPropagation(); 
-    if (showColorPalette) { setShowColorPalette(null); return; } 
-    const ctrlOrMeta = e.ctrlKey || e.metaKey; 
-    if (ctrlOrMeta) { 
-      closeContextMenu(); 
-      setShowQuickMenu(false); 
-      setShowMemoEdit(false); 
-      return; 
-    } 
-    setSelectedNodeIds([nodeId]); 
-    setSelectedImageIds([]); 
-    setSelectedStickyIds([]); 
-    setSelectedOutlineIds([]); 
-    setSelectedStampIds([]); 
-    setSelectedEdgeId(null); 
+  e.stopPropagation(); 
+  if (showColorPalette) { setShowColorPalette(null); return; } 
+  const ctrlOrMeta = e.ctrlKey || e.metaKey; 
+  if (ctrlOrMeta) {
+    // Ctrl/Cmd+クリック時はトグル選択（追加・解除）
+    setSelectedNodeIds(prev => 
+      prev.includes(nodeId) 
+        ? prev.filter(id => id !== nodeId)  // すでに選択中なら解除
+        : [...prev, nodeId]                  // 未選択なら追加
+    );
+    setSelectedEdgeId(null);
     closeContextMenu(); 
     setShowQuickMenu(false); 
     setShowMemoEdit(false); 
-  }, [closeContextMenu, showColorPalette]);
+    return; 
+  } 
+  setSelectedNodeIds([nodeId]); 
+  setSelectedImageIds([]); 
+  setSelectedStickyIds([]); 
+  setSelectedOutlineIds([]); 
+  setSelectedStampIds([]); 
+  setSelectedEdgeId(null); 
+  closeContextMenu(); 
+  setShowQuickMenu(false); 
+  setShowMemoEdit(false); 
+}, [closeContextMenu, showColorPalette]);
   const handleImageClick = useCallback((e: ReactMouseEvent, imageId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]); } else { setSelectedImageIds([imageId]); setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]); } else { setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
@@ -4523,7 +4530,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                 onClick={() => { if (contextMenu.nodeId) { setFocusNodeIds([contextMenu.nodeId]); closeContextMenu(); } }}
                 className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 text-sm font-medium text-slate-700 rounded-lg mx-1 transition-colors cursor-pointer"
               >
-                <span className="text-slate-400 flex-shrink-0">🎯</span>
+                <span className="text-slate-400 flex-shrink-0"><FocusIcon /></span>
                 <span>フォーカスモード</span>
               </button>
               {/* ロック/解除 */}
