@@ -1215,6 +1215,9 @@ const MindMapApp = ({ user }: { user: User }) => {
   const [selectedOutlineIds, setSelectedOutlineIds] = useState<string[]>([]);
   const [selectedStampIds, setSelectedStampIds] = useState<string[]>([]);
 
+  const selectedNodeIdsRef = useRef(selectedNodeIds);
+  useEffect(() => { selectedNodeIdsRef.current = selectedNodeIds; }, [selectedNodeIds]);
+
   const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
   const selectedImageId = selectedImageIds.length === 1 ? selectedImageIds[0] : null;
   const selectedStickyId = selectedStickyIds.length === 1 ? selectedStickyIds[0] : null;
@@ -1223,6 +1226,8 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const editingNodeIdRef = useRef(editingNodeId);
+  useEffect(() => { editingNodeIdRef.current = editingNodeId; }, [editingNodeId]);
   const dragOffset = useRef({ x: 0, y: 0 });
   const dragPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -2638,15 +2643,15 @@ const MindMapApp = ({ user }: { user: User }) => {
         broadcastAwareness(channel, myUserId, { 
           email: myEmail, 
           color: myColor, 
-          selectedNodeId: selectedNodeIds[0] || null, 
-          editingNodeId,
+          selectedNodeId: selectedNodeIdsRef.current[0] || null, 
+          editingNodeId: editingNodeIdRef.current,
           avatarUrl: user.user_metadata?.avatar_url ?? undefined,
         }); 
       }
     });
     
     channelRef.current = channel; setRoomId(room); return channel;
-  }, [broadcastAwareness, myUserId, myEmail, myColor, selectedNodeIds, editingNodeId, user.user_metadata?.avatar_url, repairOrphanNodes]);
+  }, [broadcastAwareness, myUserId, myEmail, myColor, user.user_metadata?.avatar_url, repairOrphanNodes]);
 
   useEffect(() => {
     Object.entries(awarenessStates).forEach(([userId, state]) => {
@@ -2981,7 +2986,6 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleOutlineResizeHandleMouseDown = useCallback((e: ReactMouseEvent, outlineId: string, handle: string) => { e.stopPropagation(); e.preventDefault(); setResizingOutlineHandle({ outlineId, handle }); }, []);
 
   const handleCanvasMouseDown = useCallback((e: ReactMouseEvent) => {
-    console.log('handleCanvasMouseDown fired', { ctrlKey: e.ctrlKey, metaKey: e.metaKey });
     if (e.button !== 0) return;
     const container = scrollContainerRef.current; if (!container) return;
     if (isSpacePressed) { e.preventDefault(); setIsCanvasPanning(true); panStartCoords.current = { x: e.clientX, y: e.clientY, scrollLeft: container.scrollLeft, scrollTop: container.scrollTop }; return; }
@@ -3407,6 +3411,14 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); } }, [mindMap]);
   const handleCanvasClick = () => {
     if (isCanvasPanning) return;
+    if (!wasDraggingRef.current) {
+      setSelectedNodeIds([]);
+      setSelectedImageIds([]);
+      setSelectedStickyIds([]);
+      setSelectedOutlineIds([]);
+      setSelectedStampIds([]);
+      setSelectedEdgeId(null);
+    }
     closeContextMenu();
     setShowQuickMenu(false);
     wasDraggingRef.current = false;
