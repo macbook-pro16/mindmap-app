@@ -388,12 +388,13 @@ const getNodeShapeSize = (
       const h = Math.max(Math.ceil(baseHeight / 0.7), 60);
       return { width: w, height: h };
     }
-   case 'hexagon': {
-  // 左右に頂点がある横長の六角形にフィットさせる
-  const w = Math.max(Math.ceil(baseWidth * 1.35), 100);
-  const h = Math.max(Math.ceil(baseHeight * 1.15), 60);
-  return { width: w, height: h };
-}
+    case 'hexagon': {
+      // 上下平行・左右頂点の六角形にフィットさせる
+      // テキストを確実に含むよう、横幅はベースの1.4倍、縦は1.2倍程度
+      const w = Math.max(Math.ceil(baseWidth * 1.4), 100);
+      const h = Math.max(Math.ceil(baseHeight * 1.2), 60);
+      return { width: w, height: h };
+    }
     case 'rounded':
     default:
       return { width: baseWidth, height: baseHeight };
@@ -409,10 +410,11 @@ const getShapePadding = (
     case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
     case 'diamond': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.18)}px`;
     case 'hexagon': {
-  const padY = Math.ceil(height * 0.18);
-  const padX = Math.ceil(width * 0.18);
-  return `${padY}px ${padX}px`;
-}
+      // 六角形の内側でテキストが自然に収まるパディング
+      const padY = Math.ceil(height * 0.18);
+      const padX = Math.ceil(width * 0.18);
+      return `${padY}px ${padX}px`;
+    }
     default: return '12px 20px';
   }
 };
@@ -499,22 +501,22 @@ const NodeShapeBackground = ({
       );
     }
     case 'hexagon': {
-  const pad = strokeWidth;
-  const cx = width / 2;
-  const cy = height / 2;
-  // 頂点が左右に来るように、90度（π/2）を基準に開始
-  const vertices: { x: number; y: number }[] = [];
-  // 外接円の半径を計算（横と縦の制約に合わせる）
-  const R = Math.min(width / 2, height / (Math.sqrt(3) * 0.7)) - pad;
-  for (let i = 0; i < 6; i++) {
-    const angle = Math.PI / 2 + (Math.PI / 3) * i; // 右の頂点から時計回り
-    vertices.push({
-      x: cx + R * Math.cos(angle),
-      y: cy - R * Math.sin(angle) * (height / width) * 0.7, // 縦横比に応じた自然な変形
-    });
-  }
-  const d = vertices.map((v, i) => (i === 0 ? 'M' : 'L') + ` ${v.x} ${v.y}`).join(' ') + ' Z';
-
+      // 上下平行・左右頂点の六角形
+      const pad = strokeWidth;
+      const cx = width / 2;
+      const cy = height / 2;
+      // 外接矩形から内側にパッドを取った領域
+      const rx = width / 2 - pad;
+      const ry = height / 2 - pad;
+      const vertices: { x: number; y: number }[] = [];
+      for (let i = 0; i < 6; i++) {
+        // 右の頂点 (角度0) から始めて時計回り
+        const angle = (Math.PI / 3) * i;
+        const vx = cx + rx * Math.cos(angle);
+        const vy = cy - ry * Math.sin(angle);
+        vertices.push({ x: vx, y: vy });
+      }
+      const d = vertices.map((v, i) => (i === 0 ? 'M' : 'L') + ` ${v.x} ${v.y}`).join(' ') + ' Z';
       return (
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ filter }}>
           <path d={d} fill={bgColor} stroke={borderColor} strokeWidth={strokeWidth} />
