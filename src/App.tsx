@@ -2996,13 +2996,12 @@ const MindMapApp = ({ user }: { user: User }) => {
       setDrawingShape({ type: toolType, startX: coords.x, startY: coords.y, currentX: coords.x, currentY: coords.y });
       return;
     }
-    const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null;
-    if (!nodeUnder) {
-      wasDraggingRef.current = true;
-      setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
-    }
-  }, [mindMap, zoomLevel, isSpacePressed, currentTool]);
-
+    // ノード上かどうかに関係なく、キャンバス背景クリック時は矩形選択を開始する
+    // (ノード上のmousedownはhandleMouseDownOnNodeが先にstopPropagationするため
+    //  ここに到達するのはキャンバス背景クリック時のみ)
+    wasDraggingRef.current = false;
+    setSelectionRect({ x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y });
+  }, [zoomLevel, isSpacePressed, currentTool]);
   const handleCanvasDoubleClick = useCallback((e: ReactMouseEvent) => { if (e.button !== 0 || isSpacePressed || currentTool !== 'select') return; const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); const nodeUnder = mindMap ? findNodeAtPoint(mindMap, coords.x, coords.y) : null; if (!nodeUnder) { addNodeAtPosition(coords.x, coords.y, false); } }, [mindMap, zoomLevel, isSpacePressed, currentTool, addNodeAtPosition]);
 
   const handleMouseMove = useCallback((e: MouseEvent | ReactMouseEvent) => {
