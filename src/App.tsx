@@ -3360,12 +3360,15 @@ e.stopPropagation();
   }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
   const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { 
-  e.stopPropagation();
-  console.log('handleNodeClick fired', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, nodeId });
-  if (showColorPalette) { setShowColorPalette(null); return; } 
-  if (e.ctrlKey || e.metaKey) {
-    console.log('→ ctrl/meta detected, returning early');
-    return; 
+  e.stopPropagation(); 
+  if (showColorPalette) { setShowColorPalette(null); return; }
+  // mouseDownの時点でCtrl/Cmd判定済みのため
+  // multiDragOffsetsかselectedNodeIdsが複数なら複数選択状態なので上書きしない
+  if (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0) {
+    closeContextMenu();
+    setShowQuickMenu(false);
+    setShowMemoEdit(false);
+    return;
   }
   setSelectedNodeIds([nodeId]); 
   setSelectedImageIds([]); 
@@ -3376,7 +3379,7 @@ e.stopPropagation();
   closeContextMenu(); 
   setShowQuickMenu(false); 
   setShowMemoEdit(false); 
-}, [closeContextMenu, showColorPalette]);
+}, [closeContextMenu, showColorPalette, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds]);
   const handleImageClick = useCallback((e: ReactMouseEvent, imageId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]); } else { setSelectedImageIds([imageId]); setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]); } else { setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
