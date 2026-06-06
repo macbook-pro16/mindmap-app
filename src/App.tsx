@@ -1360,6 +1360,8 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, [fetchInviteHistory]);
 
   const [focusNodeIds, setFocusNodeIds] = useState<string[]>([]);
+// 後方互換のため単一取得用を残す
+const focusNodeId = focusNodeIds.length === 1 ? focusNodeIds[0] : (focusNodeIds[0] ?? null);
 
   const getFocusedNodeIds = useCallback((rootNode: MindNode | null, targetIds: string[]): Set<string> => {
     const result = new Set<string>();
@@ -2818,15 +2820,20 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragOverMapItemIndex = useRef<number | null>(null);
 
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
-  if (e.button !== 0 || isSpacePressed) return;
-  const isCtrlOrMeta = e.ctrlKey || e.metaKey;
-  e.stopPropagation();
-  const container = scrollContainerRef.current; if (!container) return;
-  const nodeData = yNodesRef.current?.get(nodeId);
-  if (nodeData?.locked) {
-    setSelectedNodeIds([nodeId]);
-    return;
-  }
+    if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
+    const nodeData = yNodesRef.current?.get(nodeId);
+    if (nodeData?.locked) {
+      if (e.ctrlKey || e.metaKey) {
+        setSelectedNodeIds(prev =>
+          prev.includes(nodeId)
+            ? prev.filter(id => id !== nodeId)
+            : [...prev, nodeId]
+        );
+      } else {
+        setSelectedNodeIds([nodeId]);
+      }
+      return;
+    }
   const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
   const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return;
   const targetGroupId = node.groupId;
@@ -3481,7 +3488,13 @@ e.stopPropagation();
     }
   }
 
-  const focusedNodeIdsSet = focusNodeIds.length > 0 ? getFocusedNodeIds(mindMap, focusNodeIds) : undefined;
+  const focusedNodeIds = focusNodeIds.length > 0
+  ? focusNodeIds.reduce((acc, id) => {
+      const ids = getFocusedNodeIds(mindMap, id);
+      ids.forEach(x => acc.add(x));
+      return acc;
+    }, new Set<string>())
+  : undefined;
 
   const MinimapPanel = () => {
     const SCALE = 50;
@@ -4145,9 +4158,9 @@ e.stopPropagation();
                         {selectedNodeIds.length >= 1 && selectedNodeIds[0] && (
                           <button
                             onClick={() => {
-                              setFocusNodeIds([...selectedNodeIds]);
-                              setShowQuickMenu(false);
-                            }}
+  setFocusNodeIds(selectedNodeIds.length > 0 ? [...selectedNodeIds] : (selectedNodeId ? [selectedNodeId] : []));
+  setShowQuickMenu(false);
+}}
                             className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2.5"
                           >
                             <FocusIcon />
@@ -5169,7 +5182,11 @@ e.stopPropagation();
               />
             </div>
             {focusNodeIds.length > 0 && mindMap && (() => {
-              const tasks = getFocusedTasks(mindMap, focusNodeIds);
+  const focusNode = focusNodeIds.length === 1
+    ? findNodeById(mindMap, focusNodeIds[0])
+    : null;
+  const tasks = focusNodeIds.flatMap(id => getFocusedTasks(mindMap, id))
+    .filter((t, i, arr) => arr.findIndex(x => x.id === t.id) === i); // 重複除去
               const today = new Date().toISOString().slice(0, 10);
 
               const overdueTasks = tasks.filter(t => !t.taskDone && t.taskDueDate && t.taskDueDate < today);
@@ -5186,10 +5203,8 @@ e.stopPropagation();
                     <div>
                       <div className="text-xs font-bold text-[#e16b8c] uppercase tracking-wider">フォーカスモード</div>
                       <div className="text-sm font-bold text-slate-800 truncate max-w-[180px]">
-                        {focusNodeIds.length === 1
-                          ? (titleNode?.text ?? '')
-                          : `${focusNodeIds.length}ノードを選択中`}
-                      </div>
+  {focusNode?.text ?? `${focusNodeIds.length}件のノード`}
+</div>
                     </div>
                     <button onClick={() => setFocusNodeIds([])} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
                   </div>
