@@ -389,8 +389,6 @@ const getNodeShapeSize = (
       return { width: w, height: h };
     }
     case 'hexagon': {
-      // 上下平行・左右頂点の六角形にフィットさせる
-      // テキストを確実に含むよう、横幅はベースの1.4倍、縦は1.2倍程度
       const w = Math.max(Math.ceil(baseWidth * 1.4), 100);
       const h = Math.max(Math.ceil(baseHeight * 1.2), 60);
       return { width: w, height: h };
@@ -410,7 +408,6 @@ const getShapePadding = (
     case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
     case 'diamond': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.18)}px`;
     case 'hexagon': {
-      // 六角形の内側でテキストが自然に収まるパディング
       const padY = Math.ceil(height * 0.18);
       const padX = Math.ceil(width * 0.18);
       return `${padY}px ${padX}px`;
@@ -501,16 +498,13 @@ const NodeShapeBackground = ({
       );
     }
     case 'hexagon': {
-      // 上下平行・左右頂点の六角形
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
-      // 外接矩形から内側にパッドを取った領域
       const rx = width / 2 - pad;
       const ry = height / 2 - pad;
       const vertices: { x: number; y: number }[] = [];
       for (let i = 0; i < 6; i++) {
-        // 右の頂点 (角度0) から始めて時計回り
         const angle = (Math.PI / 3) * i;
         const vx = cx + rx * Math.cos(angle);
         const vy = cy - ry * Math.sin(angle);
@@ -4347,7 +4341,13 @@ const MindMapApp = ({ user }: { user: User }) => {
                   return (
                     <button
                       key={shape}
-                      onClick={() => { if (contextMenu.nodeId) updateNodeShape(contextMenu.nodeId, shape); closeContextMenu(); }}
+                      onClick={() => { 
+                        if (contextMenu.nodeId) {
+                          if (selectedNodeIds.length > 1) updateMultipleNodeShapes(selectedNodeIds, shape);
+                          else updateNodeShape(contextMenu.nodeId, shape);
+                        }
+                        closeContextMenu();
+                      }}
                       className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
                         currentShape === shape
                           ? 'bg-[#e16b8c]/10 text-[#e16b8c] border border-[#e16b8c]/30'
@@ -4359,6 +4359,38 @@ const MindMapApp = ({ user }: { user: User }) => {
                   );
                 })}
               </div>
+              {/* 複数選択時のフォントサイズ変更 */}
+              {selectedNodeIds.length > 1 && (
+                <>
+                  <div className="mx-2 my-1 border-b border-slate-100" />
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">フォントサイズ</div>
+                  <div className="px-2 py-1 flex flex-wrap gap-1">
+                    {FONT_SIZES.map(size => (
+                      <button
+                        key={size}
+                        onClick={() => {
+                          selectedNodeIds.forEach(id => updateNodeFontSize(id, size));
+                          closeContextMenu();
+                        }}
+                        className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 hover:bg-[#e16b8c]/5 hover:border-[#e16b8c]/30 transition-colors"
+                      >
+                        {size}px
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {/* 複数選択時のロック/解除 */}
+              {selectedNodeIds.length > 1 && (
+                <button
+                  onClick={() => { toggleMultipleNodesLock(selectedNodeIds); closeContextMenu(); }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors"
+                  style={{width: 'calc(100% - 8px)'}}
+                >
+                  <span className="text-slate-400 flex-shrink-0"><LockIcon /></span>
+                  <span>選択ノードをロック/解除</span>
+                </button>
+              )}
               <div className="mx-2 my-1 border-b border-slate-100" />
               {selectedNodeIds.length >= 2 && (<>
                 <button onClick={() => executeContextAction('alignVertical')} className="w-full text-left px-3 py-2 hover:bg-slate-50 font-medium text-sm text-slate-700 flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
