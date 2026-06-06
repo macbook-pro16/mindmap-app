@@ -3826,33 +3826,70 @@ const MindMapApp = ({ user }: { user: User }) => {
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">Recent Maps</h3>
           {savedMaps.length === 0 ? (<div className="text-sm text-slate-400 text-center py-8 bg-white border border-slate-100 rounded-lg border-dashed">まだマップがありません</div>) : (
             <div className="flex flex-col gap-1.5">
-              {savedMaps.map((map: MapRecord, index: number) => (
-                <div key={map.id} draggable onDragStart={(e) => handleMapDragStart(e, index)} onDragEnter={(e) => handleMapDragEnter(e, index)} onDragEnd={handleMapDragEnd} onDragOver={(e) => e.preventDefault()} className={`group relative flex items-center rounded-lg transition-colors ${
-                  mapId === map.id
-                    ? 'bg-[#e16b8c]/10 border-l-[3px] border-[#e16b8c] pl-2.5'
-                    : 'hover:bg-slate-50 pl-3'
-                }`}>
+             {savedMaps.map((map: MapRecord, index: number) => (
+                <div
+                  key={map.id}
+                  draggable
+                  onDragStart={(e) => handleMapDragStart(e, index)}
+                  onDragEnter={(e) => handleMapDragEnter(e, index)}
+                  onDragEnd={handleMapDragEnd}
+                  onDragOver={(e) => e.preventDefault()}
+                  className={`group relative flex items-center rounded-xl transition-all duration-200 ${
+                    mapId === map.id
+                      ? 'bg-gradient-to-r from-[#e16b8c]/15 to-[#e16b8c]/5 shadow-sm ring-1 ring-[#e16b8c]/20'
+                      : 'hover:bg-slate-100/80'
+                  }`}
+                >
+                  {/* アクティブインジケーター */}
+                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full transition-all duration-300 ${
+                    mapId === map.id ? 'h-8 bg-[#e16b8c] shadow-[0_0_8px_rgba(225,107,140,0.6)]' : 'h-0'
+                  }`} />
+
                   {editingMapId === map.id ? (
-                    <div className="flex-1 py-2 pl-0">
-                      <input autoFocus value={editMapTitle} onChange={e => setEditMapTitle(e.target.value)} onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle); if (e.key === 'Escape') setEditingMapId(null); }} className="w-full text-sm font-semibold text-[#e16b8c] bg-transparent border-b-2 border-[#e16b8c] outline-none pb-0.5" />
+                    <div className="flex-1 py-2 pl-4">
+                      <input
+                        autoFocus
+                        value={editMapTitle}
+                        onChange={e => setEditMapTitle(e.target.value)}
+                        onBlur={() => handleSaveTitleOnly(map.id, editMapTitle)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSaveTitleOnly(map.id, editMapTitle); if (e.key === 'Escape') setEditingMapId(null); }}
+                        className="w-full text-sm font-semibold text-[#e16b8c] bg-transparent border-b-2 border-[#e16b8c] outline-none pb-0.5"
+                      />
                     </div>
                   ) : (
                     <button
                       onClick={() => handleLoadMap(map)}
-                      className="flex-1 text-left py-2 pr-8 text-sm text-slate-700 font-medium truncate"
+                      className="flex-1 text-left py-2.5 pl-4 pr-8 min-w-0"
                     >
-                      {map.title}
-                      {map.user_id !== user.id && (
-                        <span className="ml-1.5 text-[10px] text-slate-400 font-normal">· 共有</span>
-                      )}
+                      <div className={`text-sm font-medium truncate transition-colors ${
+                        mapId === map.id ? 'text-[#e16b8c]' : 'text-slate-600 group-hover:text-slate-800'
+                      }`}>
+                        {map.title}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {mapId === map.id && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#e16b8c] uppercase tracking-wider">
+                            <span className="w-1 h-1 rounded-full bg-[#e16b8c] animate-pulse" />
+                            編集中
+                          </span>
+                        )}
+                        {map.user_id !== user.id && (
+                          <span className="text-[9px] text-slate-400 font-medium bg-slate-100 px-1.5 py-0.5 rounded-full">共有</span>
+                        )}
+                      </div>
                     </button>
                   )}
+
                   <div className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity flex">
-                    <button onClick={(e) => {e.stopPropagation(); setEditMapTitle(map.title); setEditingMapId(map.id);}}
-                      className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600"><PencilIcon /></button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditMapTitle(map.title); setEditingMapId(map.id); }}
+                      className="p-1 rounded-lg hover:bg-white hover:shadow-sm text-slate-300 hover:text-slate-600 transition-all"
+                    >
+                      <PencilIcon />
+                    </button>
                     {map.user_id === user.id
-                      ? <button onClick={(e) => handleDeleteMap(map, e)} className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"><TrashIcon /></button>
-                      : <button onClick={(e) => handleLeaveMap(map, e)} className="p-1 rounded hover:bg-amber-50 text-slate-400 hover:text-amber-500"><LeaveIcon /></button>
+                      ? <button onClick={(e) => handleDeleteMap(map, e)} className="p-1 rounded-lg hover:bg-red-50 hover:shadow-sm text-slate-300 hover:text-red-500 transition-all"><TrashIcon /></button>
+                      : <button onClick={(e) => handleLeaveMap(map, e)} className="p-1 rounded-lg hover:bg-amber-50 hover:shadow-sm text-slate-300 hover:text-amber-500 transition-all"><LeaveIcon /></button>
                     }
                   </div>
                 </div>
