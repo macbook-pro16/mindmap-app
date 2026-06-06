@@ -384,13 +384,15 @@ const getNodeShapeSize = (
       return { width: d, height: d };
     }
     case 'diamond': {
-      const w = Math.max(Math.ceil(baseWidth / 0.85), 100);
-      const h = Math.max(Math.ceil(baseHeight / 0.7), 60);
+      // テキストが切れないよう高さの比率を調整（縦方向を少し大きく）
+      const w = Math.max(Math.ceil(baseWidth / 0.9), 100);
+      const h = Math.max(Math.ceil(baseHeight / 0.75), 60);
       return { width: w, height: h };
     }
     case 'hexagon': {
-      const w = Math.max(Math.ceil(baseWidth * 1.4), 100);
-      const h = Math.max(Math.ceil(baseHeight * 1.2), 60);
+      // 八角形（正八角形）用のサイズ
+      const w = Math.max(Math.ceil(baseWidth * 1.3), 100);
+      const h = Math.max(Math.ceil(baseHeight * 1.1), 60);
       return { width: w, height: h };
     }
     case 'rounded':
@@ -406,10 +408,10 @@ const getShapePadding = (
 ): string => {
   switch (shape) {
     case 'circle': return `${Math.ceil(height * 0.12)}px ${Math.ceil(width * 0.12)}px`;
-    case 'diamond': return `${Math.ceil(height * 0.22)}px ${Math.ceil(width * 0.18)}px`;
+    case 'diamond': return `${Math.ceil(height * 0.24)}px ${Math.ceil(width * 0.18)}px`;
     case 'hexagon': {
-      const padY = Math.ceil(height * 0.18);
-      const padX = Math.ceil(width * 0.18);
+      const padY = Math.ceil(height * 0.15);
+      const padX = Math.ceil(width * 0.2);
       return `${padY}px ${padX}px`;
     }
     default: return '12px 20px';
@@ -498,17 +500,19 @@ const NodeShapeBackground = ({
       );
     }
     case 'hexagon': {
+      // 八角形（正八角形）を描画
       const pad = strokeWidth;
       const cx = width / 2;
       const cy = height / 2;
       const rx = width / 2 - pad;
       const ry = height / 2 - pad;
       const vertices: { x: number; y: number }[] = [];
-      for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 3) * i;
-        const vx = cx + rx * Math.cos(angle);
-        const vy = cy - ry * Math.sin(angle);
-        vertices.push({ x: vx, y: vy });
+      for (let i = 0; i < 8; i++) {
+        const angle = (Math.PI / 4) * i + Math.PI / 8; // 22.5度オフセットで頂点が上下左右に
+        vertices.push({
+          x: cx + rx * Math.cos(angle),
+          y: cy - ry * Math.sin(angle),
+        });
       }
       const d = vertices.map((v, i) => (i === 0 ? 'M' : 'L') + ` ${v.x} ${v.y}`).join(' ') + ' Z';
       return (
@@ -3197,9 +3201,9 @@ const MindMapApp = ({ user }: { user: User }) => {
       scrollToHome();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F' && selectedNodeId) {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F' && selectedNodeIds.length > 0) {
       e.preventDefault();
-      setFocusNodeId(selectedNodeId);
+      setFocusNodeId(selectedNodeIds[0]);
       return;
     }
     if (showQuickMenu) {
@@ -3228,12 +3232,68 @@ const MindMapApp = ({ user }: { user: User }) => {
     if (e.key === 'Tab') { e.preventDefault(); addChildNode(selectedNodeId); return; }
   }, [editingNodeId, editingStickyId, editingOutlineId, editingMapId, showHelpModal, showMemoEdit, showQuickMenu, selectedNodeId, selectedNodeIds, selectedImageIds, selectedStickyIds, selectedOutlineIds, selectedStampIds, selectedEdgeId, selectedImageId, selectedStickyId, selectedOutlineId, selectedStampId, mindMap, zoomLevel, handleSave, handleUndo, handleRedo, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteEdge, changeZoom, addNodeAtPosition, toggleNodeCollapse, scrollToHome]);
 
-  const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'node', nodeId }); setShowColorPalette(null); setShowQuickMenu(false); }, []);
-  const handleCanvasContextMenu = useCallback((e: ReactMouseEvent) => { e.preventDefault(); const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'canvas', canvasX: coords.x, canvasY: coords.y }); setShowQuickMenu(false); }, [zoomLevel]);
-  const handleImageContextMenu = useCallback((e: ReactMouseEvent, imageId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedImageIds([imageId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'image', imageId }); setShowQuickMenu(false); }, []);
-  const handleStickyContextMenu = useCallback((e: ReactMouseEvent, stickyId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedStickyIds([stickyId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'sticky', stickyId }); setShowQuickMenu(false); }, []);
-  const handleOutlineContextMenu = useCallback((e: ReactMouseEvent, outlineId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedOutlineIds([outlineId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'outline', outlineId }); setShowQuickMenu(false); }, []);
-  const handleStampContextMenu = useCallback((e: ReactMouseEvent, stampId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedStampIds([stampId]); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'stamp', stampId }); setShowQuickMenu(false); }, []);
+  const handleNodeContextMenu = useCallback((e: ReactMouseEvent, nodeId: string) => { 
+    e.preventDefault(); e.stopPropagation(); 
+    const menuWidth = 200; // 想定メニュー幅
+    const menuHeight = 400; // 想定メニュー高さ
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+    setContextMenu({ visible: true, x, y, type: 'node', nodeId }); 
+    setShowColorPalette(null); 
+    setShowQuickMenu(false); 
+  }, []);
+  const handleCanvasContextMenu = useCallback((e: ReactMouseEvent) => { 
+    e.preventDefault(); 
+    const container = scrollContainerRef.current; 
+    if (!container) return; 
+    const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel);
+    const menuWidth = 200;
+    const menuHeight = 200;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+    setContextMenu({ visible: true, x, y, type: 'canvas', canvasX: coords.x, canvasY: coords.y }); 
+    setShowQuickMenu(false); 
+  }, [zoomLevel]);
+  const handleImageContextMenu = useCallback((e: ReactMouseEvent, imageId: string) => { 
+    e.preventDefault(); e.stopPropagation(); 
+    setSelectedImageIds([imageId]); 
+    const menuWidth = 200;
+    const menuHeight = 150;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+    setContextMenu({ visible: true, x, y, type: 'image', imageId }); 
+    setShowQuickMenu(false); 
+  }, []);
+  const handleStickyContextMenu = useCallback((e: ReactMouseEvent, stickyId: string) => { 
+    e.preventDefault(); e.stopPropagation(); 
+    setSelectedStickyIds([stickyId]); 
+    const menuWidth = 200;
+    const menuHeight = 200;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+    setContextMenu({ visible: true, x, y, type: 'sticky', stickyId }); 
+    setShowQuickMenu(false); 
+  }, []);
+  const handleOutlineContextMenu = useCallback((e: ReactMouseEvent, outlineId: string) => { 
+    e.preventDefault(); e.stopPropagation(); 
+    setSelectedOutlineIds([outlineId]); 
+    const menuWidth = 200;
+    const menuHeight = 200;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+    setContextMenu({ visible: true, x, y, type: 'outline', outlineId }); 
+    setShowQuickMenu(false); 
+  }, []);
+  const handleStampContextMenu = useCallback((e: ReactMouseEvent, stampId: string) => { 
+    e.preventDefault(); e.stopPropagation(); 
+    setSelectedStampIds([stampId]); 
+    const menuWidth = 200;
+    const menuHeight = 150;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+    setContextMenu({ visible: true, x, y, type: 'stamp', stampId }); 
+    setShowQuickMenu(false); 
+  }, []);
 
   const executeContextAction = useCallback((action: string) => {
     closeContextMenu();
@@ -3256,7 +3316,28 @@ const MindMapApp = ({ user }: { user: User }) => {
     else if (contextMenu.type === 'canvas') { if (action === 'addNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addNodeAtPosition(contextMenu.canvasX, contextMenu.canvasY, false); else if (action === 'addImageNode' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addImageNodeWithUpload(contextMenu.canvasX, contextMenu.canvasY); else if (action === 'addSticky' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addSticky(contextMenu.canvasX, contextMenu.canvasY); else if (action === 'addStamp' && contextMenu.canvasX !== undefined && contextMenu.canvasY !== undefined) addStamp(contextMenu.canvasX, contextMenu.canvasY); else if (action === 'addImage') fileInputRef.current?.click(); }
   }, [contextMenu, closeContextMenu, mindMap, addChildNode, addSiblingNode, addIndependentSibling, addParentNode, deleteNode, deleteEdge, updateEdgeArrow, addNodeAtPosition, addImageNodeWithUpload, addSticky, addStamp, alignNodes, deleteImage, deleteSticky, deleteOutline, deleteStamp, bringToFront, sendToBack, toggleNodeCollapse]);
 
-  const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } const ctrlOrMeta = e.ctrlKey || e.metaKey; if (ctrlOrMeta) { setSelectedNodeIds(prev => { const newArr = prev.includes(nodeId) ? prev.filter((id: string) => id !== nodeId) : [...prev, nodeId]; return newArr; }); } else { setSelectedNodeIds([nodeId]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); setShowMemoEdit(false); }, [closeContextMenu, showColorPalette]);
+  const handleNodeClick = useCallback((e: ReactMouseEvent, nodeId: string) => { 
+    e.stopPropagation(); 
+    if (showColorPalette) { setShowColorPalette(null); return; } 
+    const ctrlOrMeta = e.ctrlKey || e.metaKey; 
+    if (ctrlOrMeta) { 
+      // Ctrl/Cmd+クリックの場合は選択処理は mousedown で済ませるため、ここでは何も変更しない
+      closeContextMenu(); 
+      setShowQuickMenu(false); 
+      setShowMemoEdit(false); 
+      return; 
+    } 
+    // 通常クリック：単一選択
+    setSelectedNodeIds([nodeId]); 
+    setSelectedImageIds([]); 
+    setSelectedStickyIds([]); 
+    setSelectedOutlineIds([]); 
+    setSelectedStampIds([]); 
+    setSelectedEdgeId(null); 
+    closeContextMenu(); 
+    setShowQuickMenu(false); 
+    setShowMemoEdit(false); 
+  }, [closeContextMenu, showColorPalette]);
   const handleImageClick = useCallback((e: ReactMouseEvent, imageId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedImageIds(prev => prev.includes(imageId) ? prev.filter(id => id !== imageId) : [...prev, imageId]); } else { setSelectedImageIds([imageId]); setSelectedNodeIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]); } else { setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu, showColorPalette]);
@@ -3265,7 +3346,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const handleCanvasClick = () => { if (wasDraggingRef.current || isCanvasPanning) { wasDraggingRef.current = false; return; } closeContextMenu(); setShowQuickMenu(false); };
   const handleTextEditComplete = (nodeId: string, newText: string) => { const trimmed = newText.trim(); if (trimmed) updateText(nodeId, trimmed); setEditingNodeId(null); };
   const handleEdgeClick = useCallback((e: ReactMouseEvent, edgeId: string) => { e.stopPropagation(); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); setSelectedEdgeId(edgeId); closeContextMenu(); setShowQuickMenu(false); }, [closeContextMenu]);
-  const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); setContextMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'edge', edgeId }); setShowQuickMenu(false); }, []);
+  const handleEdgeContextMenu = useCallback((e: ReactMouseEvent, edgeId: string) => { e.preventDefault(); e.stopPropagation(); setSelectedEdgeId(edgeId); const menuWidth = 200; const menuHeight = 300; const x = Math.min(e.clientX, window.innerWidth - menuWidth); const y = Math.min(e.clientY, window.innerHeight - menuHeight); setContextMenu({ visible: true, x, y, type: 'edge', edgeId }); setShowQuickMenu(false); }, []);
   const handleEdgeEndpointMouseDown = useCallback((e: ReactMouseEvent, edgeId: string, endpoint: 'source' | 'target') => { e.stopPropagation(); e.preventDefault(); setEditingEdgeEndpoint({ edgeId, endpoint }); }, []);
   const handleConnectionPointMouseDown = useCallback((e: ReactMouseEvent, nodeId: string, point: ConnectionPoint) => { e.stopPropagation(); e.preventDefault(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (!node) return; const w = node.width ?? (node.imageUrl ? (node.imageWidth && node.imageScale ? node.imageWidth * node.imageScale : NODE_WIDTH) : NODE_WIDTH); const h = node.height ?? (node.imageUrl ? (node.imageHeight && node.imageScale ? node.imageHeight * node.imageScale : NODE_HEIGHT) : NODE_HEIGHT); const pt = getConnectionPoint(node.x, node.y, point, w, h); setDrawingEdge({ sourceNodeId: nodeId, sourcePoint: point, currentX: pt.x, currentY: pt.y }); }, [mindMap]);
   const handleCanvasDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); const file = e.dataTransfer.files?.[0]; if (!file || !file.type.startsWith('image/')) return; const container = scrollContainerRef.current; if (!container) return; const coords = getCanvasCoords(e.clientX, e.clientY, container, zoomLevel); const fileExt = file.name.split('.').pop(); const fileName = `${crypto.randomUUID()}.${fileExt}`; const { data, error } = await supabase.storage.from('images').upload(fileName, file); if (error) { alert('画像のアップロードに失敗しました'); return; } const path = data.path; const img = new Image(); img.src = URL.createObjectURL(file); img.onload = () => { const MAX_DIM = 200; let w = img.width, h = img.height; if (w > MAX_DIM || h > MAX_DIM) { const ratio = Math.min(MAX_DIM / w, MAX_DIM / h); w = Math.round(w * ratio); h = Math.round(h * ratio); } const yImages = yImagesRef.current; if (!yImages || !ydocRef.current) return; const imageId = crypto.randomUUID(); ydocRef.current.transact(() => { yImages.set(imageId, { storagePath: path, x: coords.x - w / 2, y: coords.y - h / 2, width: w, height: h }); }); }; }, [zoomLevel]);
@@ -4020,10 +4101,10 @@ const MindMapApp = ({ user }: { user: User }) => {
                             {mindMap && findNodeById(mindMap, selectedNodeId)?.taskEnabled ? 'タスク管理をOFF' : 'タスク管理をON'}
                           </button>
                         )}
-                        {selectedNodeIds.length === 1 && selectedNodeId && (
+                        {selectedNodeIds.length >= 1 && selectedNodeIds[0] && (
                           <button
                             onClick={() => {
-                              setFocusNodeId(selectedNodeId);
+                              setFocusNodeId(selectedNodeIds[0]);
                               setShowQuickMenu(false);
                             }}
                             className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2.5"
@@ -4293,7 +4374,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         )}
         {zenMode && <button onClick={() => setZenMode(false)} className="absolute top-4 right-4 z-50 bg-slate-900/80 backdrop-blur text-white border border-slate-700 rounded-full px-5 py-2 text-xs font-bold shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105">ZEN解除 (Alt+Cmd+F)</button>}
         {contextMenu.visible && !showColorPalette && (
-          <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
+          <div className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-sm min-w-[200px] max-h-[80vh] overflow-y-auto" style={{ left: Math.max(0, contextMenu.x), top: Math.max(0, contextMenu.y) }} onClick={e => e.stopPropagation()}>
             {contextMenu.type === 'node' && contextMenu.nodeId && (<>
               <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">追加</div>
               <button onClick={() => executeContextAction('addChild')} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 font-medium text-sm flex items-center gap-2.5 rounded-lg mx-1 transition-colors" style={{width: 'calc(100% - 8px)'}}>
@@ -4333,7 +4414,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                   { shape: 'rounded', label: '角丸' },
                   { shape: 'circle', label: '正円' },
                   { shape: 'diamond', label: '菱形' },
-                  { shape: 'hexagon', label: '六角形' },
+                  { shape: 'hexagon', label: '八角形' },
                 ] as const).map(({ shape, label }) => {
                   const currentShape = mindMap && contextMenu.nodeId
                     ? (findNodeById(mindMap, contextMenu.nodeId)?.nodeShape ?? 'rounded')
@@ -4494,7 +4575,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           </div>
         )}
         {showColorPalette && (
-          <div className="fixed z-[110] bg-white border border-slate-200 rounded-xl shadow-2xl p-4 text-sm" style={{ left: showColorPalette.x, top: showColorPalette.y }} onClick={e => e.stopPropagation()}>
+          <div className="fixed z-[110] bg-white border border-slate-200 rounded-xl shadow-2xl p-4 text-sm" style={{ left: Math.max(0, showColorPalette.x), top: Math.max(0, showColorPalette.y) }} onClick={e => e.stopPropagation()}>
             <div className="text-xs font-bold text-slate-500 mb-3 text-center uppercase tracking-wide">カラーパレット</div>
             <div className="grid grid-cols-4 gap-3 mb-4">{COLOR_PALETTE.map((cp: { bg: string; text: string; label: string }, idx: number) => (<button key={idx} className="w-10 h-10 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#e16b8c]" style={{ backgroundColor: cp.bg, boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.05), 0 0 0 2px ${cp.text}` }} title={cp.label} onClick={() => { if(showColorPalette.nodeId && selectedNodeIds.length > 1) updateMultipleNodeColors(selectedNodeIds, cp.bg, cp.text); else if(showColorPalette.nodeId) updateNodeColors(showColorPalette.nodeId, cp.bg, cp.text); else if(showColorPalette.stickyId) updateStickyColors(showColorPalette.stickyId, cp.bg, cp.text); else if(showColorPalette.outlineId) updateOutlineColor(showColorPalette.outlineId, cp.text); setShowColorPalette(null); closeContextMenu(); }} />))}</div>
             <button onClick={() => setShowColorPalette(null)} className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">キャンセル</button>
@@ -4561,7 +4642,7 @@ const MindMapApp = ({ user }: { user: User }) => {
                             { shape: 'rounded', label: '角丸', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="4" strokeWidth={2} /></svg> },
                             { shape: 'circle', label: '正円', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" strokeWidth={2} /></svg> },
                             { shape: 'diamond', label: '菱形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,3 21,12 12,21 3,12" strokeWidth={2} strokeLinejoin="round" /></svg> },
-                            { shape: 'hexagon', label: '六角形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,2 20.66,7 20.66,17 12,22 3.34,17 3.34,7" strokeWidth={2} strokeLinejoin="round" /></svg> },
+                            { shape: 'hexagon', label: '八角形', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12,2 20.66,7 20.66,17 12,22 3.34,17 3.34,7" strokeWidth={2} strokeLinejoin="round" /></svg> },
                           ] as const).map(({ shape, label, icon }) => {
                             const currentShape = mindMap && selectedNodeId ? (findNodeById(mindMap, selectedNodeId)?.nodeShape ?? 'rounded') : 'rounded';
                             return (
