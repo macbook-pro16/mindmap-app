@@ -2818,7 +2818,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   const dragOverMapItemIndex = useRef<number | null>(null);
 
   const handleMouseDownOnNode = useCallback((e: ReactMouseEvent, nodeId: string) => {
-  console.log('handleMouseDownOnNode fired', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, button: e.button, nodeId });
+  console.log('handleMouseDownOnNode v3', { ctrlKey: e.ctrlKey, metaKey: e.metaKey, button: e.button, nodeId });
   if (e.button !== 0 || isSpacePressed) return; e.stopPropagation();
   const container = scrollContainerRef.current; if (!container) return;
   const nodeData = yNodesRef.current?.get(nodeId);
@@ -2832,6 +2832,7 @@ const MindMapApp = ({ user }: { user: User }) => {
   let isMulti = false;
   const newSelectedNodeIds = new Set<string>(); const newSelectedImageIds = new Set<string>(); const newSelectedStickyIds = new Set<string>(); const newSelectedOutlineIds = new Set<string>(); const newSelectedStampIds = new Set<string>();
   if (e.ctrlKey || e.metaKey) {
+    console.log('INSIDE ctrl/meta block');
     e.preventDefault();
     e.stopPropagation();
     setSelectedNodeIds(prev => {
@@ -2842,7 +2843,8 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
     setSelectedEdgeId(null);
     return;
-  }else {
+  }
+console.log('OUTSIDE ctrl/meta block - ctrlKey:', e.ctrlKey, 'metaKey:', e.metaKey);else {
       if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
         isMulti = true;
         selectedNodeIds.forEach(id => newSelectedNodeIds.add(id)); selectedImageIds.forEach(id => newSelectedImageIds.add(id)); selectedStickyIds.forEach(id => newSelectedStickyIds.add(id)); selectedOutlineIds.forEach(id => newSelectedOutlineIds.add(id)); selectedStampIds.forEach(id => newSelectedStampIds.add(id));
