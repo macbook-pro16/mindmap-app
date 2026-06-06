@@ -1311,7 +1311,6 @@ const MindMapApp = ({ user }: { user: User }) => {
 
   const copiedNodeRef = useRef<YjsNodeData | null>(null);
 
-  // 整列基準ノード（複数選択時）
   const [alignAnchorId, setAlignAnchorId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2821,7 +2820,7 @@ const MindMapApp = ({ user }: { user: User }) => {
       } else {
         setSelectedNodeIds([nodeId]);
       }
-      setAlignAnchorId(null); // 選択が変わったので基準リセット
+      setAlignAnchorId(null);
       return;
     }
     const container = scrollContainerRef.current;
@@ -2839,7 +2838,7 @@ const MindMapApp = ({ user }: { user: User }) => {
           : [...prev, nodeId]
       );
       setSelectedEdgeId(null);
-      setAlignAnchorId(null); // 複数選択に変わるので基準リセット
+      setAlignAnchorId(null);
       return;
     } else {
       if (selectedNodeIds.includes(nodeId) && (selectedNodeIds.length > 1 || selectedImageIds.length > 0 || selectedStickyIds.length > 0 || selectedOutlineIds.length > 0 || selectedStampIds.length > 0)) {
@@ -2856,7 +2855,7 @@ const MindMapApp = ({ user }: { user: User }) => {
         setAlignAnchorId(null);
       } else {
         newSelectedNodeIds.add(nodeId); setSelectedNodeIds([nodeId]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
-        setAlignAnchorId(null); // 単一選択に変わったので基準リセット
+        setAlignAnchorId(null);
       }
     }
     if (isMulti) {
@@ -4056,7 +4055,6 @@ const MindMapApp = ({ user }: { user: User }) => {
                 </div>
               )}
               <div className="w-px h-5 bg-slate-200 mx-1" />
-              {/* フォーカスボタン */}
               <button
                 onClick={() => {
                   if (focusNodeIds.length > 0) {
@@ -4495,8 +4493,20 @@ const MindMapApp = ({ user }: { user: User }) => {
                 ))}
               </div>
               <div className="mx-3 my-1 border-b border-slate-100" />
-              <button onClick={() => { if (contextMenu.nodeId) { setFocusNodeIds([contextMenu.nodeId]); closeContextMenu(); } }} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 text-sm font-medium text-slate-700 rounded-lg mx-1 transition-colors cursor-pointer">
-                <span className="text-slate-400 flex-shrink-0"><FocusIcon /></span><span>フォーカスモード</span>
+              {/* 修正: 複数選択に対応したフォーカスモード */}
+              <button
+                onClick={() => {
+                  if (selectedNodeIds.length > 1) {
+                    setFocusNodeIds([...selectedNodeIds]);
+                  } else if (contextMenu.nodeId) {
+                    setFocusNodeIds([contextMenu.nodeId]);
+                  }
+                  closeContextMenu();
+                }}
+                className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 text-sm font-medium text-slate-700 rounded-lg mx-1 transition-colors cursor-pointer"
+              >
+                <span className="text-slate-400 flex-shrink-0"><FocusIcon /></span>
+                <span>フォーカスモード{selectedNodeIds.length > 1 ? ` (${selectedNodeIds.length}ノード)` : ''}</span>
               </button>
               <button onClick={() => { if (selectedNodeIds.length > 1) toggleMultipleNodesLock(selectedNodeIds); else if (contextMenu.nodeId) toggleNodeLock(contextMenu.nodeId); closeContextMenu(); }} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 text-sm font-medium text-slate-700 rounded-lg mx-1 transition-colors cursor-pointer">
                 <span className="text-slate-400 flex-shrink-0"><LockIcon /></span><span>{selectedNodeIds.length > 1 ? '選択ノードをロック/解除' : 'ロック/解除'}</span>
@@ -5100,7 +5110,6 @@ const RecursiveNode = ({ node, selectedNodeId, selectedNodeIds, editingNodeId, d
             </select>
           </div>
         )}
-        {/* 整列基準ノードボタン */}
         {isSelected && !isSingleDragging && !isEditing && selectedNodeIds.length >= 2 && (
           <button
             className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white text-[8px] font-bold shadow-md z-20 pointer-events-auto transition-colors ${alignAnchorId === node.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
