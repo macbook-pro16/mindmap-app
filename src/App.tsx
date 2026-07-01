@@ -2615,15 +2615,18 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
     
     channel.on('broadcast', { event: 'yjs-update' }, (msg: { payload: { update: string } }) => {
-      const update = base64ToUint8Array(msg.payload.update);
-      Y.applyUpdate(ydoc, update, 'supabase');
-      setHasRemoteUpdate(true);
-      setRemoteUpdateReceived(true);
-      if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
-      remoteUpdateTimerRef.current = setTimeout(() => {
-        setHasRemoteUpdate(false);
-      }, 5000);
-    });
+  const update = base64ToUint8Array(msg.payload.update);
+  Y.applyUpdate(ydoc, update, 'supabase');
+  setHasRemoteUpdate(true);
+  setRemoteUpdateReceived(true);
+  if (remoteUpdateTimerRef.current) clearTimeout(remoteUpdateTimerRef.current);
+  remoteUpdateTimerRef.current = setTimeout(() => {
+    setHasRemoteUpdate(false);
+  }, 5000);
+  // リモート更新のたびに孤児ノードを修復（同時に同じ親へ追加した際の消失を防ぐ）
+  if (repairOrphanTimerRef.current) clearTimeout(repairOrphanTimerRef.current);
+  repairOrphanTimerRef.current = setTimeout(() => repairOrphanNodes(), 300);
+});
 
     channel.on('broadcast', { event: 'sync-step-1' }, (msg: { payload: { stateVector: string } }) => { const stateVector = base64ToUint8Array(msg.payload.stateVector); const update = Y.encodeStateAsUpdate(ydoc, stateVector); if (update.byteLength > 10) channel.send({ type: 'broadcast', event: 'sync-step-2', payload: { update: uint8ArrayToBase64(update) } }); });
     channel.on('broadcast', { event: 'sync-step-2' }, (msg: { payload: { update: string } }) => { Y.applyUpdate(ydoc, base64ToUint8Array(msg.payload.update), 'supabase'); addLog('差分同期完了'); });
@@ -2691,19 +2694,13 @@ const MindMapApp = ({ user }: { user: User }) => {
     });
   }, [awarenessStates, myUserId]);
 
-  useEffect(() => {
-    if (!remoteUpdateReceived) return;
-    setRemoteUpdateReceived(false);
-    const isUserInteracting = isAnyDragging || editingNodeId !== null || editingStickyId !== null || editingOutlineId !== null || editingMapId !== null || drawingEdge !== null;
-    if (!isUserInteracting && !isDirtyRef.current) {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-      reloadTimerRef.current = setTimeout(() => {
-        window.location.reload();
-      }, 3000);
-    } else {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-    }
-  }, [remoteUpdateReceived, isAnyDragging, editingNodeId, editingStickyId, editingOutlineId, editingMapId, drawingEdge]);
+  // Yjsのobserverが既にリアルタイムで再描画しているため、ページ全体のreloadは不要かつ危険（未blur入力の消失原因）。
+// 差分同期に失敗した疑いがある場合のみ、明示的な「再読み込み」ボタンをUI側に用意する方針に変更。
+useEffect(() => {
+  if (!remoteUpdateReceived) return;
+  setRemoteUpdateReceived(false);
+  // 自動reloadは行わない。hasRemoteUpdateバナー（画面右上）で更新があったことだけを知らせる。
+}, [remoteUpdateReceived]);
 
   const handleSaveTitleOnly = useCallback(async (id: number, newTitle: string) => {
     if (!newTitle.trim()) { setEditingMapId(null); return; }
@@ -3554,7 +3551,22 @@ const handleImportFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
   const handleStickyClick = useCallback((e: ReactMouseEvent, stickyId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStickyIds(prev => prev.includes(stickyId) ? prev.filter(id => id !== stickyId) : [...prev, stickyId]); } else { setSelectedStickyIds([stickyId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); setAlignAnchorId(null); }, [closeContextMenu, showColorPalette]);
   const handleOutlineClick = useCallback((e: ReactMouseEvent, outlineId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedOutlineIds(prev => prev.includes(outlineId) ? prev.filter(id => id !== outlineId) : [...prev, outlineId]); } else { setSelectedOutlineIds([outlineId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedStampIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); setAlignAnchorId(null); }, [closeContextMenu, showColorPalette]);
   const handleStampClick = useCallback((e: ReactMouseEvent, stampId: string) => { e.stopPropagation(); if (showColorPalette) { setShowColorPalette(null); return; } if (e.ctrlKey || e.metaKey) { setSelectedStampIds(prev => prev.includes(stampId) ? prev.filter(id => id !== stampId) : [...prev, stampId]); } else { setSelectedStampIds([stampId]); setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); } setSelectedEdgeId(null); closeContextMenu(); setShowQuickMenu(false); setAlignAnchorId(null); }, [closeContextMenu, showColorPalette]);
-  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => { e.stopPropagation(); const nodeData = yNodesRef.current?.get(nodeId); if (nodeData?.locked) return; const node = mindMap ? findNodeById(mindMap, nodeId) : null; if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); } }, [mindMap]);
+  const handleNodeDoubleClick = useCallback((e: ReactMouseEvent, nodeId: string) => {
+  e.stopPropagation();
+  const nodeData = yNodesRef.current?.get(nodeId);
+  if (nodeData?.locked) return;
+  // 他の参加者が既にこのノードを編集中なら、上書き競合を避けるため編集開始をブロック
+  const editingByOther = Object.entries(awarenessStates).find(
+    ([uid, state]) => uid !== myUserId && state?.editingNodeId === nodeId
+  );
+  if (editingByOther) {
+    setSaveMessage(`${editingByOther[1].email} さんが編集中です`);
+    setTimeout(() => setSaveMessage(''), 2000);
+    return;
+  }
+  const node = mindMap ? findNodeById(mindMap, nodeId) : null;
+  if (node?.imageUrl) { setImageModalUrl(node.imageUrl); } else { setEditingNodeId(nodeId); }
+}, [mindMap, awarenessStates, myUserId]);
   const handleCanvasClick = () => {
     if (isCanvasPanning) return;
     if (wasDraggingRef.current) {
