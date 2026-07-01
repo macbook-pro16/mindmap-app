@@ -672,8 +672,20 @@ const getAllNodes = (root: MindNode): MindNode[] => {
 // --------------------- アイコン ---------------------
 const UndoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" /></svg> );
 const RedoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4" /></svg> );
-const ExportIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v13m0 0l-4-4m4 4l4-4M5 21h14" /></svg> );
-const ImportIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16V3m0 13l-4-4m4 4l4-4M5 21h14" /></svg> );
+// エクスポート = 下矢印＋トレイ（保存する/書き出すイメージ）
+const ExportIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v10m0 0l-4-4m4 4l4-4" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+  </svg>
+);
+// インポート = 上矢印＋トレイ（取り込む/読み込むイメージ）
+const ImportIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 13V3m0 0l-4 4m4-4l4 4" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+  </svg>
+);
 const PlusIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg> );
 const SaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v11a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V4m0 3h4m-4 0H8" /></svg> );
 const LinkIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828m6.364-6.364a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828" /></svg> );
@@ -4023,11 +4035,22 @@ const handleImportFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
               <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
               <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
               <div className="w-px h-5 bg-slate-200 mx-1" />
-<button onClick={handleExportMap} disabled={!mindMap} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 text-slate-600 transition-all" title="このマップをエクスポート">
+<button
+  onClick={handleExportMap}
+  disabled={!mindMap}
+  className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 text-slate-600 transition-all"
+  title="このマップをJSONファイルとして書き出す"
+>
   <ExportIcon />
+  <span className="text-[11px] font-medium hidden sm:inline">書き出し</span>
 </button>
-<button onClick={() => mapImportInputRef.current?.click()} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-all" title="マップをインポート（現在の内容を置き換え）">
+<button
+  onClick={() => mapImportInputRef.current?.click()}
+  className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-all"
+  title="JSONファイルを読み込んで現在のマップを置き換える"
+>
   <ImportIcon />
+  <span className="text-[11px] font-medium hidden sm:inline">読み込み</span>
 </button>
 <input type="file" ref={mapImportInputRef} accept="application/json,.json" onChange={handleImportFile} className="hidden" />
               <div className="w-px h-5 bg-slate-200 mx-1" />
