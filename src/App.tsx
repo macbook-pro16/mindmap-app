@@ -672,6 +672,8 @@ const getAllNodes = (root: MindNode): MindNode[] => {
 // --------------------- アイコン ---------------------
 const UndoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" /></svg> );
 const RedoIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4" /></svg> );
+const ExportIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v13m0 0l-4-4m4 4l4-4M5 21h14" /></svg> );
+const ImportIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16V3m0 13l-4-4m4 4l4-4M5 21h14" /></svg> );
 const PlusIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg> );
 const SaveIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v11a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V4m0 3h4m-4 0H8" /></svg> );
 const LinkIcon = () => ( <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828m6.364-6.364a4 4 0 010 5.656l-2.828 2.828a4 4 0 01-5.656-5.656l2.828-2.828" /></svg> );
@@ -1165,6 +1167,7 @@ const App = () => {
 const MindMapApp = ({ user }: { user: User }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mapImportInputRef = useRef<HTMLInputElement>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   const shapeMenuRef = useRef<HTMLDivElement>(null);
   const quickMenuRef = useRef<HTMLDivElement>(null);
@@ -2697,6 +2700,112 @@ const MindMapApp = ({ user }: { user: User }) => {
     setEditingMapId(null);
   }, [mapId, fetchMaps]);
 
+  const handleExportMap = useCallback(() => {
+  if (!mindMap) { alert('エクスポートするマップがありません'); return; }
+  const payload = {
+    format: 'mindmap-pro-export',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    title: mapTitle,
+    tree: mindMap,
+    edges,
+    images,
+    stickies,
+    outlines,
+    stamps,
+    edgeStyle,
+    canvasBgColor,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(mapTitle || 'mindmap').replace(/[\\/:*?"<>|]/g, '_')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}, [mindMap, mapTitle, edges, images, stickies, outlines, stamps, edgeStyle, canvasBgColor]);
+
+const regenerateNodeIds = (node: MindNode, idMap: Map<string, string>): MindNode => {
+  const newId = crypto.randomUUID();
+  idMap.set(node.id, newId);
+  return { ...node, id: newId, children: node.children.map(c => regenerateNodeIds(c, idMap)) };
+};
+
+const handleImportFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result as string);
+      if (!data.tree || !data.tree.id) throw new Error('不正なファイル形式です');
+      if (!window.confirm('現在開いているマップの内容を、インポートしたデータで置き換えます。よろしいですか？（この操作は元に戻せません）')) return;
+
+      const idMap = new Map<string, string>();
+      const newTree = regenerateNodeIds(data.tree, idMap);
+
+      const nodes = yNodesRef.current;
+      const yEdges = yEdgesRef.current;
+      const yImages = yImagesRef.current;
+      const yStickies = yStickiesRef.current;
+      const yOutlines = yOutlinesRef.current;
+      const yStamps = yStampsRef.current;
+      const ySettings = ySettingsRef.current;
+      if (!nodes || !ydocRef.current) { alert('マップが初期化されていません。先に新規マップを作成してください。'); return; }
+
+      ydocRef.current.transact(() => {
+        nodes.forEach((_, k) => nodes.delete(k));
+        yEdges?.forEach((_, k) => yEdges.delete(k));
+        yImages?.forEach((_, k) => yImages.delete(k));
+        yStickies?.forEach((_, k) => yStickies.delete(k));
+        yOutlines?.forEach((_, k) => yOutlines.delete(k));
+        yStamps?.forEach((_, k) => yStamps.delete(k));
+
+        treeToYMap(newTree, nodes);
+        yRootRef.current = newTree.id;
+
+        (data.edges ?? []).forEach((edge: EdgeData) => {
+          const sourceId = idMap.get(edge.sourceNodeId);
+          const targetId = idMap.get(edge.targetNodeId);
+          if (sourceId && targetId) {
+            yEdges?.set(crypto.randomUUID(), {
+              sourceNodeId: sourceId, sourcePoint: edge.sourcePoint,
+              targetNodeId: targetId, targetPoint: edge.targetPoint,
+              arrow: edge.arrow, color: edge.color, strokeWidth: edge.strokeWidth,
+            });
+          }
+        });
+        (data.images ?? []).forEach((img: ImageData) => {
+          yImages?.set(crypto.randomUUID(), { storagePath: img.storagePath, x: img.x, y: img.y, width: img.width, height: img.height, groupId: img.groupId, zIndex: img.zIndex });
+        });
+        (data.stickies ?? []).forEach((s: StickyData) => {
+          yStickies?.set(crypto.randomUUID(), { x: s.x, y: s.y, width: s.width, height: s.height, text: s.text, bgColor: s.bgColor, textColor: s.textColor, groupId: s.groupId, zIndex: s.zIndex });
+        });
+        (data.outlines ?? []).forEach((o: OutlineData) => {
+          yOutlines?.set(crypto.randomUUID(), { type: o.type, x: o.x, y: o.y, width: o.width, height: o.height, text: o.text, color: o.color, groupId: o.groupId, zIndex: o.zIndex, fontSize: o.fontSize, strokeWidth: o.strokeWidth, strokeDasharray: o.strokeDasharray, textAlign: o.textAlign });
+        });
+        (data.stamps ?? []).forEach((st: StampData) => {
+          yStamps?.set(crypto.randomUUID(), { text: st.text, color: st.color, textColor: st.textColor, x: st.x, y: st.y, width: st.width, height: st.height, userId: myUserId, email: myEmail, groupId: st.groupId, zIndex: st.zIndex });
+        });
+        if (data.edgeStyle && ySettings) ySettings.set('edgeStyle', data.edgeStyle);
+        if (data.canvasBgColor && ySettings) ySettings.set('backgroundColor', data.canvasBgColor);
+      });
+
+      if (data.title) setMapTitle(data.title);
+      setSelectedNodeIds([]); setSelectedImageIds([]); setSelectedStickyIds([]); setSelectedOutlineIds([]); setSelectedStampIds([]);
+      setFocusNodeIds([]);
+    } catch (err) {
+      console.error(err);
+      alert('インポートに失敗しました。ファイル形式を確認してください。');
+    } finally {
+      if (mapImportInputRef.current) mapImportInputRef.current.value = '';
+    }
+  };
+  reader.readAsText(file);
+}, [myUserId, myEmail]);
+
   const handleHeaderTitleBlur = useCallback(() => { if (mapId && mapTitle.trim()) { handleSaveTitleOnly(mapId, mapTitle); } }, [mapId, mapTitle, handleSaveTitleOnly]);
 
   const handleResetMap = useCallback(() => {
@@ -3913,6 +4022,14 @@ const MindMapApp = ({ user }: { user: User }) => {
               <div className="w-px h-5 bg-slate-200 mx-1" />
               <button onClick={handleUndo} disabled={!canUndo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="元に戻す (Ctrl+Z)"><UndoIcon /></button>
               <button onClick={handleRedo} disabled={!canRedo} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent text-slate-600 transition-all" title="やり直し (Ctrl+Shift+Z)"><RedoIcon /></button>
+              <div className="w-px h-5 bg-slate-200 mx-1" />
+<button onClick={handleExportMap} disabled={!mindMap} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 text-slate-600 transition-all" title="このマップをエクスポート">
+  <ExportIcon />
+</button>
+<button onClick={() => mapImportInputRef.current?.click()} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-all" title="マップをインポート（現在の内容を置き換え）">
+  <ImportIcon />
+</button>
+<input type="file" ref={mapImportInputRef} accept="application/json,.json" onChange={handleImportFile} className="hidden" />
               <div className="w-px h-5 bg-slate-200 mx-1" />
               {selectedNodeIds.length >= 2 && (
                 <select
