@@ -34,6 +34,8 @@ export interface YjsNodeData {
   x: number;
   y: number;
   children: string[];
+  parentEdgeColor?: string;
+  parentEdgeStrokeWidth?: number;
   independent?: boolean;
   bgColor?: string;
   textColor?: string;
@@ -125,6 +127,8 @@ export interface MindNode {
   id: string;
   text: string;
   children: MindNode[];
+  parentEdgeColor?: string;
+  parentEdgeStrokeWidth?: number;
   x: number;
   y: number;
   independent?: boolean;
@@ -991,6 +995,8 @@ const yMapToTree = (nodes: Y.Map<YjsNodeData>, rootId: string): MindNode | null 
       nodeShape: shape,
       memo: data.memo,
       locked: data.locked ?? false,
+      parentEdgeColor: data.parentEdgeColor,
+      parentEdgeStrokeWidth: data.parentEdgeStrokeWidth,
       children,
     };
   };
@@ -1023,6 +1029,8 @@ const treeToYMap = (root: MindNode, nodes: Y.Map<YjsNodeData>) => {
     nodeShape: root.nodeShape ?? 'rounded',
     memo: root.memo,
     locked: root.locked ?? false,
+    parentEdgeColor: root.parentEdgeColor,
+    parentEdgeStrokeWidth: root.parentEdgeStrokeWidth,
     children: root.children.map((c: MindNode) => c.id),
   });
   root.children.forEach((c: MindNode) => treeToYMap(c, nodes));
@@ -1683,12 +1691,28 @@ const MindMapApp = ({ user }: { user: User }) => {
   }, []);
 
   const updateEdgeColor = useCallback((edgeId: string, color: string) => {
+    // 親子・兄弟関係で自動生成される接続線（実体を持たない）の場合は、
+    // 子ノード自身に見た目情報を保存する
+    if (edgeId.startsWith('parent-edge-')) {
+      const childId = edgeId.replace('parent-edge-', '');
+      const nodes = yNodesRef.current; if (!nodes) return;
+      const data = nodes.get(childId); if (!data) return;
+      ydocRef.current?.transact(() => { nodes.set(childId, { ...data, parentEdgeColor: color }); });
+      return;
+    }
     const yEdges = yEdgesRef.current; if (!yEdges) return;
     const edge = yEdges.get(edgeId); if (!edge) return;
     ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, color }); });
   }, []);
 
   const updateEdgeStrokeWidth = useCallback((edgeId: string, strokeWidth: number) => {
+    if (edgeId.startsWith('parent-edge-')) {
+      const childId = edgeId.replace('parent-edge-', '');
+      const nodes = yNodesRef.current; if (!nodes) return;
+      const data = nodes.get(childId); if (!data) return;
+      ydocRef.current?.transact(() => { nodes.set(childId, { ...data, parentEdgeStrokeWidth: strokeWidth }); });
+      return;
+    }
     const yEdges = yEdgesRef.current; if (!yEdges) return;
     const edge = yEdges.get(edgeId); if (!edge) return;
     ydocRef.current?.transact(() => { yEdges.set(edgeId, { ...edge, strokeWidth }); });
@@ -5051,7 +5075,37 @@ const handleImportFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
                   <marker id="arrowStartActive" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="#e16b8c" /></marker>
                   <marker id="arrowEndActive" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#e16b8c" /></marker>
                 </defs>
-                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => { const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions); const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions); if (!parentPos || !childPos) return null; const dx = childPos.x - parentPos.x; const dy = childPos.y - parentPos.y; const gapX = Math.abs(dx) - (parentPos.width + childPos.width) / 2; const gapY = Math.abs(dy) - (parentPos.height + childPos.height) / 2; let parentPoint: ConnectionPoint; let childPoint: ConnectionPoint; if (gapX >= gapY) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint  = dx > 0 ? 'left'  : 'right'; } else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint  = dy > 0 ? 'top'    : 'bottom'; } const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height); const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height); const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle); const edgeId = `parent-edge-${fn.id}`; const isSelected = selectedEdgeId === edgeId; const isVisible = !focusedNodeIdsSet || (focusedNodeIdsSet.has(fn.parentId as string) && focusedNodeIdsSet.has(fn.id)); return (<g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}><path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} /><path d={pathD} fill="none" stroke={isSelected ? '#e16b8c' : '#e2e8f0'} strokeWidth={isSelected ? 4 : 3} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} /></g>); })}
+                {flatNodes.filter((fn: FlatNode) => fn.parentId && fn.parentX !== undefined && fn.parentY !== undefined && !fn.independent).map((fn: FlatNode) => {
+  const parentPos = getNodeDisplayPos(fn.parentId as string, mindMap, dragPositions);
+  const childPos = getNodeDisplayPos(fn.id, mindMap, dragPositions);
+  if (!parentPos || !childPos) return null;
+  const dx = childPos.x - parentPos.x;
+  const dy = childPos.y - parentPos.y;
+  const gapX = Math.abs(dx) - (parentPos.width + childPos.width) / 2;
+  const gapY = Math.abs(dy) - (parentPos.height + childPos.height) / 2;
+  let parentPoint: ConnectionPoint;
+  let childPoint: ConnectionPoint;
+  if (gapX >= gapY) { parentPoint = dx > 0 ? 'right' : 'left'; childPoint = dx > 0 ? 'left' : 'right'; }
+  else { parentPoint = dy > 0 ? 'bottom' : 'top'; childPoint = dy > 0 ? 'top' : 'bottom'; }
+  const startPt = getConnectionPoint(parentPos.x, parentPos.y, parentPoint, parentPos.width, parentPos.height);
+  const endPt = getConnectionPoint(childPos.x, childPos.y, childPoint, childPos.width, childPos.height);
+  const pathD = getEdgePath(startPt, endPt, parentPoint, childPoint, edgeStyle);
+  const edgeId = `parent-edge-${fn.id}`;
+  const isSelected = selectedEdgeId === edgeId;
+  const isVisible = !focusedNodeIdsSet || (focusedNodeIdsSet.has(fn.parentId as string) && focusedNodeIdsSet.has(fn.id));
+  // 子ノード自身に保存された色・太さ（未設定ならデフォルト）
+  const childFullNode = mindMap ? findNodeById(mindMap, fn.id) : null;
+  const customColor = childFullNode?.parentEdgeColor;
+  const customStrokeWidth = childFullNode?.parentEdgeStrokeWidth;
+  const strokeColor = isSelected ? '#e16b8c' : (customColor ?? '#e2e8f0');
+  const strokeWidth = isSelected ? Math.max(4, customStrokeWidth ?? 3) : (customStrokeWidth ?? 3);
+  return (
+    <g key={edgeId} className="pointer-events-auto" style={{ opacity: isVisible ? 1 : 0.1 }}>
+      <path d={pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, edgeId)} onContextMenu={(e) => handleEdgeContextMenu(e, edgeId)} />
+      <path d={pathD} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} className={`pointer-events-none ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${isSelected ? 'drop-shadow-md' : ''}`} />
+    </g>
+  );
+})}
                 {edgeLines.map((el: any) => { const markerStart = el.arrow === 'start' || el.arrow === 'both' ? (el.selected ? 'url(#arrowStartActive)' : 'url(#arrowStart)') : 'none'; const markerEnd = el.arrow === 'end' || el.arrow === 'both' ? (el.selected ? 'url(#arrowEndActive)' : 'url(#arrowEnd)') : 'none'; return (<g key={el.id} className="pointer-events-auto"><path d={el.pathD} fill="none" stroke="transparent" strokeWidth={20} className="cursor-pointer" onClick={(e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} /><path d={el.pathD} fill="none" stroke={el.selected ? '#e16b8c' : (el.color ?? '#94a3b8')} strokeWidth={el.strokeWidth ?? (el.selected ? 4 : 3)} markerStart={markerStart} markerEnd={markerEnd} className={`${el.selected ? 'drop-shadow-md' : 'pointer-events-none'} ${isAnyDragging ? '' : 'transition-all duration-300 ease-out'} ${el.selected ? 'drop-shadow-md' : 'hover:opacity-80'}`} onClick={el.selected ? undefined : (e) => handleEdgeClick(e, el.id)} onContextMenu={(e) => handleEdgeContextMenu(e, el.id)} />{el.selected && (<><circle cx={el.sourceX} cy={el.sourceY} r={8} fill="#ffffff" stroke="#e16b8c" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'source')} /><circle cx={el.targetX} cy={el.targetY} r={8} fill="#ffffff" stroke="#e16b8c" strokeWidth={3} className="cursor-grab pointer-events-auto hover:scale-125 transition-transform shadow-md" onMouseDown={(e) => handleEdgeEndpointMouseDown(e, el.id, 'target')} /></>)}</g>); })}
                 {drawingEdge && mindMap && (<path d={(() => { const sNode = findNodeById(mindMap, drawingEdge.sourceNodeId); if (!sNode) return ''; const sw = sNode.width ?? (sNode.imageUrl && sNode.imageWidth && sNode.imageScale ? sNode.imageWidth * sNode.imageScale : NODE_WIDTH); const sh = sNode.height ?? (sNode.imageUrl && sNode.imageHeight && sNode.imageScale ? sNode.imageHeight * sNode.imageScale : NODE_HEIGHT); return getEdgePath(getConnectionPoint(sNode.x, sNode.y, drawingEdge.sourcePoint, sw, sh), {x: drawingEdge.currentX, y: drawingEdge.currentY}, drawingEdge.sourcePoint, drawingEdge.targetPoint || 'left', edgeStyle); })()} fill="none" stroke="#e16b8c" strokeWidth={4} strokeDasharray="8,8" className="pointer-events-none drop-shadow-sm" />)}
                 {drawingShape && (
